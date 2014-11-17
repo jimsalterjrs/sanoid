@@ -1,0 +1,617 @@
+#!/usr/bin/perl
+
+use strict;
+use Data::Dumper;
+use Time::Local;
+use Sys::Hostname;
+
+my %args = getargs(@ARGV);
+
+my $rawsourcefs = $args{'source'};
+my $rawtargetfs = $args{'target'};
+my $debug = $args{'debug'};
+
+my $zfscmd = '/sbin/zfs';
+my $sshcmd = '/usr/bin/ssh';
+my $pscmd = '/bin/ps';
+my $sshcipher = '-c arcfour';
+my $compresscmd = '/usr/bin/lzop';
+my $decompresscmd = '/usr/bin/lzop -dfc';
+my $pvcmd = '/usr/bin/pv';
+my $mbuffercmd = '/usr/bin/mbuffer';
+my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
+# currently using ls to check for file existence because we aren't depending on perl
+# being present on remote machines.
+my $lscmd = '/bin/ls';
+
+# figure out if source and/or target are remote.
+my ($sourcehost,$sourcefs) = getssh($rawsourcefs);
+my ($targethost,$targetfs) = getssh($rawtargetfs);
+
+# make sure target is not currently in receive.
+if (iszfsbusy($targethost,$targetfs)) {
+	die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+}
+
+# figure out whether compression, mbuffering, pv
+# are available on source, target, local machines.
+# warn user of anything missing, then continue with sync.
+my %avail = checkcommands();
+$sshcmd = "$sshcmd $sshcipher";
+# does the target filesystem exist yet?
+my $targetexists = targetexists($targethost,$targetfs);
+
+# build hashes of the snaps on the source and target filesystems.
+my %snaps;
+%snaps = getsnaps(\%snaps,'source',$sourcehost,$sourcefs);
+if ($targetexists) { %snaps = getsnaps(\%snaps,'target',$targethost,$targetfs); }
+
+# create a new syncoid snapshot on the source filesystem.
+my $newsyncsnap = newsyncsnap($sourcehost,$sourcefs);
+
+# there is currently (2014-09-01) a bug in ZFS on Linux
+# that causes readonly to always show on if it's EVER
+# been turned on... even when it's off... unless and
+# until the filesystem is zfs umounted and zfs remounted.
+# we're going to do the right thing anyway.
+my $originaltargetreadonly;
+
+# sync 'em up.
+if (! $targetexists) {
+	# do an initial sync from the oldest source snapshot
+	# THEN do an -I to the newest
+	my $oldestsnap = getoldestsnapshot(\%snaps);
+	my $sendcmd = "$zfscmd send $sourcefs\@$oldestsnap";
+	my $recvcmd = "$zfscmd receive -F $targetfs";
+	my $pvsize = getsendsize("$sourcefs\@$oldestsnap");
+	my $disp_pvsize = readablebytes($pvsize);
+	if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
+	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+	print "Sending oldest full snapshot $oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
+	if ($debug) { print "DEBUG: $synccmd\n"; }
+
+	# make sure target is (still) not currently in receive.
+	if (iszfsbusy($targethost,$targetfs)) {
+		die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+	}
+	system($synccmd);
+
+	# now do an -I to the new sync snapshot, assuming there were any snapshots
+	# other than the new sync snapshot to begin with, of course
+	if ($oldestsnap ne $newsyncsnap) {
+
+		# get current readonly status of target, then set it to on during sync
+		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,'readonly');
+		setzfsvalue($targethost,$targetfs,'readonly','on');
+
+		$sendcmd = "$zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+		$pvsize = getsendsize("$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap");
+		$disp_pvsize = readablebytes($pvsize);
+		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+		$synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+
+		# make sure target is (still) not currently in receive.
+		if (iszfsbusy($targethost,$targetfs)) {
+			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+		}
+
+		print "Updating new target filesystem with incremental $oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+		if ($debug) { print "DEBUG: $synccmd\n"; }
+		system($synccmd);
+
+		# restore original readonly value to target after sync complete
+		setzfsvalue($targethost,$targetfs,'readonly',$originaltargetreadonly);			
+	}
+} else {
+	# find most recent matching snapshot and do an -I
+	# to the new snapshot
+
+	# get current readonly status of target, then set it to on during sync
+	$originaltargetreadonly = getzfsvalue($targethost,$targetfs,'readonly');
+	setzfsvalue($targethost,$targetfs,'readonly','on');
+
+	my $matchingsnap = getmatchingsnapshot(\%snaps);
+
+	# make sure target is (still) not currently in receive.
+	if (iszfsbusy($targethost,$targetfs)) {
+		die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+	}
+
+	# rollback target to matchingsnap
+	if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
+	if ($targethost ne '') {
+		system ("$sshcmd $targethost $zfscmd rollback -R $targetfs\@$matchingsnap");
+	} else {
+		system ("$zfscmd rollback -R $targetfs\@$matchingsnap");
+	}
+
+	my $sendcmd = "$zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
+	my $recvcmd = "$zfscmd receive $targetfs";
+	my $pvsize = getsendsize("$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap");
+	my $disp_pvsize = readablebytes($pvsize);
+	if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+
+	print "Sending incremental $matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+	if ($debug) { print "DEBUG: $synccmd\n"; }
+	system("$synccmd");
+
+	# restore original readonly value to target after sync complete
+	setzfsvalue($targethost,$targetfs,'readonly',$originaltargetreadonly);			
+}
+
+# prune obsolete sync snaps on source and target.
+pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,keys %{ $snaps{'source'}});
+pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,keys %{ $snaps{'target'}});
+
+# debug: print contents of %snaps to stdout
+#dumphash(\%snaps);
+
+exit;
+
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
+sub getargs {
+	my @args = @_;
+	my %args;
+
+	my $novalueargs = ",debug,nocommandchecks,";
+
+	while (my $arg = shift(@args)) {
+		if ($arg =~ /^--/) {
+			# doubledash arg
+			$arg =~ s/^--//;
+			if ($novalueargs =~ /,$arg,/) {
+				$args{$arg} = 1;
+			} else {
+				my $nextarg = shift(@args);
+				$args{$arg} = $nextarg;
+			}
+		} elsif ($arg =~ /^-/) {
+			# singledash arg
+			$arg =~ s/^-//;
+			if ($novalueargs =~ /,$arg,/) {
+				$args{$arg} = 1;
+			} else {
+				my $nextarg = shift(@args);
+				$args{$arg} = $nextarg;
+			}
+		} else {
+			# bare arg
+			if (defined $args{'source'}) {
+				if (! defined $args{'target'}) {
+					$args{'target'} = $arg;
+				} else {
+					die "ERROR: don't know what to do with a third bare argument.\n";
+				}
+			} else {
+				$args{'source'} = $arg;
+			}
+		}
+	}
+	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; }
+	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; }
+	return %args;
+}
+
+sub checkcommands {
+	# make sure compression, mbuffer, and pv are available on
+	# source, target, and local hosts as appropriate.
+
+	my %avail;
+	my $sourcessh;
+	my $targetssh;
+
+	# if --nocommandchecks then assume everything's available and return
+	if ($args{'nocommandchecks'}) { 
+		if ($debug) { print "DEBUG: not checking for command availability due to --nocommandchecks switch.\n"; }
+		$avail{'compress'} = 1;
+		$avail{'localpv'} = 1;
+		$avail{'localmbuffer'} = 1;
+		$avail{'sourcembuffer'} = 1;
+		$avail{'targetmbuffer'} = 1;
+		return %avail; 
+	}
+
+	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; }
+	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; }
+
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on source...\n"; }
+	$avail{'sourcecompress'} = `$sourcessh $lscmd $compresscmd 2>/dev/null`;
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on target...\n"; }
+	$avail{'targetcompress'} = `$targetssh $lscmd $compresscmd 2>/dev/null`;
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on local machine...\n"; }
+	$avail{'localcompress'} = `$lscmd $compresscmd 2>/dev/null`;
+
+	my ($s,$t);
+	if ($sourcehost eq '') { 
+		$s = '[local machine]'
+	} else {
+		$s = $sourcehost;
+		$s =~ s/^\S*\@//;
+		$s = "ssh:$s";
+	}
+	if ($targethost eq '') { 
+		$t = '[local machine]'
+	} else {
+		$t = $targethost;
+		$t =~ s/^\S*\@//;
+		$t = "ssh:$t";
+	}
+
+	if ($avail{'sourcecompress'} eq '') { 
+		print "INFO: $compresscmd not available on source $s- sync will continue without compression.\n"; 
+		$avail{'compress'} = 0;
+	}
+	if ($avail{'targetcompress'} eq '') {
+		print "INFO: $compresscmd not available on target $t - sync will continue without compression.\n"; 
+		$avail{'compress'} = 0;
+	}
+	if ($avail{'targetcompress'} ne '' && $avail{'sourcecompress'} ne '') {
+		# compression available - unless source and target are both remote, which we'll check
+		# for in the next block and respond to accordingly.
+		$avail{'compress'} = 1;
+	}
+
+	# corner case - if source AND target are BOTH remote, we have to check for local compress too
+	if ($sourcehost ne '' && $targethost ne '' && $avail{'localcompress'} eq '') { 
+		print "INFO: $compresscmd not available on local machine - sync will continue without compression.\n"; 
+		$avail{'compress'} = 0;
+	}
+
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on source...\n"; }
+	$avail{'sourcembuffer'} = `$sourcessh $lscmd $mbuffercmd 2>/dev/null`;
+	if ($avail{'sourcembuffer'} eq '') {
+		print "INFO: $mbuffercmd not available on source $s - sync will continue without source buffering.\n";
+		$avail{'sourcembuffer'} = 0;
+	} else {
+		$avail{'sourcembuffer'} = 1;
+	}
+
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on target...\n"; }
+	$avail{'targetmbuffer'} = `$targetssh $lscmd $mbuffercmd 2>/dev/null`;
+	if ($avail{'targetmbuffer'} eq '') {
+		print "INFO: $mbuffercmd not available on target $t - sync will continue without target buffering.\n";
+		$avail{'targetmbuffer'} = 0;
+	} else {
+		$avail{'targetmbuffer'} = 1;
+	}
+
+	# if we're doing remote source AND remote target, check for local mbuffer as well
+	if ($sourcehost ne '' && $targethost ne '') {
+		if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on local machine...\n"; }
+		$avail{'localmbuffer'} = `$lscmd $mbuffercmd 2>/dev/null`;
+		if ($avail{'localmbuffer'} eq '') {
+			$avail{'localmbuffer'} = 0;
+			print "INFO: $mbuffercmd not available on local machine - sync will continue without local buffering.\n";
+		}
+	}
+
+	if ($debug) { print "DEBUG: checking availability of /usr/bin/pv on local machine...\n"; }
+	$avail{'localpv'} = `$lscmd $pvcmd 2>/dev/null`;
+	if ($avail{'localpv'} eq '') {
+		print "INFO: $pvcmd not available on local machine - sync will continue without progress bar.\n";
+		$avail{'localpv'} = 0;
+	} else {
+		$avail{'localpv'} = 1;
+	}
+	
+	return %avail;
+}
+
+sub iszfsbusy {
+	my ($rhost,$fs) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd axo args= ...\n"; }
+
+	open PL, "$rhost $pscmd axo args= |";
+	my @processes = <PL>;
+	close PL;
+
+	foreach my $process (@processes) {
+		if ($debug) { print "DEBUG: checking process $process...\n"; }
+		if ($process =~ /zfs receive.*$fs/) {
+			# there's already a zfs receive process for our target filesystem - return true
+			if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
+			return 1;
+		}
+	}
+
+	# no zfs receive processes for our target filesystem found - return false
+	return 0;
+}
+
+sub setzfsvalue {
+	my ($rhost,$fs,$property,$value) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
+	system("$rhost $zfscmd set $property=$value $fs");
+	return;
+}
+
+sub getzfsvalue {
+	my ($rhost,$fs,$property) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
+	open FH, "$rhost $zfscmd get -H $property $fs |";
+	my $value = <FH>;
+	close FH;
+	my @values = split(/\s/,$value);
+	$value = $values[2];
+	return $value;
+}
+
+sub readablebytes {
+	my $bytes = shift;
+	my $disp;
+
+	if ($bytes > 1024*1024*1024) {
+		$disp = sprintf("%.1f",$bytes/1024/1024/1024) . ' GB';
+	} elsif ($bytes > 1024*1024) {
+		$disp = sprintf("%.1f",$bytes/1024/1024) . ' MB';
+	} else {
+		$disp = sprintf("%d",$bytes/1024) . ' KB';
+	}
+	return $disp;
+}
+
+sub getoldestsnapshot {
+	my $snaps = shift;
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'ctime'}<=>$snaps{'source'}{$b}{'ctime'} } keys %{ $snaps{'source'} }) {
+		# return on first snap found - it's the oldest
+		return $snap;
+	}
+	# must not have had any snapshots on source - luckily, we already made one, amirite?
+	return $newsyncsnap;
+}
+
+sub buildsynccmd {
+	my ($sendcmd,$recvcmd,$pvsize) = @_;
+	# here's where it gets fun: figuring out when to compress and decompress.
+	# to make this work for all possible combinations, you may have to decompress
+	# AND recompress across the pipe viewer. FUN.
+	my $synccmd;
+
+	if ($sourcehost eq '' && $targethost eq '') {
+		# both sides local. don't compress. do mbuffer, once, on the source side.
+		# $synccmd = "$sendcmd | $mbuffercmd | $pvcmd | $recvcmd";
+		$synccmd = "$sendcmd |";
+		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
+		my $bwlimit;
+		if ($args{'source-bwlimit'} eq '') { 
+			$bwlimit = $args{'target-bwlimit'}; 
+		} else { 
+			$bwlimit = $args{'source-bwlimit'}; 
+		}
+		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
+		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		$synccmd .= " $recvcmd";
+	} elsif ($sourcehost eq '') {
+		# local source, remote target.
+		#$synccmd = "$sendcmd | $pvcmd | $compresscmd | $mbuffercmd | $sshcmd $targethost '$decompresscmd | $mbuffercmd | $recvcmd'";
+		$synccmd = "$sendcmd |";
+		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'compress'}) { $synccmd .= " $compresscmd |"; }
+		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
+		$synccmd .= " $sshcmd $targethost '";
+		if ($avail{'targetmbuffer'}) { $synccmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($avail{'compress'}) { $synccmd .= " $decompresscmd |"; }
+		$synccmd .= " $recvcmd'";
+	} elsif ($targethost eq '') {
+		# remote source, local target.
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compresscmd | $mbuffercmd' | $decompresscmd | $mbuffercmd | $pvcmd | $recvcmd";
+		$synccmd = "$sshcmd $sourcehost '$sendcmd";
+		if ($avail{'compress'}) { $synccmd .= " | $compresscmd"; }
+		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		$synccmd .= "' | ";
+		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		$synccmd .= $recvcmd;
+	} else {
+		#remote source, remote target... weird, but whatever, I'm not here to judge you.
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compresscmd | $mbuffercmd' | $decompresscmd | $pvcmd | $compresscmd | $mbuffercmd | $sshcmd $targethost '$decompresscmd | $mbuffercmd | $recvcmd'";
+		$synccmd = "$sshcmd $sourcehost '$sendcmd";
+		if ($avail{'compress'}) { $synccmd .= " | $compresscmd"; }
+		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		$synccmd .= "' | ";
+		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compresscmd | "; }
+		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
+		$synccmd .= "$sshcmd $targethost '";
+		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		$synccmd .= "$recvcmd'";
+	}
+	return $synccmd;
+}
+
+sub pruneoldsyncsnaps {
+	my ($rhost,$fs,$newsyncsnap,@snaps) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $hostid = hostname();
+
+	my @prunesnaps;
+
+	# only prune snaps beginning with syncoid and our own hostname
+	foreach my $snap(@snaps) { 
+		if ($snap =~ /^syncoid_$hostid/) {
+			# no matter what, we categorically refuse to
+			# prune the new sync snap we created for this run
+			if ($snap ne $newsyncsnap) {
+				push (@prunesnaps,$snap);
+			}
+		}
+	}
+
+	# concatenate pruning commands to ten per line, to cut down
+	# auth times for any remote hosts that must be operated via SSH
+	my $counter;
+	my $maxsnapspercmd = 10;
+	my $prunecmd;
+	foreach my $snap(@prunesnaps) {
+		$counter ++;
+		$prunecmd .= "$zfscmd destroy $fs\@$snap; ";
+		if ($counter > $maxsnapspercmd) {
+			$prunecmd =~ s/\; $//;
+			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
+			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
+			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
+			system("$rhost $prunecmd");
+			$prunecmd = '';
+			$counter = 0;
+		}
+	}
+	# if we still have some prune commands stacked up after finishing
+	# the loop, commit 'em now
+	if ($counter) { 
+		$prunecmd =~ s/\; $//; 
+		if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
+		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
+		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
+		system("$rhost $prunecmd"); 
+	}
+	return;
+}
+
+sub getmatchingsnapshot {
+	my $snaps = shift;
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
+		if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
+			return $snap;
+		}
+	}
+	print "UNEXPECTED ERROR: target exists but has no matching snapshots!\n";
+	exit 256;
+}
+
+sub newsyncsnap {
+	my ($rhost,$fs) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $hostid = hostname();
+	my %date = getdate();
+	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
+	my $snapcmd = "$rhost $zfscmd snapshot $fs\@$snapname\n";
+	system($snapcmd);
+	return $snapname;
+}
+
+sub targetexists {
+	my ($rhost,$fs) = @_;
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($debug) { print "DEBUG: checking to see if target filesystem exists...\n"; }
+	open FH, "$rhost $zfscmd get -H name $fs 2>&1 |";
+	$targetexists = <FH>;
+	close FH;
+	my $exit = $?;
+	$targetexists = ( $targetexists =~ /^$fs/ && $exit == 0 );
+	return $targetexists;
+}
+
+sub getssh {
+	my $fs = shift;
+
+	my $rhost;
+	if ($fs =~ /\@/) {
+		$rhost = $fs;
+		$fs =~ s/^\S*\@\S*://;
+		$rhost =~ s/:$fs$//;
+	}
+	return ($rhost,$fs);
+}
+
+sub dumphash() {
+	my $hash = shift;
+	$Data::Dumper::Sortkeys = 1;
+	print Dumper($hash);
+}
+
+sub getsnaps() {
+	my ($snaps,$type,$rhost,$fs) = @_;
+
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+
+	my $getsnapcmd = "$rhost $zfscmd get -Hp creation |";
+	if ($debug) { print "DEBUG: getting list of snapshots on $fs...\n"; }
+	open FH, $getsnapcmd;
+	my @rawsnaps = <FH>;
+	close FH;
+
+	foreach my $line (@rawsnaps) {
+		# only import snaps from the specified filesystem
+		if ($line =~ /$fs\@/) {
+			chomp $line;
+			my $ctime = $line;
+			$ctime =~ s/^.*creation\s*//;
+			$ctime =~ s/\s*-$//;
+			my $snap = $line;
+			$snap =~ s/\s*creation.*$//;
+			$snap =~ s/^\S*\@//;
+			$snaps{$type}{$snap}{'ctime'}=$ctime;
+		}
+	}
+	return %snaps;
+}
+
+
+sub getsendsize { 
+	my ($snap1,$snap2) = @_;
+
+	my $snaps;
+	if ($snap2 ne '') {
+		$snaps = "-I $snap1 $snap2";
+	} else {
+		$snaps = "$snap1";
+	}
+
+	my $sourcessh;
+	my $quote;
+	if ($sourcehost ne '') {
+		$sourcessh = "$sshcmd $sourcehost";
+		$quote = '"';
+	}
+
+	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost...\n"; }
+	open FH, "$sourcessh $zfscmd send -nP $snaps 2>&1 |";
+	my @rawsize = <FH>;
+	close FH;
+	my $exit = $?;
+
+	# process sendsize: last line of multi-line output is 
+	# size of proposed xfer in bytes, but we need to remove 
+	# human-readable crap from it 
+	my $sendsize = pop(@rawsize);
+	$sendsize =~ s/^size\s*//;
+	chomp $sendsize;
+
+	# to avoid confusion with a zero size pv, give sendsize
+	# a minimum 4K value - or if empty, make sure it reads UNKNOWN
+	if ($debug) { print "DEBUG: sendsize = $sendsize\n"; }
+	if ($sendsize eq '' || $exit != 0) {
+		$sendsize = '0';
+	} elsif ($sendsize < 4096) { 
+		$sendsize = 4096; 
+	}
+	return $sendsize;
+}
+
+sub getdate {
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+	$year += 1900;
+	my %date;
+	$date{'unix'} = (((((((($year - 1971) * 365) + $yday) * 24) + $hour) * 60) + $min) * 60) + $sec;
+	$date{'year'} = $year;
+	$date{'sec'} = sprintf ("%02u", $sec);
+	$date{'min'} = sprintf ("%02u", $min);
+	$date{'hour'} = sprintf ("%02u", $hour);
+	$date{'mday'} = sprintf ("%02u", $mday);
+	$date{'mon'} = sprintf ("%02u", ($mon + 1));
+	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
+	return %date;
+}
+
+
