@@ -201,7 +201,11 @@ sub prune_snapshots {
 					writelock('sanoid_pruning');
 					foreach my $snap( @prunesnaps ){
 						print "pruning $snap ... \n";
-						system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?";
+						if (iszfsbusy($path)) {
+							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
+						} else {
+							system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?";
+						}
 					}
 					removelock('sanoid_pruning');
 					$forcecacheupdate = 1;
