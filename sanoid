@@ -946,3 +946,29 @@ sub writelock {
 	print FH "$mutex\n";
 	close FH;
 }
+
+sub iszfsbusy {
+	# check to see if ZFS filesystem passed in as argument currently has a zfs send or zfs receive process referencing it.
+	# return true if busy (currently being sent or received), return false if not.
+
+        my $fs = shift;
+	my $pscmd = '/bin/ps';
+        if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $pscmd axo args= ...\n"; }
+
+        open PL, "$pscmd axo args= |";
+        my @processes = <PL>;
+        close PL;
+
+        foreach my $process (@processes) {
+                if ($debug) { print "DEBUG: checking process $process...\n"; }
+                if ($process =~ /zfs *(send|receive).*$fs/) {
+                        # there's already a zfs send/receive process for our target filesystem - return true
+                        if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
+                        return 1;
+                }
+        }
+
+        # no zfs receive processes for our target filesystem found - return false
+        return 0;
+}
+
