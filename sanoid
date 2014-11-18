@@ -944,7 +944,7 @@ sub writelock {
 
 	my $pid = $$;
 	
-	open PL, "/bin/ps p $$ o args= |";
+	open PL, "$pscmd p $$ -o args= |";
 	my @processlist = <PL>;
 	close PL;
 	
