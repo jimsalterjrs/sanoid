@@ -10,6 +10,8 @@ use File::Path;         # for rmtree command in use_prune
 use Data::Dumper;	# debugging - print contents of hash
 use Time::Local;	# to parse dates in reverse
 
+my $pscmd = '/bin/ps';
+
 my $zfs = '/sbin/zfs';
 my $conf_file = '/etc/sanoid/sanoid.conf';
 
@@ -890,7 +892,7 @@ sub checklock {
 		return 2;
 	}
 
-	open PL, "/bin/ps p $lockpid o args= |";
+	open PL, "$pscmd p $lockpid -o args= |";
 	my @processlist = <PL>;
 	close PL;
 
@@ -962,7 +964,6 @@ sub iszfsbusy {
 	my $debug; #REMOVE THIS LATER when global $debug is actually implemented in sanoid!
 
         my $fs = shift;
-	my $pscmd = '/bin/ps';
         if ($debug) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd axo args= ...\n"; }
 
         open PL, "$pscmd axo args= |";
