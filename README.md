@@ -55,4 +55,4 @@ syncoid root@remotehost:data/images/vm backup/images/vm
 
 Which would pull-replicate the filesystem from the remote host to the local system over an SSH tunnel.
 
-Syncoid uses and supports mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
+Syncoid supports and uses mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
