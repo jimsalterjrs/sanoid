@@ -710,7 +710,7 @@ sub check_zpool() {
 		exit $ERRORS{$state};
 	}
 	
-	my $statcommand="sudo //sbin/zpool list $pool";
+	my $statcommand="/sbin/zpool list $pool";
 	
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
@@ -753,7 +753,7 @@ sub check_zpool() {
 	## flag to detect section of zpool status involving our zpool
 	my $poolfind=0;
 	
-	$statcommand="sudo //sbin/zpool status $pool";
+	$statcommand="/sbin/zpool status $pool";
 	if (! open STAT, "$statcommand|") {
 		$state = 'CRITICAL';
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
