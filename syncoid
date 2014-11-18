@@ -4,12 +4,19 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
+my $version = '1.0.8';
+
 use strict;
 use Data::Dumper;
 use Time::Local;
 use Sys::Hostname;
 
 my %args = getargs(@ARGV);
+
+if ($args{'version'}) {
+	print "Syncoid version: $version\n";
+	exit 0;
+}
 
 my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
@@ -162,7 +169,7 @@ sub getargs {
 	my @args = @_;
 	my %args;
 
-	my $novalueargs = ",debug,nocommandchecks,";
+	my $novalueargs = ",debug,nocommandchecks,version,";
 
 	while (my $arg = shift(@args)) {
 		if ($arg =~ /^--/) {

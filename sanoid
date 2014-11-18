@@ -4,6 +4,8 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
+my $version = '1.0.8';
+
 use strict;
 use Config::IniFiles;   # read samba-style conf file
 use File::Path;         # for rmtree command in use_prune
@@ -38,6 +40,9 @@ if ($ARGV[0] eq '--verbose') {
 	monitor_health(@params);
 } elsif ($ARGV[0] eq '--force-update') { 
 	my %snaps = getsnaps( \%config, $cacheTTL, 1 ); 
+} elsif ($ARGV[0] eq '--version') {
+	print "Sanoid version: $version\n";
+	exit 0;
 } elsif ($ARGV[0] eq '--cron' || 1) {
 	take_snapshots (@params);
 	prune_snapshots (@params);
