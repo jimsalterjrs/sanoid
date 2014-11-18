@@ -1,0 +1,17 @@
+1.0.8 added --version checking in sanoid and syncoid
+
+1.0.7 got rid of unnecessary sudo commands in sanoid's --monitor-health
+
+1.0.6 added 'or die' to make sure /var/cache/sanoidsnapshots.txt is writeable
+
+1.0.5 fixed another ps BSD-ism bug in sanoid
+
+1.0.4 updated ps usage in sanoid to comply with BSDisms
+
+1.0.3 nerfed references to $debug (not implemented yet) in sanoid
+
+1.0.2 implemented iszfsbusy check to the thinning routine in sanoid
+
+1.0.1 ported slightly modified iszfsbusy sub from syncoid to sanoid (to keep from thinning snapshots during replications)
+
+1.0.0 initial commit to Github
