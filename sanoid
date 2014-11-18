@@ -464,7 +464,7 @@ sub getsnaps {
 			@rawsnaps = <FH>;
 			close FH;
 	
-			open FH, "> $cache";
+			open FH, "> $cache" or die 'Could not write to $cache!\n';
 			print FH @rawsnaps;
 			close FH;
 			removelock('sanoid_cacheupdate');
