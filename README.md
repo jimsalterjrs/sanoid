@@ -1,4 +1,4 @@
-<img align="center" src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo">
+<p align="center"><img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo"></p>
 ======
 
 Sanoid is a policy-driven snapshot management tool for ZFS filesystems.
