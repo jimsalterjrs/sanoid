@@ -1,6 +1,8 @@
 sanoid
 ======
 
+![sanoid logo](http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png)
+
 Sanoid is a policy-driven snapshot management tool for ZFS filesystems.
 
 You can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  A typical Sanoid system would have a single cron job:
