@@ -4,17 +4,21 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.8';
+my $version = '1.0.10';
 
 use strict;
 use Data::Dumper;
 use Time::Local;
 use Sys::Hostname;
+use LWP::Simple;
 
 my %args = getargs(@ARGV);
 
 if ($args{'version'}) {
 	print "Syncoid version: $version\n";
+	exit 0;
+} elsif ($args{'monitor-version'}) {
+	monitor_version();
 	exit 0;
 }
 
@@ -165,11 +169,24 @@ exit;
 ##############################################################################
 ##############################################################################
 
+sub monitor_version() {
+	my $trunkversion = get("https://raw.githubusercontent.com/jimsalterjrs/sanoid/master/VERSION");
+	chomp $trunkversion;
+	if ($version eq $trunkversion) {
+		print "OK: local version $version matches trunk version $trunkversion\n";
+		exit 0;
+	} else {
+		print "WARN: local version $version does not match trunk version $trunkversion\n";
+		exit 1;
+	}	
+}
+
+
 sub getargs {
 	my @args = @_;
 	my %args;
 
-	my $novalueargs = ",debug,nocommandchecks,version,";
+	my $novalueargs = ",debug,nocommandchecks,version,monitor-version,";
 
 	while (my $arg = shift(@args)) {
 		if ($arg =~ /^--/) {
