@@ -1,3 +1,5 @@
+1.0.9 added CR/LF after --check-health message output to make CLI usage cleaner looking
+
 1.0.8 added --version checking in sanoid and syncoid
 
 1.0.7 got rid of unnecessary sudo commands in sanoid's --monitor-health

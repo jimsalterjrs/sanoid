@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.8';
+my $version = '1.0.9';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -75,7 +75,7 @@ sub monitor_health() {
 
 	my @warninglevels = ('','*** WARNING *** ','*** CRITICAL *** ');
 	my $message = $warninglevels[$errlevel] . join (', ',@messages);
-	print $message;
+	print "$message\n";
 	exit $errlevel;
 
 } # end monitor_health()
