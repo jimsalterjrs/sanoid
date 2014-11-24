@@ -4,13 +4,14 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.9';
+my $version = '1.0.10';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
 use File::Path;         # for rmtree command in use_prune
 use Data::Dumper;	# debugging - print contents of hash
 use Time::Local;	# to parse dates in reverse
+use LWP::Simple;	# to check VERSION against trunk on Github
 
 my $pscmd = '/bin/ps';
 
@@ -43,6 +44,9 @@ if ($ARGV[0] eq '--verbose') {
 } elsif ($ARGV[0] eq '--version') {
 	print "Sanoid version: $version\n";
 	exit 0;
+} elsif ($ARGV[0] eq '--monitor-version') {
+	monitor_version();
+	exit 0;
 } elsif ($ARGV[0] eq '--cron' || 1) {
 	take_snapshots (@params);
 	prune_snapshots (@params);
@@ -54,6 +58,18 @@ exit 0;
 ####################################################################################
 ####################################################################################
 ####################################################################################
+
+sub monitor_version() {
+	my $trunkversion = get("https://raw.githubusercontent.com/jimsalterjrs/sanoid/master/VERSION");
+	chomp $trunkversion;
+	if ($version eq $trunkversion) {
+		print "OK: local version $version matches trunk version $trunkversion\n";
+		exit 0;
+	} else {
+		print "WARN: local version $version does not match trunk version $trunkversion\n";
+		exit 1;
+	}	
+}
 
 sub monitor_health() {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;

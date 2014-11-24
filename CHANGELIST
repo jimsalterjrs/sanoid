@@ -1,4 +1,6 @@
-1.0.9 added CR/LF after --check-health message output to make CLI usage cleaner looking
+1.0.10 added --monitor-version to check installed version against current version in trunk on GitHub
+
+1.0.9 added CR/LF after --monitor-health message output to make CLI usage cleaner looking
 
 1.0.8 added --version checking in sanoid and syncoid
 
