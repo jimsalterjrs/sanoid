@@ -11,6 +11,7 @@ use Config::IniFiles;   # read samba-style conf file
 use File::Path;         # for rmtree command in use_prune
 use Data::Dumper;	# debugging - print contents of hash
 use Time::Local;	# to parse dates in reverse
+use LWP::Simple;	# for checking sanoid version against trunk
 
 my $pscmd = '/bin/ps';
 
