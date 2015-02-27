@@ -1,3 +1,5 @@
+1.0.12 patched default sanoid.conf provided to set yearly_mon and yearly_mday correctly
+
 1.0.11 patched bug in yearly snapshots - thank you @stevenolen for the bug report!
 
 1.0.10 added --monitor-version to check installed version against current version in trunk on GitHub
