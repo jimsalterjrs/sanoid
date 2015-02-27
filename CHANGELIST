@@ -1,3 +1,5 @@
+1.0.11 patched bug in yearly snapshots - thank you @stevenolen for the bug report!
+
 1.0.10 added --monitor-version to check installed version against current version in trunk on GitHub
 
 1.0.9 added CR/LF after --monitor-health message output to make CLI usage cleaner looking
