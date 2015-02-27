@@ -43,6 +43,9 @@ if ($ARGV[0] eq '--verbose') {
 } elsif ($ARGV[0] eq '--version') {
 	print "Sanoid version: $version\n";
 	exit 0;
+} elsif ($ARGV[0] eq '--monitor-version') {
+	monitor_version();
+	exit 0;
 } elsif ($ARGV[0] eq '--cron' || 1) {
 	take_snapshots (@params);
 	prune_snapshots (@params);
@@ -54,6 +57,18 @@ exit 0;
 ####################################################################################
 ####################################################################################
 ####################################################################################
+
+sub monitor_version() {
+	my $trunkversion = get("https://raw.githubusercontent.com/jimsalterjrs/sanoid/master/VERSION");
+	chomp $trunkversion;
+	if ($version eq $trunkversion) {
+		print "OK: local version $version matches trunk version $trunkversion\n";
+		exit 0;
+	} else {
+		print "WARN: local version $version does not match trunk version $trunkversion\n";
+		exit 1;
+	}	
+}
 
 sub monitor_health() {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
