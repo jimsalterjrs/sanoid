@@ -1,3 +1,6 @@
+1.0.13 removed monitor_version again - sorry for the feature instability, forgot I removed it in the first place because I didn't like pulling
+       in so many dependencies for such a trivial feature
+
 1.0.12 patched default sanoid.conf provided to set yearly_mon and yearly_mday correctly
 
 1.0.11 patched bug in yearly snapshots - thank you @stevenolen for the bug report!
