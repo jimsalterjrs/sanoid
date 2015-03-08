@@ -547,7 +547,7 @@ sub getsnaps() {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $zfscmd get -Hp creation |";
+	my $getsnapcmd = "$rhost $zfscmd get -Hpr creation $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
