@@ -75,7 +75,7 @@ sub monitor_health() {
 
 	my @warninglevels = ('','*** WARNING *** ','*** CRITICAL *** ');
 	my $message = $warninglevels[$errlevel] . join (', ',@messages);
-	print $message;
+	print "$message\n";
 	exit $errlevel;
 
 } # end monitor_health()
