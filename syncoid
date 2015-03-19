@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.14';
+my $version = '1.0.15';
 
 use strict;
 use Data::Dumper;
@@ -26,8 +26,6 @@ my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
 my $sshcipher = '-c arcfour';
-my $compresscmd = '/usr/bin/lzop';
-my $decompresscmd = '/usr/bin/lzop -dfc';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
@@ -173,14 +171,27 @@ sub getargs {
 	my $novalueargs = ",debug,nocommandchecks,version,monitor-version,";
 
 	while (my $arg = shift(@args)) {
+		my $argvalue;
+		if ($arg =~ /=/) {
+			# user specified the value for a CLI argument with =
+			# instead of with blank space. separate appropriately.
+			$argvalue = $arg;
+			$arg =~ s/=.*$//;
+			$argvalue =~ s/^.*=//;
+		}
 		if ($arg =~ /^--/) {
 			# doubledash arg
 			$arg =~ s/^--//;
 			if ($novalueargs =~ /,$arg,/) {
 				$args{$arg} = 1;
 			} else {
-				my $nextarg = shift(@args);
-				$args{$arg} = $nextarg;
+				# if this CLI arg takes a user-specified value and
+				# we don't already have it, then the user must have
+				# specified with a space, so pull in the next value
+				# from the array as this value rather than as the 
+				# next argument.
+				if ($argvalue eq '') { $argvalue = shift(@args); }
+				$args{$arg} = $argvalue;
 			}
 		} elsif ($arg =~ /^-/) {
 			# singledash arg
@@ -188,8 +199,13 @@ sub getargs {
 			if ($novalueargs =~ /,$arg,/) {
 				$args{$arg} = 1;
 			} else {
-				my $nextarg = shift(@args);
-				$args{$arg} = $nextarg;
+				# if this CLI arg takes a user-specified value and
+				# we don't already have it, then the user must have
+				# specified with a space, so pull in the next value
+				# from the array as this value rather than as the 
+				# next argument.
+				if ($argvalue eq '') { $argvalue = shift(@args); }
+				$args{$arg} = $argvalue;
 			}
 		} else {
 			# bare arg
@@ -204,8 +220,29 @@ sub getargs {
 			}
 		}
 	}
+
 	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; }
 	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; }
+
+	if ($args{'compress'} eq 'gzip') {
+		$args{'rawcompresscmd'} = '/bin/gzip';
+		$args{'compressargs'} = '-3';
+		$args{'rawdecompresscmd'} = '/bin/zcat';
+		$args{'decompressargs'} = '';
+	} elsif ( ($args{'compress'} eq 'lzo') || ! (defined $args{'compress'}) ) {
+		$args{'rawcompresscmd'} = '/usr/bin/lzop';
+		$args{'compressargs'} = '';
+		$args{'rawdecompresscmd'} = '/usr/bin/lzop';
+		$args{'decompressargs'} = '-dfc';
+	} else {
+		$args{'rawcompresscmd'} = '';
+		$args{'compressargs'} = '';
+		$args{'rawdecompresscmd'} = '';
+		$args{'decompressargs'} = '';
+	}
+	$args{'compresscmd'} = "$args{'rawcompresscmd'} $args{'compressargs'}";
+	$args{'decompresscmd'} = "$args{'rawdecompresscmd'} $args{'decompressargs'}";
+
 	return %args;
 }
 
@@ -231,12 +268,27 @@ sub checkcommands {
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; }
 	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; }
 
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on source...\n"; }
-	$avail{'sourcecompress'} = `$sourcessh $lscmd $compresscmd 2>/dev/null`;
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on target...\n"; }
-	$avail{'targetcompress'} = `$targetssh $lscmd $compresscmd 2>/dev/null`;
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/lzop on local machine...\n"; }
-	$avail{'localcompress'} = `$lscmd $compresscmd 2>/dev/null`;
+	# if raw compress command is null, we must have specified no compression. otherwise, 
+	# make sure that compression is available everywhere we need it
+	if ($args{'rawcompresscmd'} eq '') {
+		$avail{'sourcecompress'} = 0;
+		$avail{'sourcecompress'} = 0;
+		$avail{'localcompress'} = 0;
+		if ($args{'compress'} eq 'none' ||
+		    $args{'compress'} eq 'no' ||
+		    $args{'compress'} eq '0') {
+			if ($debug) { print "DEBUG: compression forced off from command line arguments.\n"; }
+		} else {
+			print "WARN: value $args{'compress'} for argument --compress not understood, proceeding without compression.\n";
+		}
+	} else {
+		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on source...\n"; }
+		$avail{'sourcecompress'} = `$sourcessh $lscmd $args{'rawcompresscmd'} 2>/dev/null`;
+		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on target...\n"; }
+		$avail{'targetcompress'} = `$targetssh $lscmd $args{'rawcompresscmd'} 2>/dev/null`;
+		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on local machine...\n"; }
+		$avail{'localcompress'} = `$lscmd $args{'rawcompresscmd'} 2>/dev/null`;
+	}
 
 	my ($s,$t);
 	if ($sourcehost eq '') { 
@@ -255,11 +307,15 @@ sub checkcommands {
 	}
 
 	if ($avail{'sourcecompress'} eq '') { 
-		print "INFO: $compresscmd not available on source $s- sync will continue without compression.\n"; 
+		if ($args{'rawcompresscmd'} ne '') {
+			print "WARN: $args{'compresscmd'} not available on source $s- sync will continue without compression.\n"; 
+		}
 		$avail{'compress'} = 0;
 	}
 	if ($avail{'targetcompress'} eq '') {
-		print "INFO: $compresscmd not available on target $t - sync will continue without compression.\n"; 
+		if ($args{'rawcompresscmd'} ne '') {
+			print "WARN: $args{'compresscmd'} not available on target $t - sync will continue without compression.\n"; 
+		}
 		$avail{'compress'} = 0;
 	}
 	if ($avail{'targetcompress'} ne '' && $avail{'sourcecompress'} ne '') {
@@ -270,23 +326,25 @@ sub checkcommands {
 
 	# corner case - if source AND target are BOTH remote, we have to check for local compress too
 	if ($sourcehost ne '' && $targethost ne '' && $avail{'localcompress'} eq '') { 
-		print "INFO: $compresscmd not available on local machine - sync will continue without compression.\n"; 
+		if ($args{'rawcompresscmd'} ne '') {
+			print "WARN: $args{'compresscmd'} not available on local machine - sync will continue without compression.\n"; 
+		}
 		$avail{'compress'} = 0;
 	}
 
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on source...\n"; }
+	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
 	$avail{'sourcembuffer'} = `$sourcessh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
-		print "INFO: $mbuffercmd not available on source $s - sync will continue without source buffering.\n";
+		print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n";
 		$avail{'sourcembuffer'} = 0;
 	} else {
 		$avail{'sourcembuffer'} = 1;
 	}
 
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on target...\n"; }
+	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
 	$avail{'targetmbuffer'} = `$targetssh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
-		print "INFO: $mbuffercmd not available on target $t - sync will continue without target buffering.\n";
+		print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n";
 		$avail{'targetmbuffer'} = 0;
 	} else {
 		$avail{'targetmbuffer'} = 1;
@@ -294,18 +352,18 @@ sub checkcommands {
 
 	# if we're doing remote source AND remote target, check for local mbuffer as well
 	if ($sourcehost ne '' && $targethost ne '') {
-		if ($debug) { print "DEBUG: checking availability of /usr/bin/mbuffer on local machine...\n"; }
+		if ($debug) { print "DEBUG: checking availability of $mbuffercmd on local machine...\n"; }
 		$avail{'localmbuffer'} = `$lscmd $mbuffercmd 2>/dev/null`;
 		if ($avail{'localmbuffer'} eq '') {
 			$avail{'localmbuffer'} = 0;
-			print "INFO: $mbuffercmd not available on local machine - sync will continue without local buffering.\n";
+			print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n";
 		}
 	}
 
-	if ($debug) { print "DEBUG: checking availability of /usr/bin/pv on local machine...\n"; }
+	if ($debug) { print "DEBUG: checking availability of $pvcmd on local machine...\n"; }
 	$avail{'localpv'} = `$lscmd $pvcmd 2>/dev/null`;
 	if ($avail{'localpv'} eq '') {
-		print "INFO: $pvcmd not available on local machine - sync will continue without progress bar.\n";
+		print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n";
 		$avail{'localpv'} = 0;
 	} else {
 		$avail{'localpv'} = 1;
@@ -324,7 +382,7 @@ sub iszfsbusy {
 	close PL;
 
 	foreach my $process (@processes) {
-		if ($debug) { print "DEBUG: checking process $process...\n"; }
+		# if ($debug) { print "DEBUG: checking process $process...\n"; }
 		if ($process =~ /zfs receive.*$fs/) {
 			# there's already a zfs receive process for our target filesystem - return true
 			if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
@@ -403,40 +461,40 @@ sub buildsynccmd {
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
 		# local source, remote target.
-		#$synccmd = "$sendcmd | $pvcmd | $compresscmd | $mbuffercmd | $sshcmd $targethost '$decompresscmd | $mbuffercmd | $recvcmd'";
+		#$synccmd = "$sendcmd | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
 		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
-		if ($avail{'compress'}) { $synccmd .= " $compresscmd |"; }
+		if ($avail{'compress'}) { $synccmd .= " $args{'compresscmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		$synccmd .= " $sshcmd $targethost '";
 		if ($avail{'targetmbuffer'}) { $synccmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
-		if ($avail{'compress'}) { $synccmd .= " $decompresscmd |"; }
+		if ($avail{'compress'}) { $synccmd .= " $args{'decompresscmd'} |"; }
 		$synccmd .= " $recvcmd'";
 	} elsif ($targethost eq '') {
 		# remote source, local target.
-		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compresscmd | $mbuffercmd' | $decompresscmd | $mbuffercmd | $pvcmd | $recvcmd";
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $args{'compresscmd'} | $mbuffercmd' | $args{'decompresscmd'} | $mbuffercmd | $pvcmd | $recvcmd";
 		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $compresscmd"; }
+		if ($avail{'compress'}) { $synccmd .= " | $args{'compresscmd'}"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
 		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		$synccmd .= $recvcmd;
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
-		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compresscmd | $mbuffercmd' | $decompresscmd | $pvcmd | $compresscmd | $mbuffercmd | $sshcmd $targethost '$decompresscmd | $mbuffercmd | $recvcmd'";
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $args{'compresscmd'} | $mbuffercmd' | $args{'decompresscmd'} | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $compresscmd"; }
+		if ($avail{'compress'}) { $synccmd .= " | $args{'compresscmd'}"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
-		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
 		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
-		if ($avail{'compress'}) { $synccmd .= "$compresscmd | "; }
+		if ($avail{'compress'}) { $synccmd .= "$args{'compresscmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost '";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$decompresscmd | "; }
+		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
 		$synccmd .= "$recvcmd'";
 	}
 	return $synccmd;

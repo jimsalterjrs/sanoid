@@ -1,3 +1,5 @@
+1.0.15 updated syncoid to accept compression engine flags - --compress=lzo|gzip|none
+
 1.0.14 updated syncoid to reduce output when fetching snapshot list - thank you github user @0xFate. 
 
 1.0.13 removed monitor_version again - sorry for the feature instability, forgot I removed it in the first place because I didn't like pulling
