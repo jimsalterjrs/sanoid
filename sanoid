@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.15';
+my $version = '1.0.16';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -32,24 +32,26 @@ my %snapsbypath = getsnapsbypath( \%config, \%snaps );
 # let's make it a little easier to be consistent passing these hashes in the same order to each sub
 my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
 
-if ($ARGV[0] eq '--verbose') { 
-	blabber (@params);
-} elsif ($ARGV[0] eq '--monitor-snapshots') { 
-	monitor_snapshots(@params); 
-} elsif ($ARGV[0] eq '--monitor-health') { 
-	monitor_health(@params);
-} elsif ($ARGV[0] eq '--force-update') { 
-	my %snaps = getsnaps( \%config, $cacheTTL, 1 ); 
-} elsif ($ARGV[0] eq '--version') {
-	print "Sanoid version: $version\n";
-	exit 0;
-} elsif ($ARGV[0] eq '--cron' || 1) {
+my %args = getargs(@ARGV);
+
+if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
+if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
+if ($args{'monitor-health'}) 	{ monitor_health(@params); }
+if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); } 
+if ($args{'version'}) 		{ print "INFO: Sanoid version: $version\n"; }
+
+if ($args{'cron'} || $args{'noargs'}) {
+	if ($args{'noargs'}) { print "INFO: No arguments given - assuming --cron and --verbose.\n"; }
+	$args{'verbose'} = 1;
 	take_snapshots (@params);
 	prune_snapshots (@params);
+} else {
+	if ($args{'take-snapshots'}) { take_snapshots (@params); }
+	if ($args{'prune-snapshots'}) { prune_snapshots (@params); }
 }
 
 exit 0;
-
+ 
 
 ####################################################################################
 ####################################################################################
@@ -163,6 +165,7 @@ sub monitor_snapshots() {
 
 sub prune_snapshots {
 
+	if ($args{'verbose'}) { print "INFO: pruning snapshots...\n"; }
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 
 	my %datestamp = get_date();
@@ -211,7 +214,7 @@ sub prune_snapshots {
 				if (checklock('sanoid_pruning')) {
 					writelock('sanoid_pruning');
 					foreach my $snap( @prunesnaps ){
-						print "pruning $snap ... \n";
+						if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
@@ -231,6 +234,7 @@ sub prune_snapshots {
 
 } # end prune_snapshots
 
+
 ####################################################################################
 ####################################################################################
 ####################################################################################
@@ -244,6 +248,7 @@ sub take_snapshots {
 
 	my @newsnaps;
 
+	if ($args{'verbose'}) { print "INFO: taking snapshots...\n"; }
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'autosnap'}) { next; }
@@ -318,7 +323,7 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
-			print "taking snapshot $snap\n";
+			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			system($zfs, "snapshot", "$snap");
 			# make sure we don't end up with multiple snapshots with the same ctime
 			sleep 1;
@@ -367,6 +372,7 @@ sub blabber {
 	}
 	
 } # end blabber
+
 
 ####################################################################################
 ####################################################################################
@@ -464,7 +470,13 @@ sub getsnaps {
 	if ( $forcecacheupdate || (time() - $mtime) > $cacheTTL ) {
 		if (checklock('sanoid_cacheupdate')) {
 			writelock('sanoid_cacheupdate');
-			# print "cache expired - updating from zfs list.\n";
+			if ($args{'verbose'}) { 
+				if ($args{'force-update'}) {
+					print "INFO: cache forcibly expired - updating from zfs list.\n";
+				} else {
+					print "INFO: cache expired - updating from zfs list.\n"; 
+				}
+			}
 			open FH, "$zfs get -Hpt snapshot creation |";
 			@rawsnaps = <FH>;
 			close FH;
@@ -474,13 +486,13 @@ sub getsnaps {
 			close FH;
 			removelock('sanoid_cacheupdate');
 		} else {
-			print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n";
+			if ($args{'verbose'}) { print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n"; }
 			open FH, "< $cache";
 			@rawsnaps = <FH>;
 			close FH;
 		}
 	} else {
-		#print "cache not expired (" . (time() - $mtime) . " seconds old with TTL of $cacheTTL): pulling snapshot list from cache.\n";
+		# if ($args{'debug'}) { print "DEBUG: cache not expired (" . (time() - $mtime) . " seconds old with TTL of $cacheTTL): pulling snapshot list from cache.\n"; }
 		open FH, "< $cache";
 		@rawsnaps = <FH>;
 		close FH;
@@ -653,6 +665,7 @@ sub displaytime {
         $humanreadable =~ s/^ //;
         return $humanreadable;
 }
+
 
 ####################################################################################
 ####################################################################################
@@ -928,9 +941,9 @@ sub removelock {
 		unlink $lockfile;
 		return;
 	} elsif (checklock($lockname) == 1) {
-		die "No valid lockfile found - Did a rogue process or user update or delete it?\n";
+		die "ERROR: No valid lockfile found - Did a rogue process or user update or delete it?\n";
 	} else {
-		die "A valid lockfile exists but does not belong to me! I refuse to remove it.\n";
+		die "ERROR: A valid lockfile exists but does not belong to me! I refuse to remove it.\n";
 	}
 }
 
@@ -945,7 +958,7 @@ sub writelock {
 
 	# die honorably rather than overwriting a valid, existing lock
 	if (! checklock($lockname)) {
-		die "Valid lock already exists - I refuse to overwrite it. Committing seppuku now.\n";
+		die "ERROR: Valid lock already exists - I refuse to overwrite it. Committing seppuku now.\n";
 	}
 
 	my $pid = $$;
@@ -967,25 +980,92 @@ sub iszfsbusy {
 	# check to see if ZFS filesystem passed in as argument currently has a zfs send or zfs receive process referencing it.
 	# return true if busy (currently being sent or received), return false if not.
 
-	my $debug; #REMOVE THIS LATER when global $debug is actually implemented in sanoid!
-
         my $fs = shift;
-        if ($debug) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd axo args= ...\n"; }
+        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd axo args= ...\n"; }
 
         open PL, "$pscmd axo args= |";
         my @processes = <PL>;
         close PL;
 
         foreach my $process (@processes) {
-		# if ($debug) { print "DEBUG: checking process $process...\n"; }
+		# if ($args{'debug'}) { print "DEBUG: checking process $process...\n"; }
                 if ($process =~ /zfs *(send|receive).*$fs/) {
                         # there's already a zfs send/receive process for our target filesystem - return true
-                        # if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
+                        # if ($args{'debug'}) { print "DEBUG: process $process matches target $fs!\n"; }
                         return 1;
                 }
         }
 
         # no zfs receive processes for our target filesystem found - return false
         return 0;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub getargs {
+	my @args = @_;
+	my %args;
+
+	my @validargs;
+	my @novalueargs;
+	my %validargs;
+	my %novalueargs;
+
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
+	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
+	foreach my $item (@validargs) { $validargs{$item}=1; }
+	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
+
+	if (! (scalar @args)) {
+		$args{'noargs'} = 1;
+	}
+
+	while (my $rawarg = shift(@args)) {
+		my $argvalue;
+		my $arg = $rawarg;
+		if ($rawarg =~ /=/) {
+			# user specified the value for a CLI argument with =
+			# instead of with blank space. separate appropriately.
+			$argvalue = $arg;
+			$arg =~ s/=.*$//;
+			$argvalue =~ s/^.*=//;
+		}
+		if ($rawarg =~ /^--/) {
+			# doubledash arg
+			$arg =~ s/^--//;
+			if ($novalueargs{$arg}) {
+				$args{$arg} = 1;
+			} else {
+				# if this CLI arg takes a user-specified value and
+				# we don't already have it, then the user must have
+				# specified with a space, so pull in the next value
+				# from the array as this value rather than as the 
+				# next argument.
+				if ($argvalue eq '') { $argvalue = shift(@args); }
+				$args{$arg} = $argvalue;
+			}
+		} elsif ($rawarg =~ /^-/) {
+			# singledash arg
+			$arg =~ s/^-//;
+			if ($novalueargs{$arg}) {
+				$args{$arg} = 1;
+			} else {
+				# if this CLI arg takes a user-specified value and
+				# we don't already have it, then the user must have
+				# specified with a space, so pull in the next value
+				# from the array as this value rather than as the 
+				# next argument.
+				if ($argvalue eq '') { $argvalue = shift(@args); }
+				$args{$arg} = $argvalue;
+			}
+		} else {
+			# bare arg
+			die "ERROR: don't know what to do with bare argument $rawarg.\n";
+		}
+		if (! ($validargs{$arg})) { die "ERROR: don't understand argument $rawarg.\n"; }
+	}
+	return %args;
 }
 
