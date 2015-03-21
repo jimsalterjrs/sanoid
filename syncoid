@@ -28,14 +28,15 @@ my $pscmd = '/bin/ps';
 my $sshcipher = '-c arcfour';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
+my $sudocmd = '/usr/bin/sudo';
 my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # currently using ls to check for file existence because we aren't depending on perl
 # being present on remote machines.
 my $lscmd = '/bin/ls';
 
 # figure out if source and/or target are remote.
-my ($sourcehost,$sourcefs) = getssh($rawsourcefs);
-my ($targethost,$targetfs) = getssh($rawtargetfs);
+my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
+my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
 # make sure target is not currently in receive.
 if (iszfsbusy($targethost,$targetfs)) {
@@ -594,12 +595,20 @@ sub getssh {
 	my $fs = shift;
 
 	my $rhost;
+	my $isroot;
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
 		$fs =~ s/^\S*\@\S*://;
 		$rhost =~ s/:$fs$//;
+		my $remoteuser = $rhost;
+		 $remoteuser =~ s/\@.*$//;
+		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
+	} else {
+		my $localuid = $<;
+		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
 	}
-	return ($rhost,$fs);
+	# if ($isroot) { print "this user is root.\n"; } else { print "this user is not root.\n"; }
+	return ($rhost,$fs,$isroot);
 }
 
 sub dumphash() {
