@@ -38,8 +38,13 @@ my $lscmd = '/bin/ls';
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
+my $sourcesudocmd;
+my $targetsudocmd;
+if ($sourceisroot) { $sourcesudocmd = ''; } else { $sourcesudocmd = $sudocmd; }
+if ($targetisroot) { $targetsudocmd = ''; } else { $targetsudocmd = $sudocmd; }
+
 # make sure target is not currently in receive.
-if (iszfsbusy($targethost,$targetfs)) {
+if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 	die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 }
 
@@ -49,7 +54,7 @@ if (iszfsbusy($targethost,$targetfs)) {
 my %avail = checkcommands();
 $sshcmd = "$sshcmd $sshcipher";
 # does the target filesystem exist yet?
-my $targetexists = targetexists($targethost,$targetfs);
+my $targetexists = targetexists($targethost,$targetfs,$targetisroot);
 
 # build hashes of the snaps on the source and target filesystems.
 my %snaps;
@@ -71,17 +76,17 @@ if (! $targetexists) {
 	# do an initial sync from the oldest source snapshot
 	# THEN do an -I to the newest
 	my $oldestsnap = getoldestsnapshot(\%snaps);
-	my $sendcmd = "$zfscmd send $sourcefs\@$oldestsnap";
-	my $recvcmd = "$zfscmd receive -F $targetfs";
-	my $pvsize = getsendsize("$sourcefs\@$oldestsnap");
+	my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
+	my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
+	my $pvsize = getsendsize("$sourcefs\@$oldestsnap",$sourceisroot);
 	my $disp_pvsize = readablebytes($pvsize);
 	if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
-	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 	print "Sending oldest full snapshot $oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
 	if ($debug) { print "DEBUG: $synccmd\n"; }
 
 	# make sure target is (still) not currently in receive.
-	if (iszfsbusy($targethost,$targetfs)) {
+	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 		die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 	}
 	system($synccmd);
@@ -91,17 +96,17 @@ if (! $targetexists) {
 	if ($oldestsnap ne $newsyncsnap) {
 
 		# get current readonly status of target, then set it to on during sync
-		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,'readonly');
-		setzfsvalue($targethost,$targetfs,'readonly','on');
+		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
+		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
 		$sendcmd = "$zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
-		$pvsize = getsendsize("$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap");
+		$pvsize = getsendsize("$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 		$disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-		$synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+		$synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 		# make sure target is (still) not currently in receive.
-		if (iszfsbusy($targethost,$targetfs)) {
+		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 		}
 
@@ -110,7 +115,7 @@ if (! $targetexists) {
 		system($synccmd);
 
 		# restore original readonly value to target after sync complete
-		setzfsvalue($targethost,$targetfs,'readonly',$originaltargetreadonly);			
+		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 	}
 } else {
 	# find most recent matching snapshot and do an -I
@@ -118,12 +123,12 @@ if (! $targetexists) {
 
 	# get current readonly status of target, then set it to on during sync
 	$originaltargetreadonly = getzfsvalue($targethost,$targetfs,'readonly');
-	setzfsvalue($targethost,$targetfs,'readonly','on');
+	setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
 	my $matchingsnap = getmatchingsnapshot(\%snaps);
 
 	# make sure target is (still) not currently in receive.
-	if (iszfsbusy($targethost,$targetfs)) {
+	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 		die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 	}
 
@@ -135,12 +140,12 @@ if (! $targetexists) {
 		system ("$zfscmd rollback -R $targetfs\@$matchingsnap");
 	}
 
-	my $sendcmd = "$zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
-	my $recvcmd = "$zfscmd receive $targetfs";
-	my $pvsize = getsendsize("$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap");
+	my $sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
+	my $recvcmd = "$targetsudocmd $zfscmd receive $targetfs";
+	my $pvsize = getsendsize("$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 	my $disp_pvsize = readablebytes($pvsize);
 	if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize);
+	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 	print "Sending incremental $matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
 	if ($debug) { print "DEBUG: $synccmd\n"; }
@@ -151,8 +156,8 @@ if (! $targetexists) {
 }
 
 # prune obsolete sync snaps on source and target.
-pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,keys %{ $snaps{'source'}});
-pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,keys %{ $snaps{'target'}});
+pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
+pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
 
 # debug: print contents of %snaps to stdout
 #dumphash(\%snaps);
@@ -382,7 +387,7 @@ sub checkcommands {
 }
 
 sub iszfsbusy {
-	my ($rhost,$fs) = @_;
+	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd axo args= ...\n"; }
 
@@ -404,18 +409,22 @@ sub iszfsbusy {
 }
 
 sub setzfsvalue {
-	my ($rhost,$fs,$property,$value) = @_;
+	my ($rhost,$fs,$isroot,$property,$value) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
-	system("$rhost $zfscmd set $property=$value $fs");
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	system("$rhost $mysudocmd $zfscmd set $property=$value $fs");
 	return;
 }
 
 sub getzfsvalue {
-	my ($rhost,$fs,$property) = @_;
+	my ($rhost,$fs,$isroot,$property) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
-	open FH, "$rhost $zfscmd get -H $property $fs |";
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fs |";
 	my $value = <FH>;
 	close FH;
 	my @values = split(/\s/,$value);
@@ -448,7 +457,7 @@ sub getoldestsnapshot {
 }
 
 sub buildsynccmd {
-	my ($sendcmd,$recvcmd,$pvsize) = @_;
+	my ($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot) = @_;
 	# here's where it gets fun: figuring out when to compress and decompress.
 	# to make this work for all possible combinations, you may have to decompress
 	# AND recompress across the pipe viewer. FUN.
@@ -489,7 +498,7 @@ sub buildsynccmd {
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
 		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
-		$synccmd .= $recvcmd;
+		$synccmd .= "$recvcmd";
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
 		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $args{'compresscmd'} | $mbuffercmd' | $args{'decompresscmd'} | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
@@ -510,9 +519,12 @@ sub buildsynccmd {
 }
 
 sub pruneoldsyncsnaps {
-	my ($rhost,$fs,$newsyncsnap,@snaps) = @_;
+	my ($rhost,$fs,$newsyncsnap,$isroot,@snaps) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 	my $hostid = hostname();
+
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd=''; } else { $mysudocmd = $sudocmd; }
 
 	my @prunesnaps;
 
@@ -534,7 +546,7 @@ sub pruneoldsyncsnaps {
 	my $prunecmd;
 	foreach my $snap(@prunesnaps) {
 		$counter ++;
-		$prunecmd .= "$zfscmd destroy $fs\@$snap; ";
+		$prunecmd .= "$mysudocmd $zfscmd destroy $fs\@$snap; ";
 		if ($counter > $maxsnapspercmd) {
 			$prunecmd =~ s/\; $//;
 			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
@@ -569,21 +581,25 @@ sub getmatchingsnapshot {
 }
 
 sub newsyncsnap {
-	my ($rhost,$fs) = @_;
+	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
 	my %date = getdate();
 	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
-	my $snapcmd = "$rhost $zfscmd snapshot $fs\@$snapname\n";
+	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fs\@$snapname\n";
 	system($snapcmd);
 	return $snapname;
 }
 
 sub targetexists {
-	my ($rhost,$fs) = @_;
+	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "DEBUG: checking to see if target filesystem exists...\n"; }
-	open FH, "$rhost $zfscmd get -H name $fs 2>&1 |";
+	open FH, "$rhost $mysudocmd $zfscmd get -H name $fs 2>&1 |";
 	$targetexists = <FH>;
 	close FH;
 	my $exit = $?;
@@ -618,11 +634,13 @@ sub dumphash() {
 }
 
 sub getsnaps() {
-	my ($snaps,$type,$rhost,$fs) = @_;
+	my ($snaps,$type,$rhost,$fs,$isroot) = @_;
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $zfscmd get -Hpd 1 creation $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 creation $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
@@ -646,7 +664,10 @@ sub getsnaps() {
 
 
 sub getsendsize { 
-	my ($snap1,$snap2) = @_;
+	my ($snap1,$snap2,$isroot) = @_;
+
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	my $snaps;
 	if ($snap2 ne '') {
@@ -663,7 +684,7 @@ sub getsendsize {
 	}
 
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost...\n"; }
-	open FH, "$sourcessh $zfscmd send -nP $snaps 2>&1 |";
+	open FH, "$sourcessh $mysudocmd $zfscmd send -nP $snaps 2>&1 |";
 	my @rawsize = <FH>;
 	close FH;
 	my $exit = $?;
