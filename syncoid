@@ -122,7 +122,7 @@ if (! $targetexists) {
 	# to the new snapshot
 
 	# get current readonly status of target, then set it to on during sync
-	$originaltargetreadonly = getzfsvalue($targethost,$targetfs,'readonly');
+	$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 	setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
 	my $matchingsnap = getmatchingsnapshot(\%snaps);
@@ -135,9 +135,11 @@ if (! $targetexists) {
 	# rollback target to matchingsnap
 	if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 	if ($targethost ne '') {
-		system ("$sshcmd $targethost $zfscmd rollback -R $targetfs\@$matchingsnap");
+		if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
+		system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
 	} else {
-		system ("$zfscmd rollback -R $targetfs\@$matchingsnap");
+		if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
+		system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
 	}
 
 	my $sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
@@ -152,7 +154,7 @@ if (! $targetexists) {
 	system("$synccmd");
 
 	# restore original readonly value to target after sync complete
-	setzfsvalue($targethost,$targetfs,'readonly',$originaltargetreadonly);			
+	setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 }
 
 # prune obsolete sync snaps on source and target.
@@ -414,6 +416,7 @@ sub setzfsvalue {
 	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
 	system("$rhost $mysudocmd $zfscmd set $property=$value $fs");
 	return;
 }
@@ -424,6 +427,7 @@ sub getzfsvalue {
 	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fs\n"; }
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fs |";
 	my $value = <FH>;
 	close FH;
