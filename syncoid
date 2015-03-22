@@ -78,7 +78,7 @@ if (! $targetexists) {
 	my $oldestsnap = getoldestsnapshot(\%snaps);
 	my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
 	my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
-	my $pvsize = getsendsize("$sourcefs\@$oldestsnap",$sourceisroot);
+	my $pvsize = getsendsize("$sourcefs\@$oldestsnap",,$sourceisroot);
 	my $disp_pvsize = readablebytes($pvsize);
 	if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
@@ -99,7 +99,7 @@ if (! $targetexists) {
 		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-		$sendcmd = "$zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+		$sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
 		$pvsize = getsendsize("$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 		$disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -674,7 +674,7 @@ sub getsendsize {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	my $snaps;
-	if ($snap2 ne '') {
+	if ($snap2 && $snap2 ne '') {
 		$snaps = "-I $snap1 $snap2";
 	} else {
 		$snaps = "$snap1";
@@ -688,6 +688,7 @@ sub getsendsize {
 	}
 
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost...\n"; }
+	if ($debug) { print "$sourcessh $mysudocmd $zfscmd send -nP $snaps 2>&1 | \n"; }
 	open FH, "$sourcessh $mysudocmd $zfscmd send -nP $snaps 2>&1 |";
 	my @rawsize = <FH>;
 	close FH;
