@@ -54,7 +54,7 @@ my %snaps;
 ## break here to call replication individually so that we can loop across children separately, for recursive replication ##
 
 if (! $args{'recursive'}) {
-	print "syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);\n";
+	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
