@@ -1,3 +1,5 @@
+1.0.19 working recursive sync (sync specified dataset and all child datasets, ie pool/ds, pool/ds/1, pool, ds/1/a, pool/ds/2 ...) with --recursive or -r in syncoid!
+
 1.0.18 updated syncoid to break sync out of main routine and into syncdataset(). this will allow doing recursive sync, in next update :)
 
 1.0.17 updated syncoid to use sudo when necessary if it isn't already root - working user needs NOPASSWD for /sbin/zfs in /etc/sudoers

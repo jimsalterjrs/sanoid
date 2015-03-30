@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.18';
+my $version = '1.0.19';
 
 use strict;
 use Data::Dumper;
@@ -53,7 +53,20 @@ my %snaps;
 
 ## break here to call replication individually so that we can loop across children separately, for recursive replication ##
 
-syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+if (! $args{'recursive'}) {
+	print "syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);\n";
+} else {
+	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
+	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
+	foreach my $dataset(@datasets) { 
+		$dataset =~ s/$sourcefs//;
+		chomp $dataset;
+		my $childsourcefs = $sourcefs . $dataset;
+		my $childtargetfs = $targetfs . $dataset;
+		# print "syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); \n";
+		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); 
+	}
+}
 
 exit 0;
 
@@ -62,10 +75,27 @@ exit 0;
 ##############################################################################
 ##############################################################################
 
+sub getchilddatasets {
+	my ($rhost,$fs,$isroot,%snaps) = @_;
+	my $mysudocmd;
+	
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hpr $fs |";
+	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
+	open FH, $getchildrencmd;
+	my @children = <FH>;
+	close FH;
+
+	return @children;
+}
 
 sub syncdataset {
 
 	my ($sourcehost, $sourcefs, $targethost, $targetfs) = @_;
+
+	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
 	# make sure target is not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
@@ -115,7 +145,7 @@ sub syncdataset {
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-		print "INFO: Sending oldest full snapshot $oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
+		print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
 		if ($debug) { print "DEBUG: $synccmd\n"; }
 	
 		# make sure target is (still) not currently in receive.
@@ -143,7 +173,7 @@ sub syncdataset {
 				die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 			}
 	
-			print "INFO: Updating new target filesystem with incremental $oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+			print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n";
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 			system($synccmd);
 	
@@ -182,7 +212,7 @@ sub syncdataset {
 		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
-		print "Sending incremental $matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+		print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
 		if ($debug) { print "DEBUG: $synccmd\n"; }
 		system("$synccmd");
 	
