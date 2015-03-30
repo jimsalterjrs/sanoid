@@ -203,9 +203,9 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps');
+	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
 
 	while (my $rawarg = shift(@args)) {
@@ -264,6 +264,8 @@ sub getargs {
 
 	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; }
 	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; }
+
+	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
 
 	if ($args{'compress'} eq 'gzip') {
 		$args{'rawcompresscmd'} = '/bin/gzip';
