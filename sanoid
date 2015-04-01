@@ -531,80 +531,35 @@ sub init {
 	foreach my $section (keys %ini) {
 		if ($section =~ /^template_/) { next; } # don't process templates directly
 	
-		#
-		# set hardcoded default values (overridden by template_default, local use_template, then local settings)
-		#
+		# set default values from %defaults, which can then be overriden by template
+		# and/or local settings within the module.
 
-		# these are the ages (in periodicity) after which we want to automatically prune snapshots
-		# (assuming autoprune is on).  For example if hourly=48, any hourly snapshots 49+ hours old
-		# will be automatically pruned.
-		#
-		# we will not take (and will immediately prune, should any exist) any snapshot types set to 0.
-		#
-		$config{$section}{'autoprune'} = 1;
-		$config{$section}{'hourly'} = 48;
-		$config{$section}{'daily'} = 90;
-		$config{$section}{'monthly'} = 6;
-		$config{$section}{'yearly'} = 0;
-		# if still less than min_percent_free space is free after normal pruning, prune from
-		# oldest to newest until min_percent_free is achieved
-		$config{$section}{'min_percent_free'} = 10;
-
-		# We will automatically take snapshots if autosnap is on, at the desired times configured
-		# below (or immediately, if we don't have one since the last preferred time for that type).
-		$config{$section}{'autosnap'} = 1;
-		# these are preferred times to take snapshots
-		# hourly - top of the hour
-		$config{$section}{'hourly_min'} = 0;
-		# daily - at 23:59 (most people expect a daily to contain everything done DURING that day)
-		$config{$section}{'daily_hour'} = 23;
-		$config{$section}{'daily_min'} = 59;
-		# monthly - immediately at the beginning of the month (ie 00:00 of day 1)
-		$config{$section}{'monthly_mday'} = 1;
-		$config{$section}{'monthly_hour'} = 0;
-		$config{$section}{'monthly_min'} = 0;
-		# yearly - immediately at the beginning of the year (ie 00:00 on Jan 1)
-		$config{$section}{'yearly_mday'} = 1;
-		$config{$section}{'yearly_mon'} = 1;
-		$config{$section}{'yearly_hour'} = 0;
-		$config{$section}{'yearly_min'} = 0;
-		$config{$section}{'monitor_dont_warn'} = 0;
-		$config{$section}{'monitor_dont_crit'} = 0;
-		$config{$section}{'hourly_warn'} = 90;
-		$config{$section}{'hourly_crit'} = 360; 
-		$config{$section}{'daily_warn'} = 28;
-		$config{$section}{'daily_crit'} = 32;
-		$config{$section}{'monthly_warn'} = 32;
-		$config{$section}{'monthly_crit'} = 35;
-		$config{$section}{'yearly_warn'} = 0;
-		$config{$section}{'yearly_crit'} = 0;
-
-
-		# set $config{$section}{'template'} to deepest template level existent for this $section
-		my $template = 'hardcoded';
-		if (defined $ini{'template_default'}) {$template = 'default'; }
-
-		# we've already set everything for the section to hardcoded default values.
-		# now, we push the section itself, its use_template setting, and then the default template
-		# (if present) into an array, so that we can pop them in order and use all the values
-		# defined in each section to override the hardcoded defaults:
-		#
-		# hardcoded -> default template -> use_template -> section local
-		#
-		push my @templates, $section;
-		if (defined $ini{$section}{'use_template'}) {
-			$template = 'template_'.$ini{$section}{'use_template'};
-			push @templates, $template;
+		foreach my $key (keys %defaults) {
+			$config{$section}{$key} = $defaults{$key};
 		}
-		push @templates, 'template_default';
-	
-		# override as appropriate: hardcoded -> default template -> use_template -> local settings
-		while (my $template = pop(@templates)) {
-			if (defined $ini{$template}) {
-				foreach my $key (keys %{ $ini{$template} }) {
+
+
+		# override with values from user-defined default template, if any
+
+		foreach my $key (keys %{$ini{'template_default'}}) {
+			$config{$section}{$key} = $ini{'template_default'}{$key};
+		}
+
+		# override with values from user-defined templates applied to this module,
+		# in the order they were specified (ie use_template = default,production,mytemplate)
+		if (defined $ini{$section}{'use_template'}) {
+			my @templates = split (' *, *',$ini{$section}{'use_template'});
+			foreach my $rawtemplate (@templates) {
+				my $template = 'template_'.$rawtemplate;
+				foreach my $key (keys %{$ini{$template}}) {
 					$config{$section}{$key} = $ini{$template}{$key};
 				}
 			}
+		}
+
+		# override with any locally set values in the module itself
+		foreach my $key (keys %{ini{$section}} {
+			$config{$section}{$key} = $ini{$section}{$key};
 		}
 	
 		# make sure that true values are true and false values are false for any toggled values
