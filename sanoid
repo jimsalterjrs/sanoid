@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.16';
+my $version = '1.1.0';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -15,10 +15,15 @@ use Time::Local;	# to parse dates in reverse
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
+
 my $conf_file = '/etc/sanoid/sanoid.conf';
+my $default_conf_file = '/etc/sanoid/sanoid.defaults.conf';
+
+# parse CLI arguments
+my %args = getargs(@ARGV);
 
 # parse config file
-my %config = init($conf_file);
+my %config = init($conf_file,$default_conf_file);
 
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
@@ -31,8 +36,6 @@ my %snapsbypath = getsnapsbypath( \%config, \%snaps );
 
 # let's make it a little easier to be consistent passing these hashes in the same order to each sub
 my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
-
-my %args = getargs(@ARGV);
 
 if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
@@ -218,7 +221,7 @@ sub prune_snapshots {
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
-							system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?";
+							if (! $args{'readonly'}) { system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?"; }
 						}
 					}
 					removelock('sanoid_pruning');
@@ -324,9 +327,11 @@ sub take_snapshots {
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
-			system($zfs, "snapshot", "$snap");
-			# make sure we don't end up with multiple snapshots with the same ctime
-			sleep 1;
+			if (!$args{'readonly'}) { 
+				system($zfs, "snapshot", "$snap");
+				# make sure we don't end up with multiple snapshots with the same ctime
+				sleep 1;
+			}
 		}
 		$forcecacheupdate = 1;
 		%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
@@ -341,9 +346,9 @@ sub blabber {
 
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 
-	#$Data::Dumper::Sortkeys = 1;
-	#print "****** CONFIGS ******\n";
-	#print Dumper(\%config);
+	$Data::Dumper::Sortkeys = 1;
+	print "****** CONFIGS ******\n";
+	print Dumper(\%config);
 	#print "****** SNAPSHOTS ******\n";
 	#print Dumper(\%snaps);
 	#print "****** SNAPSBYTYPE ******\n";
@@ -515,92 +520,70 @@ sub getsnaps {
 ####################################################################################
 
 sub init {
-	my ($conf_file) = @_;
+	my ($conf_file, $default_conf_file) = @_;
 	my %config;
 
+	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file ) or die 'cannot load $conf_file - please restore a clean copy, this is not a user-editable file!';
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file );
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 	
 	foreach my $section (keys %ini) {
-		if ($section =~ /^template_/) { next; } # don't process templates directly
-	
-		#
-		# set hardcoded default values (overridden by template_default, local use_template, then local settings)
-		#
 
-		# these are the ages (in periodicity) after which we want to automatically prune snapshots
-		# (assuming autoprune is on).  For example if hourly=48, any hourly snapshots 49+ hours old
-		# will be automatically pruned.
-		#
-		# we will not take (and will immediately prune, should any exist) any snapshot types set to 0.
-		#
-		$config{$section}{'autoprune'} = 1;
-		$config{$section}{'hourly'} = 48;
-		$config{$section}{'daily'} = 90;
-		$config{$section}{'monthly'} = 6;
-		$config{$section}{'yearly'} = 0;
-		# if still less than min_percent_free space is free after normal pruning, prune from
-		# oldest to newest until min_percent_free is achieved
-		$config{$section}{'min_percent_free'} = 10;
-
-		# We will automatically take snapshots if autosnap is on, at the desired times configured
-		# below (or immediately, if we don't have one since the last preferred time for that type).
-		$config{$section}{'autosnap'} = 1;
-		# these are preferred times to take snapshots
-		# hourly - top of the hour
-		$config{$section}{'hourly_min'} = 0;
-		# daily - at 23:59 (most people expect a daily to contain everything done DURING that day)
-		$config{$section}{'daily_hour'} = 23;
-		$config{$section}{'daily_min'} = 59;
-		# monthly - immediately at the beginning of the month (ie 00:00 of day 1)
-		$config{$section}{'monthly_mday'} = 1;
-		$config{$section}{'monthly_hour'} = 0;
-		$config{$section}{'monthly_min'} = 0;
-		# yearly - immediately at the beginning of the year (ie 00:00 on Jan 1)
-		$config{$section}{'yearly_mday'} = 1;
-		$config{$section}{'yearly_mon'} = 1;
-		$config{$section}{'yearly_hour'} = 0;
-		$config{$section}{'yearly_min'} = 0;
-		$config{$section}{'monitor_dont_warn'} = 0;
-		$config{$section}{'monitor_dont_crit'} = 0;
-		$config{$section}{'hourly_warn'} = 90;
-		$config{$section}{'hourly_crit'} = 360; 
-		$config{$section}{'daily_warn'} = 28;
-		$config{$section}{'daily_crit'} = 32;
-		$config{$section}{'monthly_warn'} = 32;
-		$config{$section}{'monthly_crit'} = 35;
-		$config{$section}{'yearly_warn'} = 0;
-		$config{$section}{'yearly_crit'} = 0;
-
-
-		# set $config{$section}{'template'} to deepest template level existent for this $section
-		my $template = 'hardcoded';
-		if (defined $ini{'template_default'}) {$template = 'default'; }
-
-		# we've already set everything for the section to hardcoded default values.
-		# now, we push the section itself, its use_template setting, and then the default template
-		# (if present) into an array, so that we can pop them in order and use all the values
-		# defined in each section to override the hardcoded defaults:
-		#
-		# hardcoded -> default template -> use_template -> section local
-		#
-		push my @templates, $section;
-		if (defined $ini{$section}{'use_template'}) {
-			$template = 'template_'.$ini{$section}{'use_template'};
-			push @templates, $template;
+		# first up - die with honor if unknown parameters are set in any modules or templates by the user.
+		foreach my $key (keys %{$ini{$section}}) {
+			if (! defined ($defaults{'template_default'}{$key})) {
+				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
+			}
 		}
-		push @templates, 'template_default';
-	
-		# override as appropriate: hardcoded -> default template -> use_template -> local settings
-		while (my $template = pop(@templates)) {
-			if (defined $ini{$template}) {
-				foreach my $key (keys %{ $ini{$template} }) {
-					$config{$section}{$key} = $ini{$template}{$key};
+
+		if ($section =~ /^template_/) { next; } # don't process templates directly
+		
+		# only set defaults on sections that haven't already been initialized - this allows us to override values
+		# for sections directly when they've already been defined recursively, without starting them over from scratch.
+		if (! defined ($config{$section}{'initialized'})) {
+			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
+			# set default values from %defaults, which can then be overriden by template
+			# and/or local settings within the module.
+			foreach my $key (keys %{$defaults{'template_default'}}) {
+				if (! ($key =~ /template|recursive/)) { 
+					$config{$section}{$key} = $defaults{'template_default'}{$key}; 
 				}
+			}
+	
+			# override with values from user-defined default template, if any
+	
+			foreach my $key (keys %{$ini{'template_default'}}) {
+				if (! ($key =~ /template|recursive/)) { 
+				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined default template.\n"; }
+					$config{$section}{$key} = $ini{'template_default'}{$key}; 
+				}
+			}
+		}
+
+		# override with values from user-defined templates applied to this module,
+		# in the order they were specified (ie use_template = default,production,mytemplate)
+		if (defined $ini{$section}{'use_template'}) {
+			my @templates = split (' *, *',$ini{$section}{'use_template'});
+			foreach my $rawtemplate (@templates) {
+				my $template = 'template_'.$rawtemplate;
+				foreach my $key (keys %{$ini{$template}}) {
+					if (! ($key =~ /template|recursive/)) { 
+						if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
+						$config{$section}{$key} = $ini{$template}{$key}; 
+					}
+				}
+			}
+		}
+
+		# override with any locally set values in the module itself
+		foreach my $key (keys %{$ini{$section}} ) {
+			if (! ($key =~ /template|recursive/)) {
+				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value directly set in module.\n"; }
+				$config{$section}{$key} = $ini{$section}{$key};
 			}
 		}
 	
@@ -615,8 +598,31 @@ sub init {
 		}
 
 		# section path is the section name, unless section path has been explicitly defined	
-		$config{$section}{'path'} = $section;
-		if (defined $ini{$section}{'path'}) { $config{$section}{'path'} = $ini{$section}{'path'}; }
+		if (defined ($ini{$section}{'path'})) { 
+			$config{$section}{'path'} = $ini{$section}{'path'};
+		} else {
+			$config{$section}{'path'} = $section;
+		}
+
+		# how 'bout some recursion? =)
+		my @datasets;
+		if ($ini{$section}{'recursive'}) {
+			@datasets = getchilddatasets($config{$section}{'path'});
+			foreach my $dataset(@datasets) {
+				chomp $dataset;
+				foreach my $key (keys %{$config{$section}} ) {
+					if (! ($key =~ /template|recursive/)) {
+						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
+						$config{$dataset}{$key} = $config{$section}{$key};
+					}
+				}
+				$config{$dataset}{'path'} = $dataset;
+				$config{$dataset}{'initialized'} = 1;
+			}
+		}
+
+
+
 	}
 
 	return %config;
@@ -1013,8 +1019,8 @@ sub getargs {
 	my %validargs;
 	my %novalueargs;
 
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
-	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
+	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
 	foreach my $item (@validargs) { $validargs{$item}=1; }
 	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
 
@@ -1067,5 +1073,19 @@ sub getargs {
 		if (! ($validargs{$arg})) { die "ERROR: don't understand argument $rawarg.\n"; }
 	}
 	return %args;
+}
+
+sub getchilddatasets {
+	# for later, if we make sanoid itself support sudo use
+	my $fs = shift;
+	my $mysudocmd;
+
+	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
+	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
+	open FH, $getchildrencmd;
+	my @children = <FH>;
+	close FH;
+
+	return @children;
 }
 

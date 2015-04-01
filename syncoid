@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.19';
+my $version = '1.1.0';
 
 use strict;
 use Data::Dumper;
@@ -82,7 +82,7 @@ sub getchilddatasets {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hpr $fs |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hr $fs |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
