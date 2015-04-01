@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.0.19';
+my $version = '1.1.0';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -327,9 +327,11 @@ sub take_snapshots {
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
-			if (!$args{'readonly'}) { system($zfs, "snapshot", "$snap"); }
-			# make sure we don't end up with multiple snapshots with the same ctime
-			sleep 1;
+			if (!$args{'readonly'}) { 
+				system($zfs, "snapshot", "$snap");
+				# make sure we don't end up with multiple snapshots with the same ctime
+				sleep 1;
+			}
 		}
 		$forcecacheupdate = 1;
 		%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
@@ -525,30 +527,40 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file );
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 	
 	foreach my $section (keys %ini) {
-		if ($section =~ /^template_/) { next; } # don't process templates directly
-	
-		# set default values from %defaults, which can then be overriden by template
-		# and/or local settings within the module.
 
-		foreach my $key (keys %{$defaults{'template_default'}}) {
-			if (! ($key =~ /template/)) { 
-				if ($args{'debug'}) { print "INFO: setting $key on $section from $default_conf_file.\n"; }
-				$config{$section}{$key} = $defaults{'template_default'}{$key}; 
+		# first up - die with honor if unknown parameters are set in any modules or templates by the user.
+		foreach my $key (keys %{$ini{$section}}) {
+			if (! defined ($defaults{'template_default'}{$key})) {
+				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
 			}
 		}
 
-
-		# override with values from user-defined default template, if any
-
-		foreach my $key (keys %{$ini{'template_default'}}) {
-			if (! ($key =~ /template/)) { 
-				if ($args{'debug'}) { print "INFO: overriding $key on $section with value from user-defined default template.\n"; }
-				$config{$section}{$key} = $ini{'template_default'}{$key}; 
+		if ($section =~ /^template_/) { next; } # don't process templates directly
+		
+		# only set defaults on sections that haven't already been initialized - this allows us to override values
+		# for sections directly when they've already been defined recursively, without starting them over from scratch.
+		if (! defined ($config{$section}{'initialized'})) {
+			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
+			# set default values from %defaults, which can then be overriden by template
+			# and/or local settings within the module.
+			foreach my $key (keys %{$defaults{'template_default'}}) {
+				if (! ($key =~ /template|recursive/)) { 
+					$config{$section}{$key} = $defaults{'template_default'}{$key}; 
+				}
+			}
+	
+			# override with values from user-defined default template, if any
+	
+			foreach my $key (keys %{$ini{'template_default'}}) {
+				if (! ($key =~ /template|recursive/)) { 
+				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined default template.\n"; }
+					$config{$section}{$key} = $ini{'template_default'}{$key}; 
+				}
 			}
 		}
 
@@ -559,8 +571,8 @@ sub init {
 			foreach my $rawtemplate (@templates) {
 				my $template = 'template_'.$rawtemplate;
 				foreach my $key (keys %{$ini{$template}}) {
-					if (! ($key =~ /template/)) { 
-						if ($args{'debug'}) { print "INFO: overriding $key on $section with value from user-defined template $template.\n"; }
+					if (! ($key =~ /template|recursive/)) { 
+						if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
 						$config{$section}{$key} = $ini{$template}{$key}; 
 					}
 				}
@@ -569,8 +581,8 @@ sub init {
 
 		# override with any locally set values in the module itself
 		foreach my $key (keys %{$ini{$section}} ) {
-			if (! ($key =~ /template/)) {
-				if ($args{'debug'}) { print "INFO: overriding $key on $section with value directly set in module.\n"; }
+			if (! ($key =~ /template|recursive/)) {
+				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value directly set in module.\n"; }
 				$config{$section}{$key} = $ini{$section}{$key};
 			}
 		}
@@ -591,6 +603,26 @@ sub init {
 		} else {
 			$config{$section}{'path'} = $section;
 		}
+
+		# how 'bout some recursion? =)
+		my @datasets;
+		if ($ini{$section}{'recursive'}) {
+			@datasets = getchilddatasets($config{$section}{'path'});
+			foreach my $dataset(@datasets) {
+				chomp $dataset;
+				foreach my $key (keys %{$config{$section}} ) {
+					if (! ($key =~ /template|recursive/)) {
+						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
+						$config{$dataset}{$key} = $config{$section}{$key};
+					}
+				}
+				$config{$dataset}{'path'} = $dataset;
+				$config{$dataset}{'initialized'} = 1;
+			}
+		}
+
+
+
 	}
 
 	return %config;
@@ -1041,5 +1073,19 @@ sub getargs {
 		if (! ($validargs{$arg})) { die "ERROR: don't understand argument $rawarg.\n"; }
 	}
 	return %args;
+}
+
+sub getchilddatasets {
+	# for later, if we make sanoid itself support sudo use
+	my $fs = shift;
+	my $mysudocmd;
+
+	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
+	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
+	open FH, $getchildrencmd;
+	my @children = <FH>;
+	close FH;
+
+	return @children;
 }
 
