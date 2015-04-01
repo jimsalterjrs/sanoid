@@ -15,10 +15,12 @@ use Time::Local;	# to parse dates in reverse
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
+
 my $conf_file = '/etc/sanoid/sanoid.conf';
+my $default_conf_file = '/etc/sanoid/sanoid.defaults.conf';
 
 # parse config file
-my %config = init($conf_file);
+my %config = init($conf_file,$default_conf_file);
 
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
@@ -515,9 +517,10 @@ sub getsnaps {
 ####################################################################################
 
 sub init {
-	my ($conf_file) = @_;
+	my ($conf_file, $default_conf_file) = @_;
 	my %config;
 
+	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file );
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file );
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
