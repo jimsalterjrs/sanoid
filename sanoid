@@ -220,7 +220,7 @@ sub prune_snapshots {
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
-							system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?";
+							if (! $args{'readonly'}) { system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?"; }
 						}
 					}
 					removelock('sanoid_pruning');
@@ -326,7 +326,7 @@ sub take_snapshots {
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
-			system($zfs, "snapshot", "$snap");
+			if (!$args{'readonly'}) { system($zfs, "snapshot", "$snap"); }
 			# make sure we don't end up with multiple snapshots with the same ctime
 			sleep 1;
 		}
@@ -971,8 +971,8 @@ sub getargs {
 	my %validargs;
 	my %novalueargs;
 
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
-	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots';
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
+	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
 	foreach my $item (@validargs) { $validargs{$item}=1; }
 	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
 
