@@ -523,8 +523,11 @@ sub init {
 	my ($conf_file, $default_conf_file) = @_;
 	my %config;
 
-	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file ) or die 'cannot load $conf_file - please restore a clean copy, this is not a user-editable file!';
-	tie my %ini, 'Config::IniFiles', ( -file => $conf_file );
+	unless (-e $default_conf_file ) { die "FATAL: cannot load $default_conf_file - please restore a clean copy, this is not a user-editable file!"; }
+	unless (-e $conf_file ) { die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!"; }
+
+	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file ) or die "FATAL: cannot load $default_conf_file - please restore a clean copy, this is not a user-editable file!";
+	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive');
