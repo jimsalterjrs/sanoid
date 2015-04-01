@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.1.0';
+my $version = '1.2.0';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -106,6 +106,7 @@ sub monitor_snapshots() {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'monitor'}) { next; }
+		if ($config{$section}{'monitor_children_only'}) { next; }		
 
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
@@ -530,7 +531,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','monitor_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 	
@@ -614,7 +615,7 @@ sub init {
 			foreach my $dataset(@datasets) {
 				chomp $dataset;
 				foreach my $key (keys %{$config{$section}} ) {
-					if (! ($key =~ /template|recursive/)) {
+					if (! ($key =~ /template|recursive|monitor_children_only/)) {
 						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
 						$config{$dataset}{$key} = $config{$section}{$key};
 					}

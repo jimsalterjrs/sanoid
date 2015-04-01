@@ -1,3 +1,5 @@
+1.2.0 added monitor-children-only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
+
 1.1.0 woooo - working recursive definitions in Sanoid!  Also intelligent config errors in Sanoid; will die with errors if unknown config value is set.
 
 1.0.20 greatly cleaned up config parsing in sanoid, got rid of 'hardcoded defaults' in favor of /etc/sanoid/sanoid.defaults.conf
