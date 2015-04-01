@@ -19,6 +19,9 @@ my $zfs = '/sbin/zfs';
 my $conf_file = '/etc/sanoid/sanoid.conf';
 my $default_conf_file = '/etc/sanoid/sanoid.defaults.conf';
 
+# parse CLI arguments
+my %args = getargs(@ARGV);
+
 # parse config file
 my %config = init($conf_file,$default_conf_file);
 
@@ -33,8 +36,6 @@ my %snapsbypath = getsnapsbypath( \%config, \%snaps );
 
 # let's make it a little easier to be consistent passing these hashes in the same order to each sub
 my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
-
-my %args = getargs(@ARGV);
 
 if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
@@ -343,9 +344,9 @@ sub blabber {
 
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 
-	#$Data::Dumper::Sortkeys = 1;
-	#print "****** CONFIGS ******\n";
-	#print Dumper(\%config);
+	$Data::Dumper::Sortkeys = 1;
+	print "****** CONFIGS ******\n";
+	print Dumper(\%config);
 	#print "****** SNAPSHOTS ******\n";
 	#print Dumper(\%snaps);
 	#print "****** SNAPSBYTYPE ******\n";
@@ -520,7 +521,7 @@ sub init {
 	my ($conf_file, $default_conf_file) = @_;
 	my %config;
 
-	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file );
+	tie my %defaults, 'Config::IniFiles', ( -file => $default_conf_file ) or die 'cannot load $conf_file - please restore a clean copy, this is not a user-editable file!';
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file );
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
@@ -534,15 +535,21 @@ sub init {
 		# set default values from %defaults, which can then be overriden by template
 		# and/or local settings within the module.
 
-		foreach my $key (keys %defaults) {
-			$config{$section}{$key} = $defaults{$key};
+		foreach my $key (keys %{$defaults{'template_default'}}) {
+			if (! ($key =~ /template/)) { 
+				if ($args{'debug'}) { print "INFO: setting $key on $section from $default_conf_file.\n"; }
+				$config{$section}{$key} = $defaults{'template_default'}{$key}; 
+			}
 		}
 
 
 		# override with values from user-defined default template, if any
 
 		foreach my $key (keys %{$ini{'template_default'}}) {
-			$config{$section}{$key} = $ini{'template_default'}{$key};
+			if (! ($key =~ /template/)) { 
+				if ($args{'debug'}) { print "INFO: overriding $key on $section with value from user-defined default template.\n"; }
+				$config{$section}{$key} = $ini{'template_default'}{$key}; 
+			}
 		}
 
 		# override with values from user-defined templates applied to this module,
@@ -552,14 +559,20 @@ sub init {
 			foreach my $rawtemplate (@templates) {
 				my $template = 'template_'.$rawtemplate;
 				foreach my $key (keys %{$ini{$template}}) {
-					$config{$section}{$key} = $ini{$template}{$key};
+					if (! ($key =~ /template/)) { 
+						if ($args{'debug'}) { print "INFO: overriding $key on $section with value from user-defined template $template.\n"; }
+						$config{$section}{$key} = $ini{$template}{$key}; 
+					}
 				}
 			}
 		}
 
 		# override with any locally set values in the module itself
-		foreach my $key (keys %{ini{$section}} {
-			$config{$section}{$key} = $ini{$section}{$key};
+		foreach my $key (keys %{$ini{$section}} ) {
+			if (! ($key =~ /template/)) {
+				if ($args{'debug'}) { print "INFO: overriding $key on $section with value directly set in module.\n"; }
+				$config{$section}{$key} = $ini{$section}{$key};
+			}
 		}
 	
 		# make sure that true values are true and false values are false for any toggled values
@@ -573,8 +586,11 @@ sub init {
 		}
 
 		# section path is the section name, unless section path has been explicitly defined	
-		$config{$section}{'path'} = $section;
-		if (defined $ini{$section}{'path'}) { $config{$section}{'path'} = $ini{$section}{'path'}; }
+		if (defined ($ini{$section}{'path'})) { 
+			$config{$section}{'path'} = $ini{$section}{'path'};
+		} else {
+			$config{$section}{'path'} = $section;
+		}
 	}
 
 	return %config;
