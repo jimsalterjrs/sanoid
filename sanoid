@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.2.0';
+my $version = '1.3.1';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -555,7 +555,7 @@ sub init {
 			# set default values from %defaults, which can then be overriden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
-				if (! ($key =~ /template|recursive/)) { 
+				if (! ($key =~ /template|recursive|children_only/)) { 
 					$config{$section}{$key} = $defaults{'template_default'}{$key}; 
 				}
 			}
