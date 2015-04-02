@@ -1,4 +1,7 @@
-1.2.0 added monitor-children-only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
+1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with empty parent datasets at all.
+      also more thoroughly documented features in default config files.
+
+1.2.0 added monitor_children_only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
 
 1.1.0 woooo - working recursive definitions in Sanoid!  Also intelligent config errors in Sanoid; will die with errors if unknown config value is set.
 

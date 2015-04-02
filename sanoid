@@ -106,7 +106,7 @@ sub monitor_snapshots() {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'monitor'}) { next; }
-		if ($config{$section}{'monitor_children_only'}) { next; }		
+		if ($config{$section}{'process_children_only'}) { next; }		
 
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
@@ -178,6 +178,7 @@ sub prune_snapshots {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'autoprune'}) { next; }
+		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
 
@@ -256,6 +257,7 @@ sub take_snapshots {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'autosnap'}) { next; }
+		if ($config{$section}{'process_children_only'}) { next; }		
 
 		my $path = $config{$section}{'path'};
 
@@ -531,7 +533,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','monitor_children_only');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 	
@@ -615,7 +617,7 @@ sub init {
 			foreach my $dataset(@datasets) {
 				chomp $dataset;
 				foreach my $key (keys %{$config{$section}} ) {
-					if (! ($key =~ /template|recursive|monitor_children_only/)) {
+					if (! ($key =~ /template|recursive|children_only/)) {
 						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
 						$config{$dataset}{$key} = $config{$section}{$key};
 					}
