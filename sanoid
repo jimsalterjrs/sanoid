@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.0';
+my $version = '1.4.1';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -741,23 +741,28 @@ sub check_zpool() {
 		exit $ERRORS{$state};
 	}
 	
-	my $statcommand="/sbin/zpool list $pool";
+	my $statcommand="/sbin/zpool list -o name,size,cap,health,free $pool";
 	
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
 		exit $ERRORS{$state};
 	}
-	
+
+	# chuck the header line
+	my $header = <STAT>;
+
+	# find and parse the line with values for the pool	
 	while(<STAT>) {
 		chomp;
-		next if (/^NAME\s+SIZE\s+USED\s+AVAIL\s+CAP\s+HEALTH\s+ALTROOT/);
 		if (/^${pool}\s+/) {
-			($size, $used, $avail, $cap, $dedup, $health) = /^${pool}\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/;
+			my @row = split (/ +/);
+			my $name;
+			($name, $size, $cap, $health, $avail) = @row;
 		}
 	}
 	
 	# Tony: Debuging
-	#print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
+	# print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
 	
 	close(STAT);
 	
@@ -869,7 +874,7 @@ sub check_zpool() {
 	
 	## calling all goats!
 	
-	$msg = sprintf "ZPOOL %s : %s {Size:%s Used:%s Avail:%s Cap:%s} %s\n", $pool, $health, $size, $used, $avail, $cap, $dmge;
+	$msg = sprintf "ZPOOL %s : %s {Size:%s Free:%s Cap:%s} %s\n", $pool, $health, $size, $avail, $cap, $dmge;
 	$msg = "$state $msg";
 	return ($ERRORS{$state},$msg);
 } # end check_zpool()
