@@ -223,7 +223,7 @@ sub prune_snapshots {
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
-							if (! $args{'readonly'}) { system($zfs, "destroy","-R",$snap) == 0 or die "could not remove $snap : $?"; }
+							if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or die "could not remove $snap : $?"; }
 						}
 					}
 					removelock('sanoid_pruning');
