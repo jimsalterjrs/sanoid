@@ -11,7 +11,7 @@ use warnings;
 my $zfs = '/sbin/zfs';
 my %args = getargs(@ARGV);
 
-my $progversion = '1.4.1';
+my $progversion = '1.4.2';
 
 if ($args{'version'}) { print "$progversion\n"; exit 0; }
 

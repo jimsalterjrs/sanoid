@@ -1,3 +1,5 @@
+1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name child snapshots to be deleted - thank you Lenz Weber!
+
 1.4.1 updated check_zpool() in sanoid to parse zpool list properly both pre- and post- ZoL v0.6.4
 
 1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. use: findoid /path/to/file

@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.1';
+my $version = '1.4.2';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -223,7 +223,7 @@ sub prune_snapshots {
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
-							if (! $args{'readonly'}) { system($zfs, "destroy","-Rr",$snap) == 0 or die "could not remove $snap : $?"; }
+							if (! $args{'readonly'}) { system($zfs, "destroy","-R",$snap) == 0 or die "could not remove $snap : $?"; }
 						}
 					}
 					removelock('sanoid_pruning');
