@@ -1,3 +1,5 @@
+1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
+
 1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name child snapshots to be deleted - thank you Lenz Weber!
 
 1.4.1 updated check_zpool() in sanoid to parse zpool list properly both pre- and post- ZoL v0.6.4

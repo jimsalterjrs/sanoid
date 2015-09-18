@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.2';
+my $version = '1.4.3';
 
 use strict;
 use Data::Dumper;
@@ -35,6 +35,7 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 my $lscmd = '/bin/ls';
 
 # figure out if source and/or target are remote.
+$sshcmd = "$sshcmd $sshcipher";
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
@@ -47,7 +48,6 @@ if ($targetisroot) { $targetsudocmd = ''; } else { $targetsudocmd = $sudocmd; }
 # are available on source, target, local machines.
 # warn user of anything missing, then continue with sync.
 my %avail = checkcommands();
-$sshcmd = "$sshcmd $sshcipher";
 
 my %snaps;
 
@@ -66,6 +66,16 @@ if (! $args{'recursive'}) {
 		# print "syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); \n";
 		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); 
 	}
+}
+
+# close SSH sockets for master connections as applicable
+if ($sourcehost ne '') { 
+	open FH, "$sshcmd $sourcehost -O exit |";
+	close FH;
+}
+if ($targethost ne '') {
+	open FH, "$sshcmd $targethost -O exit |";
+	close FH;
 }
 
 exit 0;
@@ -674,6 +684,8 @@ sub getssh {
 
 	my $rhost;
 	my $isroot;
+	my $socket;
+	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
 		$fs =~ s/^\S*\@\S*://;
@@ -681,6 +693,11 @@ sub getssh {
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
+		# now we need to establish a persistent master SSH connection
+		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+		open FH, "$sshcmd -M -S $socket -o ControlPersist=yes $rhost exit |";
+		close FH;
+		$rhost = "-S $socket $rhost";
 	} else {
 		my $localuid = $<;
 		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
