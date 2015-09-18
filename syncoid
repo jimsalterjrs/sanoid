@@ -70,11 +70,11 @@ if (! $args{'recursive'}) {
 
 # close SSH sockets for master connections as applicable
 if ($sourcehost ne '') { 
-	open FH, "$sshcmd $sourcehost -O exit |";
+	open FH, "$sshcmd $sourcehost -O exit 2>&1 |";
 	close FH;
 }
 if ($targethost ne '') {
-	open FH, "$sshcmd $targethost -O exit |";
+	open FH, "$sshcmd $targethost -O exit 2>&1 |";
 	close FH;
 }
 

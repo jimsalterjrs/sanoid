@@ -1,4 +1,5 @@
 1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
+      one extra commit to get rid of the "Exit request sent." SSH noise at the end.
 
 1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name child snapshots to be deleted - thank you Lenz Weber!
 
