@@ -1006,7 +1006,7 @@ sub iszfsbusy {
 
         foreach my $process (@processes) {
 		# if ($args{'debug'}) { print "DEBUG: checking process $process...\n"; }
-                if ($process =~ /zfs *(send|receive).*$fs/) {
+                if ($process =~ /zfs *(send|receive|recv).*$fs/) {
                         # there's already a zfs send/receive process for our target filesystem - return true
                         # if ($args{'debug'}) { print "DEBUG: process $process matches target $fs!\n"; }
                         return 1;
