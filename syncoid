@@ -458,9 +458,9 @@ sub checkcommands {
 sub iszfsbusy {
 	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
-	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd axo args= ...\n"; }
+	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd -Ao args= ...\n"; }
 
-	open PL, "$rhost $pscmd axo args= |";
+	open PL, "$rhost $pscmd -Ao args= |";
 	my @processes = <PL>;
 	close PL;
 
