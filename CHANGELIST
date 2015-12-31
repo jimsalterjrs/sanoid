@@ -1,3 +1,5 @@
+1.4.4 merged pull requests from jjlawren for OmniOS compatibility, added --configdir=/path/to/configs CLI option to sanoid at jjlawrens' request presumably for same
+
 1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
       one extra commit to get rid of the "Exit request sent." SSH noise at the end.
 
