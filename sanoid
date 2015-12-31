@@ -928,7 +928,7 @@ sub checklock {
 		return 2;
 	}
 
-	open PL, "$pscmd p $lockpid -o args= |";
+	open PL, "$pscmd -p $lockpid -o args= |";
 	my @processlist = <PL>;
 	close PL;
 
@@ -980,7 +980,7 @@ sub writelock {
 
 	my $pid = $$;
 	
-	open PL, "$pscmd p $$ -o args= |";
+	open PL, "$pscmd -p $$ -o args= |";
 	my @processlist = <PL>;
 	close PL;
 	
@@ -998,9 +998,9 @@ sub iszfsbusy {
 	# return true if busy (currently being sent or received), return false if not.
 
         my $fs = shift;
-        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd axo args= ...\n"; }
+        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd -Ao args= ...\n"; }
 
-        open PL, "$pscmd axo args= |";
+        open PL, "$pscmd -Ao args= |";
         my @processes = <PL>;
         close PL;
 
