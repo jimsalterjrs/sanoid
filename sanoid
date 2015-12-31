@@ -12,15 +12,16 @@ use File::Path;         # for rmtree command in use_prune
 use Data::Dumper;	# debugging - print contents of hash
 use Time::Local;	# to parse dates in reverse
 
+# parse CLI arguments
+my %args = getargs(@ARGV);
+
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
 
-my $conf_file = '/etc/sanoid/sanoid.conf';
-my $default_conf_file = '/etc/sanoid/sanoid.defaults.conf';
-
-# parse CLI arguments
-my %args = getargs(@ARGV);
+if ($args{'configdir'} eq '') { $args{'configdir'} = '/etc/sanoid'; }
+my $conf_file = "$args{'configdir'}/sanoid.conf";
+my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
 # parse config file
 my %config = init($conf_file,$default_conf_file);
@@ -1030,7 +1031,7 @@ sub getargs {
 	my %validargs;
 	my %novalueargs;
 
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir';
 	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
 	foreach my $item (@validargs) { $validargs{$item}=1; }
 	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
