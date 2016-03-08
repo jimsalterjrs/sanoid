@@ -35,7 +35,12 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 my $lscmd = '/bin/ls';
 
 # figure out if source and/or target are remote.
-$sshcmd = "$sshcmd $sshcipher";
+if ( $args{'sshkey'} ) {
+  $sshcmd = "$sshcmd $sshcipher -i $args{'sshkey'}";
+}
+else {
+  $sshcmd = "$sshcmd $sshcipher";
+}
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
@@ -243,7 +248,7 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
 	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
