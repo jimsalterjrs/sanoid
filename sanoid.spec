@@ -44,5 +44,5 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 
 
 %changelog
-* Sat Feb 13 2016 Tom Lapp <tmlapp@gmail.com> - 1.4.4-1
+* Sat Feb 13 2016 Thomas M. Lapp <tmlapp@gmail.com> - 1.4.4-1
 - Initial RPM Package
