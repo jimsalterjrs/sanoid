@@ -2,7 +2,8 @@
 
 # this is just a cheap way to trigger mutex-based checks for process activity.
 #
-# ie ./sleepymutex zfs receive data/lolz if you want a mutex hanging around as long as necessary that will show up
-# to any routine that actively does something like "ps axo | grep 'zfs receive'" or whatever.
+# ie ./sleepymutex zfs receive data/lolz if you want a mutex hanging around 
+# as long as necessary that will show up to any routine that actively does 
+# something like "ps axo | grep 'zfs receive'" or whatever.
 
 sleep 99999
