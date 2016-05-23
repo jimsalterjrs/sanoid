@@ -2,7 +2,7 @@
       before doing an initial replication, instead of letting the replication itself create
       the target.
 
-      added "==0 or die" to all system() calls in syncoid.
+      added "==0 or die" to all system() calls in sanoid and syncoid that didn't already have them.
 
 1.4.5 altered shebang to '#!/usr/bin/env perl' for enhanced FreeBSD compatibility
 
