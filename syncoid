@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.5';
+my $version = '1.4.6';
 
 use strict;
 use Data::Dumper;
@@ -56,7 +56,9 @@ my %avail = checkcommands();
 
 my %snaps;
 
-## break here to call replication individually so that we can loop across children separately, for recursive replication ##
+## break here to call replication individually so that we ##
+## can loop across children separately, for recursive     ##
+## replication                                            ##
 
 if (! $args{'recursive'}) {
 	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
@@ -167,7 +169,8 @@ sub syncdataset {
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 		}
-		system($synccmd);
+		system($synccmd) == 0 
+			or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course
@@ -190,7 +193,8 @@ sub syncdataset {
 	
 			print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n";
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system($synccmd);
+			system($synccmd) == 0 
+				or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 			# restore original readonly value to target after sync complete
 			setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
@@ -202,8 +206,9 @@ sub syncdataset {
 		# get current readonly status of target, then set it to on during sync
 		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 	
-		my $matchingsnap = getmatchingsnapshot(\%snaps);
+		my $matchingsnap = getmatchingsnapshot($targetsize, \%snaps);
 	
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
@@ -229,7 +234,8 @@ sub syncdataset {
 
 		print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
 		if ($debug) { print "DEBUG: $synccmd\n"; }
-		system("$synccmd");
+		system("$synccmd") == 0 
+			or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 		# restore original readonly value to target after sync complete
 		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
@@ -489,7 +495,8 @@ sub setzfsvalue {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fs");
+	system("$rhost $mysudocmd $zfscmd set $property=$value $fs") == 0
+		or die "CRITICAL ERROR: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?";
 	return;
 }
 
@@ -628,7 +635,8 @@ sub pruneoldsyncsnaps {
 			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
-			system("$rhost $prunecmd");
+			system("$rhost $prunecmd") == 0 
+				or die "CRITICAL ERROR: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
 			$counter = 0;
 		}
@@ -640,19 +648,36 @@ sub pruneoldsyncsnaps {
 		if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
-		system("$rhost $prunecmd"); 
+		system("$rhost $prunecmd") == 0 
+			or die "CRITICAL ERROR: $rhost $prunecmd failed: $?"; 
 	}
 	return;
 }
 
 sub getmatchingsnapshot {
-	my $snaps = shift;
+	my ($targetsize, $snaps) = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
 		if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
 			return $snap;
 		}
 	}
-	print "UNEXPECTED ERROR: target exists but has no matching snapshots!\n";
+
+	# if we got this far, we failed to find a matching snapshot.
+
+	print "\n";
+	print "CRITICAL ERROR: Target exists but has no matching snapshots!\n";
+	print "                Replication to target would require destroying existing\n";
+	print "                target. Cowardly refusing to destroy your existing target.\n\n";
+
+	# experience tells me we need a mollyguard for people who try to 
+	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
+
+	if ( $targetsize < (64*1024*1024) ) {
+		print "          NOTE: Target dataset is < 64MB used - did you mistakenly run\n";
+		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
+		print "                replication must be to a NON EXISTENT DATASET, which will\n";
+		print "                then be CREATED BY the initial replication process.\n\n";
+	}
 	exit 256;
 }
 
@@ -665,7 +690,8 @@ sub newsyncsnap {
 	my %date = getdate();
 	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fs\@$snapname\n";
-	system($snapcmd);
+	system($snapcmd) == 0 
+		or die "CRITICAL ERROR: $snapcmd failed: $?";
 	return $snapname;
 }
 

@@ -1,3 +1,9 @@
+1.4.6 added a mollyguard to syncoid to help newbies who try to zfs create a new target dataset
+      before doing an initial replication, instead of letting the replication itself create
+      the target.
+
+      added "==0 or die" to all system() calls in syncoid.
+
 1.4.5 altered shebang to '#!/usr/bin/env perl' for enhanced FreeBSD compatibility
 
 1.4.4 merged pull requests from jjlawren for OmniOS compatibility, added --configdir=/path/to/configs CLI option to sanoid at jjlawrens' request presumably for same
@@ -5,16 +11,18 @@
 1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
       one extra commit to get rid of the "Exit request sent." SSH noise at the end.
 
-1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name child snapshots to be deleted - thank you Lenz Weber!
+1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name 
+      child snapshots to be deleted - thank you Lenz Weber!
 
 1.4.1 updated check_zpool() in sanoid to parse zpool list properly both pre- and post- ZoL v0.6.4
 
-1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. use: findoid /path/to/file
+1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. 
+      use: findoid /path/to/file
 
 1.3.1 whoops - prevent process_children_only from getting set from blank value in defaults
 
-1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with empty parent datasets at all.
-      also more thoroughly documented features in default config files.
+1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with 
+      empty parent datasets at all. also more thoroughly documented features in default config files.
 
 1.2.0 added monitor_children_only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
 
