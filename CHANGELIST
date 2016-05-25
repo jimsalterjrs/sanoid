@@ -1,3 +1,7 @@
+1.4.6a due to bug in ZFS on Linux which frequently causes errors to return from `zfs set readonly`,
+       changed ==0 or die in setzfsvalue() to ==0 or [complain] - it's not worth causing replication
+       to fail while this ZFS on Linux bug exists.
+
 1.4.6 added a mollyguard to syncoid to help newbies who try to zfs create a new target dataset
       before doing an initial replication, instead of letting the replication itself create
       the target.
