@@ -26,6 +26,7 @@ my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
 my $sshcipher = '-c arcfour';
+my $sshport = '-p 22';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $sudocmd = '/usr/bin/sudo';
@@ -34,12 +35,15 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # being present on remote machines.
 my $lscmd = '/bin/ls';
 
+if ( $args{'sshport'} ) {
+  $sshport = "-p $args{'sshport'}";
+}
 # figure out if source and/or target are remote.
 if ( $args{'sshkey'} ) {
-  $sshcmd = "$sshcmd $sshcipher -i $args{'sshkey'}";
+  $sshcmd = "$sshcmd $sshcipher $sshport -i $args{'sshkey'}";
 }
 else {
-  $sshcmd = "$sshcmd $sshcipher";
+  $sshcmd = "$sshcmd $sshcipher $sshport";
 }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
@@ -254,7 +258,7 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
 	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
@@ -716,6 +720,7 @@ sub getssh {
 	my $rhost;
 	my $isroot;
 	my $socket;
+
 	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
@@ -726,7 +731,7 @@ sub getssh {
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
-		open FH, "$sshcmd -M -S $socket -o ControlPersist=yes $rhost exit |";
+		open FH, "$sshcmd -M -S $socket -o ControlPersist=yes $sshport $rhost exit |";
 		close FH;
 		$rhost = "-S $socket $rhost";
 	} else {
