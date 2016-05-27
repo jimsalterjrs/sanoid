@@ -1,3 +1,8 @@
+1.4.6b updated default cipherlist for syncoid to 
+       chacha20-poly1305@openssh.com,arcfour - arcfour isn't supported on
+       newer SSH (in Ubuntu Xenial and FreeBSD), chacha20 isn't supported on
+       some older SSH versions (Ubuntu Precise< I think?)
+
 1.4.6a due to bug in ZFS on Linux which frequently causes errors to return from `zfs set readonly`,
        changed ==0 or die in setzfsvalue() to ==0 or [complain] - it's not worth causing replication
        to fail while this ZFS on Linux bug exists.
