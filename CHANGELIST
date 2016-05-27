@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+1.4.6c merged @gusson's pull request to add -sshport argument
+
+>>>>>>> gusson-ssh_port
 1.4.6b updated default cipherlist for syncoid to 
        chacha20-poly1305@openssh.com,arcfour - arcfour isn't supported on
        newer SSH (in Ubuntu Xenial and FreeBSD), chacha20 isn't supported on
