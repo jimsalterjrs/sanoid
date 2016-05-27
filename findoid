@@ -11,11 +11,7 @@ use warnings;
 my $zfs = '/sbin/zfs';
 my %args = getargs(@ARGV);
 
-<<<<<<< HEAD
-my $progversion = '1.4.6b';
-=======
 my $progversion = '1.4.6c';
->>>>>>> gusson-ssh_port
 
 if ($args{'version'}) { print "$progversion\n"; exit 0; }
 
