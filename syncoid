@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.6a';
+my $version = '1.4.6c';
 
 use strict;
 use Data::Dumper;
@@ -25,7 +25,7 @@ my $debug = $args{'debug'};
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
-my $sshcipher = '-c arcfour';
+my $sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
 my $sshport = '-p 22';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
