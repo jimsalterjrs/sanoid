@@ -1,3 +1,13 @@
+1.4.7 reverted Perl shebangs to #!/usr/bin/perl - sorry FreeBSD folks, shebanged to /usr/bin/env perl bare calls to syncoid
+      or sanoid (without explicit calls to Perl) don't work on EITHER of our systems.  I'm not OK with that, this is going to be
+      an OS localization issue that can either be addressed with BSD-specific packaging, or you can individually address it
+      by editing the shebangs on your own systems OR by doing a one-time ln -s /usr/local/bin/perl to /usr/bin/perl, which will
+      fix the issue for this particular script AND all other Perl scripts developed on non-BSD systems.
+
+      also temporarily dyked out the set readonly functionality in syncoid - it was causing more problems than it prevented, and
+      using the -F argument with receive prevents incautious writes (including just cd'ing into mounted datasets, if atimes are on)
+      from interrupting syncoid runs anyway.
+
 1.4.6c merged @gusson's pull request to add -sshport argument
 
 1.4.6b updated default cipherlist for syncoid to 

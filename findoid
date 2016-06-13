@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 
 # this software is licensed for use under the Free Software Foundation's GPL v3.0 license, as retrieved 
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
@@ -11,7 +11,7 @@ use warnings;
 my $zfs = '/sbin/zfs';
 my %args = getargs(@ARGV);
 
-my $progversion = '1.4.6c';
+my $progversion = '1.4.7';
 
 if ($args{'version'}) { print "$progversion\n"; exit 0; }
 
