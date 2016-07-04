@@ -3,8 +3,7 @@
 
 <img src="http://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="http://openoid.net/transcend" target="_blank">functionally immortal</a>.  
 
-<p align="center">
-[![Sanoid rollback demo](http://www.openoid.net/sanoid_video_launcher.png)](https://youtu.be/ZgowLNBsu00 "Sanoid rollback demo")
+<p align="center"> [![Sanoid rollback demo](http://www.openoid.net/sanoid_video_launcher.png)](https://youtu.be/ZgowLNBsu00 "Sanoid rollback demo")
 Real time demo: rolling back a full-scale cryptomalware infection in seconds
 </p>
 
