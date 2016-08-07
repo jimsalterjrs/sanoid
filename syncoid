@@ -329,8 +329,8 @@ sub getargs {
 		}
 	}
 
-	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; }
-	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; }
+	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; } else { $args{'source-bwlimit'} = ''; }
+	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; } else { $args{'target-bwlimit'} = ''; }
 
 	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
 
