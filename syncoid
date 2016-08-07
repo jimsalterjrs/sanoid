@@ -664,7 +664,7 @@ sub pruneoldsyncsnaps {
 		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
 		system("$rhost $prunecmd") == 0 
-			or die "CRITICAL ERROR: $rhost $prunecmd failed: $?"; 
+			or warn "WARNING: $rhost $prunecmd failed: $?"; 
 	}
 	return;
 }
