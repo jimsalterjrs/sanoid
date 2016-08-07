@@ -685,8 +685,10 @@ sub pruneoldsyncsnaps {
 sub getmatchingsnapshot {
 	my ($targetsize, $snaps) = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
-		if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
-			return $snap;
+		if (defined $snaps{'target'}{$snap}{'ctime'}) {
+			if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
+				return $snap;
+			}
 		}
 	}
 
