@@ -7,6 +7,7 @@
 my $version = '1.4.7';
 
 use strict;
+use warnings;
 use Data::Dumper;
 use Time::Local;
 use Sys::Hostname;
@@ -333,12 +334,14 @@ sub getargs {
 
 	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
 
+	if (!defined $args{'compress'}) { $args{'compress'} = 'default'; }
+
 	if ($args{'compress'} eq 'gzip') {
 		$args{'rawcompresscmd'} = '/bin/gzip';
 		$args{'compressargs'} = '-3';
 		$args{'rawdecompresscmd'} = '/bin/zcat';
 		$args{'decompressargs'} = '';
-	} elsif ( ($args{'compress'} eq 'lzo') || ! (defined $args{'compress'}) ) {
+	} elsif ( ($args{'compress'} eq 'lzo') || ($args{'compress'} eq 'default') ) {
 		$args{'rawcompresscmd'} = '/usr/bin/lzop';
 		$args{'compressargs'} = '';
 		$args{'rawdecompresscmd'} = '/usr/bin/lzop';
@@ -374,8 +377,11 @@ sub checkcommands {
 		return %avail; 
 	}
 
-	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; }
-	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; }
+	if (!defined $sourcehost) { $sourcehost = ''; }
+	if (!defined $targethost) { $targethost = ''; }
+
+	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
+	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; } else { $targetssh = ''; }
 
 	# if raw compress command is null, we must have specified no compression. otherwise, 
 	# make sure that compression is available everywhere we need it
@@ -414,6 +420,12 @@ sub checkcommands {
 		$t =~ s/^\S*\@//;
 		$t = "ssh:$t";
 	}
+
+	if (!defined $avail{'sourcecompress'}) { $avail{'sourcecompress'} = ''; }
+	if (!defined $avail{'targetcompress'}) { $avail{'targetcompress'} = ''; }
+	if (!defined $avail{'sourcembuffer'}) { $avail{'sourcembuffer'} = ''; }
+	if (!defined $avail{'targetmbuffer'}) { $avail{'targetmbuffer'} = ''; }
+
 
 	if ($avail{'sourcecompress'} eq '') { 
 		if ($args{'rawcompresscmd'} ne '') {
@@ -566,12 +578,13 @@ sub buildsynccmd {
 		# $synccmd = "$sendcmd | $mbuffercmd | $pvcmd | $recvcmd";
 		$synccmd = "$sendcmd |";
 		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
-		my $bwlimit;
-		if ($args{'source-bwlimit'} eq '') { 
+		my $bwlimit = '';
+		if (defined $args{'source-bwlimit'}) {
+			$bwlimit = $args{'source-bwlimit'};
+		} elsif (defined $args{'target-bwlimit'}) {
 			$bwlimit = $args{'target-bwlimit'}; 
-		} else { 
-			$bwlimit = $args{'source-bwlimit'}; 
 		}
+
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
 		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
 		$synccmd .= " $recvcmd";
@@ -806,9 +819,7 @@ sub getsendsize {
 	}
 
 	my $sourcessh;
-	if ($sourcehost ne '') {
-		$sourcessh = "$sshcmd $sourcehost";
-	}
+	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
