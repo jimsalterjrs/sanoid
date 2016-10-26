@@ -1,16 +1,49 @@
+1.4.7 reverted Perl shebangs to #!/usr/bin/perl - sorry FreeBSD folks, shebanged to /usr/bin/env perl bare calls to syncoid
+      or sanoid (without explicit calls to Perl) don't work on EITHER of our systems.  I'm not OK with that, this is going to be
+      an OS localization issue that can either be addressed with BSD-specific packaging, or you can individually address it
+      by editing the shebangs on your own systems OR by doing a one-time ln -s /usr/local/bin/perl to /usr/bin/perl, which will
+      fix the issue for this particular script AND all other Perl scripts developed on non-BSD systems.
+
+      also temporarily dyked out the set readonly functionality in syncoid - it was causing more problems than it prevented, and
+      using the -F argument with receive prevents incautious writes (including just cd'ing into mounted datasets, if atimes are on)
+      from interrupting syncoid runs anyway.
+
+1.4.6c merged @gusson's pull request to add -sshport argument
+
+1.4.6b updated default cipherlist for syncoid to 
+       chacha20-poly1305@openssh.com,arcfour - arcfour isn't supported on
+       newer SSH (in Ubuntu Xenial and FreeBSD), chacha20 isn't supported on
+       some older SSH versions (Ubuntu Precise< I think?)
+
+1.4.6a due to bug in ZFS on Linux which frequently causes errors to return from `zfs set readonly`,
+       changed ==0 or die in setzfsvalue() to ==0 or [complain] - it's not worth causing replication
+       to fail while this ZFS on Linux bug exists.
+
+1.4.6 added a mollyguard to syncoid to help newbies who try to zfs create a new target dataset
+      before doing an initial replication, instead of letting the replication itself create
+      the target.
+
+      added "==0 or die" to all system() calls in sanoid and syncoid that didn't already have them.
+
+1.4.5 altered shebang to '#!/usr/bin/env perl' for enhanced FreeBSD compatibility
+
+1.4.4 merged pull requests from jjlawren for OmniOS compatibility, added --configdir=/path/to/configs CLI option to sanoid at jjlawrens' request presumably for same
+
 1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
       one extra commit to get rid of the "Exit request sent." SSH noise at the end.
 
-1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name child snapshots to be deleted - thank you Lenz Weber!
+1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name 
+      child snapshots to be deleted - thank you Lenz Weber!
 
 1.4.1 updated check_zpool() in sanoid to parse zpool list properly both pre- and post- ZoL v0.6.4
 
-1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. use: findoid /path/to/file
+1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. 
+      use: findoid /path/to/file
 
 1.3.1 whoops - prevent process_children_only from getting set from blank value in defaults
 
-1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with empty parent datasets at all.
-      also more thoroughly documented features in default config files.
+1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with 
+      empty parent datasets at all. also more thoroughly documented features in default config files.
 
 1.2.0 added monitor_children_only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
 

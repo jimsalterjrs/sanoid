@@ -1,0 +1,30 @@
+SYNCOID
+-------
+Syncoid depends on ssh, pv, gzip, lzop, and mbuffer.  It can run with reduced 
+functionality in the absence of any or all of the above. SSH is only required
+for remote synchronization.  Arcfour crypto is the default for SSH transport,
+and currently (v1.4.5) syncoid runs will fail if arcfour is not available
+on either end of the transport.
+
+On Ubuntu: apt install pv lzop mbuffer
+On FreeBSD: pkg install pv lzop
+
+FreeBSD notes: mbuffer is not currently recommended due to oddities in 
+               FreeBSD's local implementation.  Internal network buffering
+               capability is on the roadmap soon to remove mbuffer dependency
+               anyway.  FreeBSD places pv and lzop in /usr/local/bin instead
+               of /usr/bin ; syncoid currently does not check path.
+
+               Simplest path workaround is symlinks, eg:
+               root@bsd:~# ln -s /usr/bin/lzop /usr/local/bin/lzop
+
+
+SANOID
+------
+Sanoid depends on the Perl module Config::IniFiles and will not operate
+without it.  Config::IniFiles may be installed from CPAN, though the project
+strongly recommends using your distribution's repositories instead.
+
+On Ubuntu: apt install libconfig-inifiles-perl
+On FreeBSD: pkg install p5-Config-Inifiles
+

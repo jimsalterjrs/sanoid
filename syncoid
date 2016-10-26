@@ -4,9 +4,10 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.3';
+my $version = '1.4.7';
 
 use strict;
+use warnings;
 use Data::Dumper;
 use Time::Local;
 use Sys::Hostname;
@@ -21,11 +22,13 @@ if ($args{'version'}) {
 my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
+my $quiet = $args{'quiet'};
 
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
-my $sshcipher = '-c arcfour';
+my $sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
+my $sshport = '-p 22';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $sudocmd = '/usr/bin/sudo';
@@ -34,8 +37,16 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # being present on remote machines.
 my $lscmd = '/bin/ls';
 
+if ( $args{'sshport'} ) {
+  $sshport = "-p $args{'sshport'}";
+}
 # figure out if source and/or target are remote.
-$sshcmd = "$sshcmd $sshcipher";
+if ( $args{'sshkey'} ) {
+  $sshcmd = "$sshcmd $sshcipher $sshport -i $args{'sshkey'}";
+}
+else {
+  $sshcmd = "$sshcmd $sshcipher $sshport";
+}
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
@@ -51,7 +62,9 @@ my %avail = checkcommands();
 
 my %snaps;
 
-## break here to call replication individually so that we can loop across children separately, for recursive replication ##
+## break here to call replication individually so that we ##
+## can loop across children separately, for recursive     ##
+## replication                                            ##
 
 if (! $args{'recursive'}) {
 	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
@@ -135,7 +148,9 @@ sub syncdataset {
 	# been turned on... even when it's off... unless and
 	# until the filesystem is zfs umounted and zfs remounted.
 	# we're going to do the right thing anyway.
-	my $originaltargetreadonly;
+		# dyking this functionality out for the time being due to buggy mount/unmount behavior
+		# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+	#my $originaltargetreadonly;
 	
 	# sync 'em up.
 	if (! $targetexists) {
@@ -155,22 +170,25 @@ sub syncdataset {
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-		print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
+		if (!$quiet) { print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n"; }
 		if ($debug) { print "DEBUG: $synccmd\n"; }
 	
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 		}
-		system($synccmd);
+		system($synccmd) == 0 
+			or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course
 		if ($oldestsnap ne $newsyncsnap) {
 	
 			# get current readonly status of target, then set it to on during sync
-			$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
-			setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+				# dyking this functionality out for the time being due to buggy mount/unmount behavior
+				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
+			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 	
 			$sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
@@ -183,22 +201,29 @@ sub syncdataset {
 				die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 			}
 	
-			print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+			if (!$quiet) { print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system($synccmd);
+			system($synccmd) == 0 
+				or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 			# restore original readonly value to target after sync complete
-			setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
+				# dyking this functionality out for the time being due to buggy mount/unmount behavior
+				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 		}
 	} else {
 		# find most recent matching snapshot and do an -I
 		# to the new snapshot
 	
 		# get current readonly status of target, then set it to on during sync
-		$originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
-		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+			# dyking this functionality out for the time being due to buggy mount/unmount behavior
+			# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+		# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
+		# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+
+		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 	
-		my $matchingsnap = getmatchingsnapshot(\%snaps);
+		my $matchingsnap = getmatchingsnapshot($targetsize, \%snaps);
 	
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
@@ -216,18 +241,21 @@ sub syncdataset {
 		}
 	
 		my $sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
-		my $recvcmd = "$targetsudocmd $zfscmd receive $targetfs";
+		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
-		print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n";
+		if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 		if ($debug) { print "DEBUG: $synccmd\n"; }
-		system("$synccmd");
+		system("$synccmd") == 0 
+			or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 		# restore original readonly value to target after sync complete
-		setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
+			# dyking this functionality out for the time being due to buggy mount/unmount behavior
+			# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+		#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 	}
 	
 	# prune obsolete sync snaps on source and target.
@@ -243,14 +271,14 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r');
+	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
 
 	while (my $rawarg = shift(@args)) {
 		my $arg = $rawarg;
-		my $argvalue;
+		my $argvalue = '';
 		if ($rawarg =~ /=/) {
 			# user specified the value for a CLI argument with =
 			# instead of with blank space. separate appropriately.
@@ -302,17 +330,19 @@ sub getargs {
 		}
 	}
 
-	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; }
-	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; }
+	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; } else { $args{'source-bwlimit'} = ''; }
+	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; } else { $args{'target-bwlimit'} = ''; }
 
 	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
+
+	if (!defined $args{'compress'}) { $args{'compress'} = 'default'; }
 
 	if ($args{'compress'} eq 'gzip') {
 		$args{'rawcompresscmd'} = '/bin/gzip';
 		$args{'compressargs'} = '-3';
 		$args{'rawdecompresscmd'} = '/bin/zcat';
 		$args{'decompressargs'} = '';
-	} elsif ( ($args{'compress'} eq 'lzo') || ! (defined $args{'compress'}) ) {
+	} elsif ( ($args{'compress'} eq 'lzo') || ($args{'compress'} eq 'default') ) {
 		$args{'rawcompresscmd'} = '/usr/bin/lzop';
 		$args{'compressargs'} = '';
 		$args{'rawdecompresscmd'} = '/usr/bin/lzop';
@@ -348,8 +378,11 @@ sub checkcommands {
 		return %avail; 
 	}
 
-	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; }
-	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; }
+	if (!defined $sourcehost) { $sourcehost = ''; }
+	if (!defined $targethost) { $targethost = ''; }
+
+	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
+	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; } else { $targetssh = ''; }
 
 	# if raw compress command is null, we must have specified no compression. otherwise, 
 	# make sure that compression is available everywhere we need it
@@ -388,6 +421,12 @@ sub checkcommands {
 		$t =~ s/^\S*\@//;
 		$t = "ssh:$t";
 	}
+
+	if (!defined $avail{'sourcecompress'}) { $avail{'sourcecompress'} = ''; }
+	if (!defined $avail{'targetcompress'}) { $avail{'targetcompress'} = ''; }
+	if (!defined $avail{'sourcembuffer'}) { $avail{'sourcembuffer'} = ''; }
+	if (!defined $avail{'targetmbuffer'}) { $avail{'targetmbuffer'} = ''; }
+
 
 	if ($avail{'sourcecompress'} eq '') { 
 		if ($args{'rawcompresscmd'} ne '') {
@@ -458,15 +497,15 @@ sub checkcommands {
 sub iszfsbusy {
 	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
-	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd axo args= ...\n"; }
+	if ($debug) { print "DEBUG: checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd -Ao args= ...\n"; }
 
-	open PL, "$rhost $pscmd axo args= |";
+	open PL, "$rhost $pscmd -Ao args= |";
 	my @processes = <PL>;
 	close PL;
 
 	foreach my $process (@processes) {
 		# if ($debug) { print "DEBUG: checking process $process...\n"; }
-		if ($process =~ /zfs receive.*$fs/) {
+		if ($process =~ /zfs *(receive|recv).*$fs/) {
 			# there's already a zfs receive process for our target filesystem - return true
 			if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
 			return 1;
@@ -484,7 +523,8 @@ sub setzfsvalue {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fs");
+	system("$rhost $mysudocmd $zfscmd set $property=$value $fs") == 0
+		or print "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?, proceeding anyway.\n";
 	return;
 }
 
@@ -539,20 +579,21 @@ sub buildsynccmd {
 		# $synccmd = "$sendcmd | $mbuffercmd | $pvcmd | $recvcmd";
 		$synccmd = "$sendcmd |";
 		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
-		my $bwlimit;
-		if ($args{'source-bwlimit'} eq '') { 
+		my $bwlimit = '';
+		if (defined $args{'source-bwlimit'}) {
+			$bwlimit = $args{'source-bwlimit'};
+		} elsif (defined $args{'target-bwlimit'}) {
 			$bwlimit = $args{'target-bwlimit'}; 
-		} else { 
-			$bwlimit = $args{'source-bwlimit'}; 
 		}
+
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
-		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
 		# local source, remote target.
 		#$synccmd = "$sendcmd | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
-		if ($avail{'localpv'}) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $args{'compresscmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		$synccmd .= " $sshcmd $targethost '";
@@ -568,7 +609,7 @@ sub buildsynccmd {
 		$synccmd .= "' | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
-		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
@@ -578,7 +619,7 @@ sub buildsynccmd {
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
 		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
-		if ($avail{'localpv'}) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		if ($avail{'compress'}) { $synccmd .= "$args{'compresscmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost '";
@@ -623,7 +664,8 @@ sub pruneoldsyncsnaps {
 			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
-			system("$rhost $prunecmd");
+			system("$rhost $prunecmd") == 0 
+				or die "CRITICAL ERROR: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
 			$counter = 0;
 		}
@@ -635,19 +677,38 @@ sub pruneoldsyncsnaps {
 		if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
-		system("$rhost $prunecmd"); 
+		system("$rhost $prunecmd") == 0 
+			or warn "WARNING: $rhost $prunecmd failed: $?"; 
 	}
 	return;
 }
 
 sub getmatchingsnapshot {
-	my $snaps = shift;
+	my ($targetsize, $snaps) = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
-		if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
-			return $snap;
+		if (defined $snaps{'target'}{$snap}{'ctime'}) {
+			if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
+				return $snap;
+			}
 		}
 	}
-	print "UNEXPECTED ERROR: target exists but has no matching snapshots!\n";
+
+	# if we got this far, we failed to find a matching snapshot.
+
+	print "\n";
+	print "CRITICAL ERROR: Target exists but has no matching snapshots!\n";
+	print "                Replication to target would require destroying existing\n";
+	print "                target. Cowardly refusing to destroy your existing target.\n\n";
+
+	# experience tells me we need a mollyguard for people who try to 
+	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
+
+	if ( $targetsize < (64*1024*1024) ) {
+		print "          NOTE: Target dataset is < 64MB used - did you mistakenly run\n";
+		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
+		print "                replication must be to a NON EXISTENT DATASET, which will\n";
+		print "                then be CREATED BY the initial replication process.\n\n";
+	}
 	exit 256;
 }
 
@@ -660,7 +721,8 @@ sub newsyncsnap {
 	my %date = getdate();
 	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fs\@$snapname\n";
-	system($snapcmd);
+	system($snapcmd) == 0 
+		or die "CRITICAL ERROR: $snapcmd failed: $?";
 	return $snapname;
 }
 
@@ -685,6 +747,7 @@ sub getssh {
 	my $rhost;
 	my $isroot;
 	my $socket;
+
 	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
@@ -695,7 +758,7 @@ sub getssh {
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
-		open FH, "$sshcmd -M -S $socket -o ControlPersist=yes $rhost exit |";
+		open FH, "$sshcmd -M -S $socket -o ControlPersist=yes $sshport $rhost exit |";
 		close FH;
 		$rhost = "-S $socket $rhost";
 	} else {
@@ -759,9 +822,7 @@ sub getsendsize {
 	}
 
 	my $sourcessh;
-	if ($sourcehost ne '') {
-		$sourcessh = "$sshcmd $sourcehost";
-	}
+	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }

@@ -1,0 +1,13 @@
+FreeBSD users will need to change the Perl shebangs at the top of the executables from #!/usr/bin/perl 
+to #!/usr/local/bin/perl in most cases.
+
+Sorry folks, but if I set this with #!/usr/bin/env perl as suggested, then nothing works properly 
+from a typical cron environment on EITHER operating system, Linux or BSD.  I'm mostly using Linux 
+systems, so I get to set the shebang for my use and give you folks a FREEBSD readme rather than 
+the other way around. =)
+
+If you don't want to have to change the shebangs, your other option is to drop a symlink on your system:
+
+root@bsd:~# ln -s /usr/local/bin/perl /usr/bin/perl
+
+After putting this symlink in place, ANY perl script shebanged for Linux will work on your system too.

@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.3';
+my $version = '1.4.7';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -12,15 +12,16 @@ use File::Path;         # for rmtree command in use_prune
 use Data::Dumper;	# debugging - print contents of hash
 use Time::Local;	# to parse dates in reverse
 
+# parse CLI arguments
+my %args = getargs(@ARGV);
+
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
 
-my $conf_file = '/etc/sanoid/sanoid.conf';
-my $default_conf_file = '/etc/sanoid/sanoid.defaults.conf';
-
-# parse CLI arguments
-my %args = getargs(@ARGV);
+if ($args{'configdir'} eq '') { $args{'configdir'} = '/etc/sanoid'; }
+my $conf_file = "$args{'configdir'}/sanoid.conf";
+my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
 # parse config file
 my %config = init($conf_file,$default_conf_file);
@@ -331,7 +332,8 @@ sub take_snapshots {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) { 
-				system($zfs, "snapshot", "$snap");
+				system($zfs, "snapshot", "$snap") == 0
+					or die "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
 				sleep 1;
 			}
@@ -928,7 +930,7 @@ sub checklock {
 		return 2;
 	}
 
-	open PL, "$pscmd p $lockpid -o args= |";
+	open PL, "$pscmd -p $lockpid -o args= |";
 	my @processlist = <PL>;
 	close PL;
 
@@ -980,7 +982,7 @@ sub writelock {
 
 	my $pid = $$;
 	
-	open PL, "$pscmd p $$ -o args= |";
+	open PL, "$pscmd -p $$ -o args= |";
 	my @processlist = <PL>;
 	close PL;
 	
@@ -998,15 +1000,15 @@ sub iszfsbusy {
 	# return true if busy (currently being sent or received), return false if not.
 
         my $fs = shift;
-        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd axo args= ...\n"; }
+        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd -Ao args= ...\n"; }
 
-        open PL, "$pscmd axo args= |";
+        open PL, "$pscmd -Ao args= |";
         my @processes = <PL>;
         close PL;
 
         foreach my $process (@processes) {
 		# if ($args{'debug'}) { print "DEBUG: checking process $process...\n"; }
-                if ($process =~ /zfs *(send|receive).*$fs/) {
+                if ($process =~ /zfs *(send|receive|recv).*$fs/) {
                         # there's already a zfs send/receive process for our target filesystem - return true
                         # if ($args{'debug'}) { print "DEBUG: process $process matches target $fs!\n"; }
                         return 1;
@@ -1030,7 +1032,7 @@ sub getargs {
 	my %validargs;
 	my %novalueargs;
 
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir';
 	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
 	foreach my $item (@validargs) { $validargs{$item}=1; }
 	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
