@@ -105,7 +105,7 @@ sub getchilddatasets {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hr $fs |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem -Hr $fs |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
