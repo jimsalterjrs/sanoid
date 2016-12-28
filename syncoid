@@ -20,7 +20,7 @@ if ($args{'version'}) {
 }
 
 if (!(defined $args{'source'} && defined $args{'target'})) {
-       print 'usage: syncoid [src_user@src_host:]src_pool/src_fs [dst_user@dst_host:]dst_pool/dst_fs'."\n";
+       print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
        exit 127;
 }
 
