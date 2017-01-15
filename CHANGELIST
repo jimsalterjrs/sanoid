@@ -1,3 +1,6 @@
+1.4.7a (syncoid only) added standard invocation output when called without source or target 
+       as per @rriley and @fajarnugraha suggestions
+
 1.4.7 reverted Perl shebangs to #!/usr/bin/perl - sorry FreeBSD folks, shebanged to /usr/bin/env perl bare calls to syncoid
       or sanoid (without explicit calls to Perl) don't work on EITHER of our systems.  I'm not OK with that, this is going to be
       an OS localization issue that can either be addressed with BSD-specific packaging, or you can individually address it

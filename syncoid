@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.7';
+my $version = '1.4.7a';
 
 use strict;
 use warnings;
@@ -17,6 +17,11 @@ my %args = getargs(@ARGV);
 if ($args{'version'}) {
 	print "Syncoid version: $version\n";
 	exit 0;
+}
+
+if (!(defined $args{'source'} && defined $args{'target'})) {
+       print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
+       exit 127;
 }
 
 my $rawsourcefs = $args{'source'};
