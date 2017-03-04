@@ -106,11 +106,15 @@ exit 0;
 sub getchilddatasets {
 	my ($rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
+        my $double_quote = 0;
 	
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost"; 
+            $double_quote = 1;
+        }
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hr $fs |";
+        my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hr " . quotestring ($fs, $double_quote) . " |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
@@ -168,10 +172,10 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: getoldestsnapshot() returned false, so using $newsyncsnap.\n"; }
 			$oldestsnap = $newsyncsnap; 
 		}
-		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
-		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
+		my $sendcmd = "$sourcesudocmd $zfscmd send " . quotestring("$sourcefs\@$oldestsnap");
+		my $recvcmd = "$targetsudocmd $zfscmd receive -F " . quotestring($targetfs);
 
-		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
+		my $pvsize = getsendsize($sourcehost,quotestring("$sourcefs\@$oldestsnap"),0,$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
@@ -195,7 +199,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 	
-			$sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+			$sendcmd = "$sourcesudocmd $zfscmd send -I " . quotestring("$sourcefs\@$oldestsnap") . " " . quotestring("$sourcefs\@$newsyncsnap");
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -238,16 +242,18 @@ sub syncdataset {
 		# rollback target to matchingsnap
 		if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 		if ($targethost ne '') {
-			if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-			system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+                        my $rollbackcmd = "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R " . quotestring("$targetfs\@$matchingsnap", 1) . "\n";
+			if ($debug) { print $rollbackcmd }
+			system ($rollbackcmd);
 		} else {
-			if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-			system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+                        my $rollbackcmd = "$targetsudocmd $zfscmd rollback -R " . quotestring("$targetfs\@$matchingsnap", 0) . "\n";
+			if ($debug) { print $rollbackcmd; }
+			system ($rollbackcmd);
 		}
 	
-		my $sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
-		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
-		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
+		my $sendcmd = "$sourcesudocmd $zfscmd send -I " . quotestring("$sourcefs\@$matchingsnap") . " " . quotestring("$sourcefs\@$newsyncsnap");
+		my $recvcmd = "$targetsudocmd $zfscmd receive -F " . quotestring($targetfs, 1);
+		my $pvsize = getsendsize($sourcehost, "$sourcefs\@$matchingsnap", "$sourcefs\@$newsyncsnap",$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
@@ -523,24 +529,34 @@ sub iszfsbusy {
 
 sub setzfsvalue {
 	my ($rhost,$fs,$isroot,$property,$value) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+        my $double_quote = 0;
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost"; 
+            $double_quote = 1;
+        }
 	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fs") == 0
-		or print "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?, proceeding anyway.\n";
+        my $setzfscmd = "$rhost $mysudocmd $zfscmd set $property=$value " . quotestring($fs, $double_quote); 
+	if ($debug) { print "$setzfscmd\n"; }
+	system($setzfscmd) == 0
+		or print "WARNING: $setzfscmd died: $?, proceeding anyway.\n";
 	return;
 }
 
 sub getzfsvalue {
 	my ($rhost,$fs,$isroot,$property) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+        my $double_quote = 0;
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost"; 
+            $double_quote = 1;
+        }
 	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fs\n"; }
-	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fs |";
+        my $getzfscmd = "$rhost $mysudocmd $zfscmd get -H $property " . quotestring($fs, $double_quote);
+	if ($debug) { print "$getzfscmd \n"; }
+	open FH, "$getzfscmd |";
 	my $value = <FH>;
 	close FH;
 	my @values = split(/\s/,$value);
@@ -637,7 +653,11 @@ sub buildsynccmd {
 
 sub pruneoldsyncsnaps {
 	my ($rhost,$fs,$newsyncsnap,$isroot,@snaps) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+        my $double_quote = 0;
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost"; 
+            $double_quote = 1;
+        }
 	my $hostid = hostname();
 
 	my $mysudocmd;
@@ -663,10 +683,10 @@ sub pruneoldsyncsnaps {
 	my $prunecmd;
 	foreach my $snap(@prunesnaps) {
 		$counter ++;
-		$prunecmd .= "$mysudocmd $zfscmd destroy $fs\@$snap; ";
+		$prunecmd .= "$mysudocmd $zfscmd destroy " . quotestring("$fs\@$snap", $double_quote) . "; ";
 		if ($counter > $maxsnapspercmd) {
 			$prunecmd =~ s/\; $//;
-			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
+			if ($rhost ne '') { $prunecmd = '\'' . $prunecmd . '\''; }
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
 			system("$rhost $prunecmd") == 0 
@@ -679,7 +699,7 @@ sub pruneoldsyncsnaps {
 	# the loop, commit 'em now
 	if ($counter) { 
 		$prunecmd =~ s/\; $//; 
-		if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
+		if ($rhost ne '') { $prunecmd = '\'' . $prunecmd . '\''; }
 		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
 		system("$rhost $prunecmd") == 0 
@@ -725,7 +745,7 @@ sub newsyncsnap {
 	my $hostid = hostname();
 	my %date = getdate();
 	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
-	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fs\@$snapname\n";
+	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot " . quotestring("$fs\@$snapname") . "\n";
 	system($snapcmd) == 0 
 		or die "CRITICAL ERROR: $snapcmd failed: $?";
 	return $snapname;
@@ -733,10 +753,14 @@ sub newsyncsnap {
 
 sub targetexists {
 	my ($rhost,$fs,$isroot) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+        my $double_quote = 0;
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost"; 
+            $double_quote = 1;
+        }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	my $checktargetcmd = "$rhost $mysudocmd $zfscmd get -H name $fs";
+	my $checktargetcmd = "$rhost $mysudocmd $zfscmd get -H name " . quotestring($fs, $double_quote);
 	if ($debug) { print "DEBUG: checking to see if target filesystem exists using \"$checktargetcmd 2>&1 |\"...\n"; }
 	open FH, "$checktargetcmd 2>&1 |";
 	my $targetexists = <FH>;
@@ -783,11 +807,15 @@ sub dumphash() {
 sub getsnaps() {
 	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
+        my $double_quote = 0;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($rhost ne '') { 
+            $rhost = "$sshcmd $rhost";
+            $double_quote = 1;
+        }
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 creation $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 creation " . quotestring($fs, $double_quote) . " |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
@@ -802,7 +830,7 @@ sub getsnaps() {
 			$ctime =~ s/\s*-$//;
 			my $snap = $line;
 			$snap =~ s/\s*creation.*$//;
-			$snap =~ s/^\S*\@//;
+			$snap =~ s/^.*\@//;
 			$snaps{$type}{$snap}{'ctime'}=$ctime;
 		}
 	}
@@ -829,7 +857,7 @@ sub getsendsize {
 	my $sourcessh;
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP " . quotestring($snaps);
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
@@ -871,3 +899,14 @@ sub getdate {
 }
 
 
+sub quotestring {
+    my ($qstring, $double_quote) = @_;
+    $double_quote //= 0;
+
+    if ($double_quote) {
+        return "\"'$qstring'\"";
+    }
+    else {
+        return "\"$qstring\"";
+    }
+}
