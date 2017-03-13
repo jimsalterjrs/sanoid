@@ -146,7 +146,14 @@ sub syncdataset {
 	if ($args{'dumpsnaps'}) { print "merged snapshot list: \n"; dumphash(\%snaps); print "\n\n\n"; }
 	
 	# create a new syncoid snapshot on the source filesystem.
-	my $newsyncsnap = newsyncsnap($sourcehost,$sourcefs);
+	my $newsyncsnap;
+	if (!defined ($args{'no-sync-snap'}) ) { 
+		$newsyncsnap = newsyncsnap($sourcehost,$sourcefs);
+	} else {
+		# we don't want sync snapshots created, so use the newest snapshot we can find.
+		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs);
+		if ($newsyncsnap eq 0) { die "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n"; }
+	}
 	
 	# there is currently (2014-09-01) a bug in ZFS on Linux
 	# that causes readonly to always show on if it's EVER
@@ -161,13 +168,23 @@ sub syncdataset {
 	if (! $targetexists) {
 		# do an initial sync from the oldest source snapshot
 		# THEN do an -I to the newest
-		if ($debug) { print "DEBUG: target $targetfs does not exist.  Finding oldest available snapshot on source $sourcefs ...\n"; }
+		if ($debug) { 
+			if (!defined ($args{'no-stream'}) ) {
+				print "DEBUG: target $targetfs does not exist.  Finding oldest available snapshot on source $sourcefs ...\n"; 
+			} else {
+				print "DEBUG: target $targetfs does not exist, and --no-stream selected.  Finding newest available snapshot on source $sourcefs ...\n";
+			}
+		}
 		my $oldestsnap = getoldestsnapshot(\%snaps);
 		if (! $oldestsnap) { 
 			# getoldestsnapshot() returned false, so use new sync snapshot
 			if ($debug) { print "DEBUG: getoldestsnapshot() returned false, so using $newsyncsnap.\n"; }
 			$oldestsnap = $newsyncsnap; 
 		}
+
+		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
+		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
+
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
 		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
 
@@ -175,7 +192,13 @@ sub syncdataset {
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-		if (!$quiet) { print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n"; }
+		if (!$quiet) { 
+			if (!defined ($args{'no-stream'}) ) {
+				print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n"; 
+			} else {
+				print "INFO: --no-stream selected; sending newest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n"; 
+			}
+		}
 		if ($debug) { print "DEBUG: $synccmd\n"; }
 	
 		# make sure target is (still) not currently in receive.
@@ -186,8 +209,10 @@ sub syncdataset {
 			or die "CRITICAL ERROR: $synccmd failed: $?";
 	
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
-		# other than the new sync snapshot to begin with, of course
-		if ($oldestsnap ne $newsyncsnap) {
+		# other than the new sync snapshot to begin with, of course - and that we
+		# aren't invoked with --no-stream, in which case a full of the newest snap
+		# available was all we needed to do
+		if (!defined ($args{'no-stream'}) && ($oldestsnap ne $newsyncsnap) ) {
 	
 			# get current readonly status of target, then set it to on during sync
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -195,7 +220,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 	
-			$sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -208,8 +233,13 @@ sub syncdataset {
 	
 			if (!$quiet) { print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system($synccmd) == 0 
-				or die "CRITICAL ERROR: $synccmd failed: $?";
+
+			if ($oldestsnap ne $newsyncsnap) {
+				system($synccmd) == 0 
+					or die "CRITICAL ERROR: $synccmd failed: $?";
+			} else {
+				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
+			}
 	
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -235,32 +265,37 @@ sub syncdataset {
 			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 		}
 	
-		# rollback target to matchingsnap
-		if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
-		if ($targethost ne '') {
-			if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-			system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+		if ($matchingsnap eq $newsyncsnap) {
+			# barf some text but don't touch the filesystem
+			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
 		} else {
-			if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-			system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+			# rollback target to matchingsnap
+			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
+			if ($targethost ne '') {
+				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
+				system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+			} else {
+				if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
+				system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+			}
+		
+			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
+			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
+			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
+			my $disp_pvsize = readablebytes($pvsize);
+			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+			my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+		
+			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
+			if ($debug) { print "DEBUG: $synccmd\n"; }
+			system("$synccmd") == 0 
+				or die "CRITICAL ERROR: $synccmd failed: $?";
+		
+			# restore original readonly value to target after sync complete
+				# dyking this functionality out for the time being due to buggy mount/unmount behavior
+				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
+			#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 		}
-	
-		my $sendcmd = "$sourcesudocmd $zfscmd send -I $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
-		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
-		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
-		my $disp_pvsize = readablebytes($pvsize);
-		if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-
-		if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
-		if ($debug) { print "DEBUG: $synccmd\n"; }
-		system("$synccmd") == 0 
-			or die "CRITICAL ERROR: $synccmd failed: $?";
-	
-		# restore original readonly value to target after sync complete
-			# dyking this functionality out for the time being due to buggy mount/unmount behavior
-			# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
-		#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);			
 	}
 	
 	# prune obsolete sync snaps on source and target.
@@ -276,9 +311,9 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet');
+	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
 
 	while (my $rawarg = shift(@args)) {
@@ -337,6 +372,8 @@ sub getargs {
 
 	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; } else { $args{'source-bwlimit'} = ''; }
 	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; } else { $args{'target-bwlimit'} = ''; }
+
+	if (defined $args{'no-stream'}) { $args{'streamarg'} = '-i'; } else { $args{'streamarg'} = '-I'; }
 
 	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
 
@@ -569,6 +606,19 @@ sub getoldestsnapshot {
 		return $snap;
 	}
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
+	die "CRIT: getoldestsnapshot() could not find any snapshots on source!\n";
+	return 0;
+}
+
+sub getnewestsnapshot {
+	my $snaps = shift;
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
+		# return on first snap found - it's the newest
+		print "NEWEST SNAPSHOT: $snap\n";
+		return $snap;
+	}
+	# must not have had any snapshots on source - looks like we'd better create one!
+	die "CRIT: getnewestsnapshot() could not find any snapshots on source!\n";
 	return 0;
 }
 
@@ -820,7 +870,7 @@ sub getsendsize {
 	my $snaps;
 	if ($snap2) {
 		# if we got a $snap2 argument, we want an incremental send estimate from $snap1 to $snap2.
-		$snaps = "-I $snap1 $snap2";
+		$snaps = "$args{'streamarg'} $snap1 $snap2";
 	} else {
 		# if we didn't get a $snap2 arg, we want a full send estimate for $snap1.
 		$snaps = "$snap1";
