@@ -135,10 +135,10 @@ sub syncdataset {
 	
 	# build hashes of the snaps on the source and target filesystems.
 
-	%snaps = getsnaps('source',$sourcehost,$sourcefs);
+	%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
 
 	if ($targetexists) { 
-		my %targetsnaps = getsnaps('target',$targethost,$targetfs); 
+		my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
 		my %sourcesnaps = %snaps;
 		%snaps = (%sourcesnaps, %targetsnaps);
 	}
@@ -148,10 +148,10 @@ sub syncdataset {
 	# create a new syncoid snapshot on the source filesystem.
 	my $newsyncsnap;
 	if (!defined ($args{'no-sync-snap'}) ) { 
-		$newsyncsnap = newsyncsnap($sourcehost,$sourcefs);
+		$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
 	} else {
 		# we don't want sync snapshots created, so use the newest snapshot we can find.
-		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs);
+		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 		if ($newsyncsnap eq 0) { die "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n"; }
 	}
 	
