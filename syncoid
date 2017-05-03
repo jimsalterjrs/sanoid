@@ -110,7 +110,7 @@ sub getchilddatasets {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -Hr $fs |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem,volume -Hr $fs |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
@@ -837,7 +837,7 @@ sub getsnaps() {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 creation $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot creation $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
