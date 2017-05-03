@@ -848,11 +848,9 @@ sub getsnaps() {
 		if ($line =~ /$fs\@/) {
 			chomp $line;
 			my $ctime = $line;
-			$ctime =~ s/^.*creation\s*//;
-			$ctime =~ s/\s*-$//;
+			$ctime =~ s/^.*\screation\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/\s*creation.*$//;
-			$snap =~ s/^\S*\@//;
+			$snap =~ s/^\S*\@(\S*)\s*creation.*$/$1/;
 			$snaps{$type}{$snap}{'ctime'}=$ctime;
 		}
 	}
