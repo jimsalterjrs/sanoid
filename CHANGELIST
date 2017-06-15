@@ -1,3 +1,10 @@
+1.4.8 added --no-stream argument to syncoid: allows use of -i incrementals (do not replicate a full snapshot stream, only a 
+      direct incremental update from oldest to most recent snapshot) instead of the normal -I incrementals which include
+      all intermediate snapshots.
+
+      added --no-sync-snap, which has syncoid replicate using only the newest PRE-EXISTING snapshot on source,
+      instead of default behavior in which syncoid creates a new, ephemeral syncoid snapshot.
+
 1.4.7a (syncoid only) added standard invocation output when called without source or target 
        as per @rriley and @fajarnugraha suggestions
 

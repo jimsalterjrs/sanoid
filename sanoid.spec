@@ -8,7 +8,6 @@ Group:		Applications/System
 License:	GPLv3
 URL:		https://github.com/jimsalterjrs/sanoid
 Source0:	https://github.com/jimsalterjrs/sanoid/archive/sanoid-master.zip
-Patch0:		sanoid-syncoid-sshkey.patch
 #BuildRequires:	
 Requires:	perl
 

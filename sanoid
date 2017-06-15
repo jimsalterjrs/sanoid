@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.7';
+my $version = '1.4.8';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -46,7 +46,7 @@ if ($args{'version'}) 		{ print "INFO: Sanoid version: $version\n"; }
 
 if ($args{'cron'} || $args{'noargs'}) {
 	if ($args{'noargs'}) { print "INFO: No arguments given - assuming --cron and --verbose.\n"; }
-	$args{'verbose'} = 1;
+	if (!$args{'quiet'}) { $args{'verbose'} = 1; }
 	take_snapshots (@params);
 	prune_snapshots (@params);
 } else {
@@ -1032,8 +1032,8 @@ sub getargs {
 	my %validargs;
 	my %novalueargs;
 
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir';
-	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly';
+	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir','quiet';
+	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','quiet';
 	foreach my $item (@validargs) { $validargs{$item}=1; }
 	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
 
