@@ -180,4 +180,4 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 	This doesn't do anything right now.
 
-Note that the snapshots it takes and transfers are not atomic relative to one another
+Note that the sync snapshots syncoid creates are not atomic in a global context: sync snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent, but one may be a few filesystem transactions "newer" than the other.  (This does not affect the consistency of snapshots already taken in other ways, which syncoid replicates in the overall stream unless --no-stream is specified. So if you want to manually zfs snapshot -R pool@1 before replicating with syncoid, the global atomicity of pool/dataset1@1 and pool/dataset2@1 will still be intact.)
