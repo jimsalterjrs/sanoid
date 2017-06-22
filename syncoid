@@ -764,7 +764,7 @@ sub getmatchingsnapshot {
 		print "                replication must be to a NON EXISTENT DATASET, which will\n";
 		print "                then be CREATED BY the initial replication process.\n\n";
 	}
-	exit 256;
+	exit 3;
 }
 
 sub newsyncsnap {
