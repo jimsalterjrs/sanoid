@@ -21,6 +21,22 @@ if ($args{'version'}) {
 
 if (!(defined $args{'source'} && defined $args{'target'})) {
        print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
+       print '',"\n";
+       print '  --compress                        compress the stream',"\n";
+       print '  --debug',"\n";
+       print '  --dumpsnaps                       print snapshots',"\n";
+       print '  --nocommandchecks                 assuming that helper programs are available',"\n";
+       print '  --no-stream                       do not replicate intermediate snapshots',"\n";
+       print '  --no-sync-snap                    use existing snapshots',"\n";
+       print '  -r                                recursive',"\n";
+       print '  --source-bwlimit <limit t|g|m|k>  limit bandwidth',"\n";
+       print '  --sshcipher <cipher>              change default (chacha20-poly1305@openssh.com,arcfour) cipher',"\n";
+       print '  --sshkey <key file>               use ssh private key',"\n";
+       print '  --sshport <port>                  change default ssh port',"\n";
+       print '  --quiet',"\n";
+       print '  --verbose',"\n";
+       print '  --version',"\n";
+       print '',"\n";
        exit 127;
 }
 
@@ -45,7 +61,9 @@ my $lscmd = '/bin/ls';
 if ( $args{'sshport'} ) {
   $sshport = "-p $args{'sshport'}";
 }
-# figure out if source and/or target are remote.
+if ( $args{'sshcipher'} ) {
+  $sshcipher = "-c $args{'sshcipher'}";
+}
 if ( $args{'sshkey'} ) {
   $sshcmd = "$sshcmd $sshcipher $sshport -i $args{'sshkey'}";
 }
@@ -311,7 +329,7 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshcipher','sshkey','sshport','quiet','no-stream','no-sync-snap');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
 	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
