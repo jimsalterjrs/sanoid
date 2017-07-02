@@ -64,7 +64,6 @@ if ( $args{'sshport'} ) {
 if ( $args{'sshcipher'} ) {
   $sshcipher = "-c $args{'sshcipher'}";
 }
-# figure out if source and/or target are remote.
 if ( $args{'sshkey'} ) {
   $sshcmd = "$sshcmd $sshcipher $sshport -i $args{'sshkey'}";
 }
