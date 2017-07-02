@@ -21,6 +21,22 @@ if ($args{'version'}) {
 
 if (!(defined $args{'source'} && defined $args{'target'})) {
        print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
+       print '',"\n";
+       print '  --compress                        compress the stream',"\n";
+       print '  --debug',"\n";
+       print '  --dumpsnaps                       print snapshots',"\n";
+       print '  --nocommandchecks                 assuming that helper programs are available',"\n";
+       print '  --no-stream                       do not replicate intermediate snapshots',"\n";
+       print '  --no-sync-snap                    use existing snapshots',"\n";
+       print '  -r                                recursive',"\n";
+       print '  --source-bwlimit <limit t|g|m|k>  limit bandwidth',"\n";
+       print '  --sshcipher <cipher>              change default (chacha20-poly1305@openssh.com,arcfour) cipher',"\n";
+       print '  --sshkey <key file>               use ssh private key',"\n";
+       print '  --sshport <port>                  change default ssh port',"\n";
+       print '  --quiet',"\n";
+       print '  --verbose',"\n";
+       print '  --version',"\n";
+       print '',"\n";
        exit 127;
 }
 
