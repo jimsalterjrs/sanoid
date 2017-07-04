@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.8';
+my $version = '1.4.9';
 
 use strict;
 use warnings;
@@ -32,7 +32,12 @@ my $quiet = $args{'quiet'};
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
-my $sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
+my $sshcipher;
+if (defined $args{'c'}) {
+	$sshcipher = "-c $args{'c'}";
+} else {
+	$sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
+}
 my $sshport = '-p 22';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
@@ -311,7 +316,7 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
 	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }

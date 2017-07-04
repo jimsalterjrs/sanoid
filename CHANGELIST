@@ -1,3 +1,6 @@
+1.4.9 added -c option to manually specify the SSH cipher used.  Must use a cipher supported by both source and target! Thanks 
+      Tamas Papp.
+
 1.4.8 added --no-stream argument to syncoid: allows use of -i incrementals (do not replicate a full snapshot stream, only a 
       direct incremental update from oldest to most recent snapshot) instead of the normal -I incrementals which include
       all intermediate snapshots.
