@@ -1,3 +1,8 @@
+1.4.11 enhanced Syncoid to use zfs `guid` property rather than `creation` property to ensure snapshots on source
+       and target actually match. This immediately prevents conflicts due to timezone differences on source and target,
+       and also paves the way in the future for Syncoid to find matching snapshots even after `zfs rename` on source
+       or target. Thank you Github user @mailinglists35 for the idea!
+
 1.4.10 added --compress=pigz-fast and --compress=pigz-slow. On a Xeon E3-1231v3, pigz-fast is equivalent compression 
        to --compress=gzip but with compressed throughput of 75.2 MiB/s instead of 18.1 MiB/s. pigz-slow is around 5%
        better compression than compress=gzip with roughly equivalent compressed throughput. Note that pigz-fast produces

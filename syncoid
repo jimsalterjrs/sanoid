@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.10';
+my $version = '1.4.11';
 
 use strict;
 use warnings;
@@ -616,7 +616,7 @@ sub readablebytes {
 
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'ctime'}<=>$snaps{'source'}{$b}{'ctime'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'guid'}<=>$snaps{'source'}{$b}{'guid'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -627,7 +627,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		print "NEWEST SNAPSHOT: $snap\n";
 		return $snap;
@@ -755,9 +755,9 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($targetsize, $snaps) = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'ctime'}<=>$snaps{'source'}{$a}{'ctime'} } keys %{ $snaps{'source'} }) {
-		if (defined $snaps{'target'}{$snap}{'ctime'}) {
-			if ($snaps{'source'}{$snap}{'ctime'} == $snaps{'target'}{$snap}{'ctime'}) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
+		if (defined $snaps{'target'}{$snap}{'guid'}) {
+			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
 			}
 		}
@@ -852,7 +852,7 @@ sub getsnaps() {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot creation $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
@@ -862,11 +862,11 @@ sub getsnaps() {
 		# only import snaps from the specified filesystem
 		if ($line =~ /$fs\@/) {
 			chomp $line;
-			my $ctime = $line;
-			$ctime =~ s/^.*\screation\s*(\d*).*/$1/;
+			my $guid = $line;
+			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/^\S*\@(\S*)\s*creation.*$/$1/;
-			$snaps{$type}{$snap}{'ctime'}=$ctime;
+			$snap =~ s/^\S*\@(\S*)\s*guid.*$/$1/;
+			$snaps{$type}{$snap}{'guid'}=$guid;
 		}
 	}
 
