@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.11';
+my $version = '1.4.12';
 
 use strict;
 use Config::IniFiles;   # read samba-style conf file
@@ -577,6 +577,9 @@ sub init {
 		if (defined $ini{$section}{'use_template'}) {
 			my @templates = split (' *, *',$ini{$section}{'use_template'});
 			foreach my $rawtemplate (@templates) {
+				# strip trailing whitespace
+				$rawtemplate =~ s/\s+$//g;
+
 				my $template = 'template_'.$rawtemplate;
 				foreach my $key (keys %{$ini{$template}}) {
 					if (! ($key =~ /template|recursive/)) { 

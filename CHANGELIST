@@ -1,3 +1,5 @@
+1.4.12 Sanoid now strips trailing whitespace in template definitions in sanoid.conf, per Github #61
+
 1.4.11 enhanced Syncoid to use zfs `guid` property rather than `creation` property to ensure snapshots on source
        and target actually match. This immediately prevents conflicts due to timezone differences on source and target,
        and also paves the way in the future for Syncoid to find matching snapshots even after `zfs rename` on source
