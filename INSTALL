@@ -10,14 +10,13 @@ is not available on either end of the transport.
 On Ubuntu: apt install pv lzop mbuffer
 On FreeBSD: pkg install pv lzop
 
-FreeBSD notes: mbuffer is not currently recommended due to oddities in 
-               FreeBSD's local implementation.  Internal network buffering
-               capability is on the roadmap soon to remove mbuffer dependency
-               anyway.  FreeBSD places pv and lzop in /usr/local/bin instead
-               of /usr/bin ; syncoid currently does not check path.
+FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than
+               /usr/bin ; syncoid currently does not check path.
 
                Simplest path workaround is symlinks, eg:
                root@bsd:~# ln -s /usr/bin/lzop /usr/local/bin/lzop
+               or similar, as appropriate, to create links in /usr/bin
+               to wherever the utilities actually are on your system.
 
 
 SANOID
