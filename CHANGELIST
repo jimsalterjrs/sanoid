@@ -1,3 +1,9 @@
+1.4.13 Syncoid will now continue trying to replicate other child datasets after one dataset fails replication
+       when called recursively. Eg syncoid -r source/parent target/parent when source/parent/child1 has been 
+       deleted and replaced with an imposter will no longer prevent source/parent/child2 from successfully
+       replicating to target/parent/child2.  This could still use some cleanup TBH; syncoid SHOULD exit 3
+       if any of these errors happen (to assist detection of errors in scripting) but now would exit 0.
+
 1.4.12 Sanoid now strips trailing whitespace in template definitions in sanoid.conf, per Github #61
 
 1.4.11 enhanced Syncoid to use zfs `guid` property rather than `creation` property to ensure snapshots on source
