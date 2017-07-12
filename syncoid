@@ -132,7 +132,8 @@ sub syncdataset {
 
 	# make sure target is not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
-		die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+		warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+		return 0;
 	}
 	
 	# does the target filesystem exist yet?
@@ -157,7 +158,10 @@ sub syncdataset {
 	} else {
 		# we don't want sync snapshots created, so use the newest snapshot we can find.
 		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
-		if ($newsyncsnap eq 0) { die "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n"; }
+		if ($newsyncsnap eq 0) { 
+			warn "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n"; 
+			return 0; 
+		}
 	}
 	
 	# there is currently (2014-09-01) a bug in ZFS on Linux
@@ -208,7 +212,8 @@ sub syncdataset {
 	
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
-			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			return 0;
 		}
 		system($synccmd) == 0 
 			or die "CRITICAL ERROR: $synccmd failed: $?";
@@ -233,7 +238,8 @@ sub syncdataset {
 	
 			# make sure target is (still) not currently in receive.
 			if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
-				die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+				warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+				return 0;
 			}
 	
 			if (!$quiet) { print "INFO: Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
@@ -241,7 +247,8 @@ sub syncdataset {
 
 			if ($oldestsnap ne $newsyncsnap) {
 				system($synccmd) == 0 
-					or die "CRITICAL ERROR: $synccmd failed: $?";
+					or warn "CRITICAL ERROR: $synccmd failed: $?";
+					return 0;
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
 			}
@@ -264,10 +271,16 @@ sub syncdataset {
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 	
 		my $matchingsnap = getmatchingsnapshot($targetsize, \%snaps);
+		if (! $matchingsnap) {
+			# no matching snapshot; we whined piteously already, but let's go ahead and return false
+			# now in case more child datasets need replication.
+			return 0;
+		}
 	
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
-			die "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			return 0;
 		}
 	
 		if ($matchingsnap eq $newsyncsnap) {
@@ -581,7 +594,7 @@ sub setzfsvalue {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
 	system("$rhost $mysudocmd $zfscmd set $property=$value $fs") == 0
-		or print "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?, proceeding anyway.\n";
+		or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?, proceeding anyway.\n";
 	return;
 }
 
@@ -623,7 +636,7 @@ sub getoldestsnapshot {
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
 	if (defined ($args{'no-sync-snap'}) ) {
 		# well, actually we set --no-sync-snap, so no we *didn't* already make one. Whoops.
-		die "CRIT: getoldestsnapshot() could not find any snapshots on source!\n";
+		die "CRIT: --no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!\n";
 	}
 	return 0;
 }
@@ -636,7 +649,10 @@ sub getnewestsnapshot {
 		return $snap;
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
-	die "CRIT: getnewestsnapshot() could not find any snapshots on source!\n";
+	if (defined ($args{'no-sync-snap'}) ) {
+		# well, actually we set --no-sync-snap, so no we *can't* make one. Whoops.
+		die "CRIT: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source!\n";
+	}
 	return 0;
 }
 
@@ -738,7 +754,7 @@ sub pruneoldsyncsnaps {
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
 			system("$rhost $prunecmd") == 0 
-				or die "CRITICAL ERROR: $rhost $prunecmd failed: $?";
+				or warn "CRITICAL ERROR: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
 			$counter = 0;
 		}
@@ -782,7 +798,7 @@ sub getmatchingsnapshot {
 		print "                replication must be to a NON EXISTENT DATASET, which will\n";
 		print "                then be CREATED BY the initial replication process.\n\n";
 	}
-	exit 3;
+	return 0;
 }
 
 sub newsyncsnap {
