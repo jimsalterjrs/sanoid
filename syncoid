@@ -389,6 +389,16 @@ sub getargs {
 		$args{'compressargs'} = '-3';
 		$args{'rawdecompresscmd'} = '/bin/zcat';
 		$args{'decompressargs'} = '';
+	} elsif ( ($args{'compress'} eq 'pigz-fast')) {
+		$args{'rawcompresscmd'} = '/usr/bin/pigz';
+		$args{'compressargs'} = '-3';
+		$args{'rawdecompresscmd'} = '/usr/bin/pigz';
+		$args{'decompressargs'} = '-dc';
+	} elsif ( ($args{'compress'} eq 'pigz-slow')) {
+		$args{'rawcompresscmd'} = '/usr/bin/pigz';
+		$args{'compressargs'} = '-9';
+		$args{'rawdecompresscmd'} = '/usr/bin/pigz';
+		$args{'decompressargs'} = '-dc';
 	} elsif ( ($args{'compress'} eq 'lzo') || ($args{'compress'} eq 'default') ) {
 		$args{'rawcompresscmd'} = '/usr/bin/lzop';
 		$args{'compressargs'} = '';
