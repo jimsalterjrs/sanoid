@@ -621,7 +621,10 @@ sub getoldestsnapshot {
 		return $snap;
 	}
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
-	die "CRIT: getoldestsnapshot() could not find any snapshots on source!\n";
+	if (defined ($args{'no-sync-snap'}) ) {
+		# well, actually we set --no-sync-snap, so no we *didn't* already make one. Whoops.
+		die "CRIT: getoldestsnapshot() could not find any snapshots on source!\n";
+	}
 	return 0;
 }
 
