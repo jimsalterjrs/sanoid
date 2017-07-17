@@ -1,3 +1,6 @@
+1.4.14 fixed significant regression in syncoid - now pulls creation AND guid on each snap; sorts by
+       creation and matches by guid. regression reported in #112 by @da-me, thank you!
+
 1.4.13 Syncoid will now continue trying to replicate other child datasets after one dataset fails replication
        when called recursively. Eg syncoid -r source/parent target/parent when source/parent/child1 has been 
        deleted and replaced with an imposter will no longer prevent source/parent/child2 from successfully

@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.13';
+my $version = '1.4.14';
 
 use strict;
 use warnings;
@@ -629,7 +629,7 @@ sub readablebytes {
 
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'guid'}<=>$snaps{'source'}{$b}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -643,7 +643,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		print "NEWEST SNAPSHOT: $snap\n";
 		return $snap;
@@ -774,7 +774,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($targetsize, $snaps) = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}{'guid'}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -871,21 +871,36 @@ sub getsnaps() {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
 	close FH;
 
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
+
 	foreach my $line (@rawsnaps) {
-		# only import snaps from the specified filesystem
-		if ($line =~ /$fs\@/) {
+		# only import snap guids from the specified filesystem
+		if ($line =~ /$fs\@.*guid/) {
 			chomp $line;
 			my $guid = $line;
 			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^\S*\@(\S*)\s*guid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
+		}
+	}
+
+	foreach my $line (@rawsnaps) {
+		# only import snap creations from the specified filesystem
+		if ($line =~ /$fs\@.*creation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^\S*\@(\S*)\s*creation.*$/$1/;
+			$snaps{$type}{$snap}{'creation'}=$creation;
 		}
 	}
 
