@@ -3,7 +3,7 @@
 What this is
 ------------
 
-Syncoid-Rsync is a modification of the ZFS synchronization tool, syncoid, from the <a href="https://github.com/jimsalterjrs/sanoid">sanoid project</a>. This modification makes some significant changes to add a new mode of operation to syncoid that implements a form of "resume" support for ZFS send/receive operations. Please see the sanoid project page for more general information about the syncoid tool.
+Syncoid-Rsync is a modification of the ZFS synchronization tool, syncoid, from the <a href="https://github.com/jimsalterjrs/sanoid">sanoid project</a>. This modification makes some significant changes to add a new mode of operation to syncoid that implements a form of "resume" support for ZFS send/receive operations. It does this without relying on native ZFS resume support, which is not yet present in stable zfsonlinux. Please see the sanoid project page for more general information about the syncoid tool.
 
 Who should use this
 -------------------
@@ -52,7 +52,7 @@ Beyond the normal syncoid responsibilities, the --rsync mode's loop in the main 
 
 + Transfers itself to a randomized /tmp/syncoid-<randomsessionID>/ folder in the source and destination servers.
 + Calls itself as a background process in the source and destination servers with a special flag to put it into daemon mode.
-+ Loops continuously, looking for and transferring the next expected chunk.
++ Loops continuously, looking for and transferring the next expected chunk. The chunks are transferred using rsync.
 + Transmits information from source to destination about ending conditions.
 + End daemons and clean up temp data when it gets information from the source and destination daemons that they are finished.
 + Abort if more than a configurable amount of time passes in which no progress is made.
