@@ -4,13 +4,19 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.13';
+my $version = '1.4.14';
 
 use strict;
 use warnings;
 use Data::Dumper;
 use Time::Local;
 use Sys::Hostname;
+
+# Graham-Rsync-Mod
+use Digest::MD5 qw(md5 md5_hex md5_base64);
+use File::Basename;
+use Time::HiRes qw(usleep ualarm gettimeofday tv_interval);
+
 
 my %args = getargs(@ARGV);
 
@@ -19,8 +25,18 @@ if ($args{'version'}) {
 	exit 0;
 }
 
-if (!(defined $args{'source'} && defined $args{'target'})) {
-       print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
+# Graham-Rsync-Mod
+my $rsync = $args{'rsync'};
+my $receivedaemon = $args{'receivedaemon'};
+my $senddaemon = $args{'senddaemon'};
+my $scpcmd = '/usr/bin/scp';
+my $rsynccmd = '/usr/bin/rsync --timeout=30';
+my $q_mb = 20 ; # how many MB each q file should be .. this amount of memory will be consumed while consuming each chunk
+my $q_max = 20; # how many files to buffer in daemon mode .. this counts MD5, so 20 means 10 data chunks of $q_mb size
+my $max_idle_time = 3600; # how long, in seconds, the rsync mode's control loop and its daemons should tolerate inactivity before closing themselves out. Make sure this is high enough to comfortably cover 1 chunk of the size specified ($q_mb) within this timeframe even in adverse bandwidth spikes
+
+if ( (!(defined $args{'source'} && defined $args{'target'})) && !(($receivedaemon) || ($senddaemon)) ) { # Graham-Rsync-Mod .. exception so daemon modes can launch
+       print 'usage: syncoid [--rsync] [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n"; # Graham-Rsync-Mod .. added [--rsync]
        exit 127;
 }
 
@@ -46,6 +62,27 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # currently using ls to check for file existence because we aren't depending on perl
 # being present on remote machines.
 my $lscmd = '/bin/ls';
+
+
+
+# Graham-Rsync-Mod
+if ($debug) {
+	print "DEBUG mode set.\n";
+	if ($rsync) {
+		print "DEBUG: Rsync mode set.\n";
+	}
+}
+if ($receivedaemon) {
+	print "entering pipereceive... \n";
+	my $tmp = pipereceive();
+	exit 0;
+}
+if ($senddaemon) {
+	print "entering pipesend... \n";
+	my $tmp = pipesend();
+	#print "$tmp\n";
+	exit 0;
+}
 
 if ( $args{'sshport'} ) {
   $sshport = "-p $args{'sshport'}";
@@ -107,6 +144,579 @@ exit 0;
 ##############################################################################
 ##############################################################################
 ##############################################################################
+
+# Graham-Rsync-Mod
+sub pipesend {
+	$debug = 1; # since all debug output from the daemons goes to a log file instead of to screen, might as well have it on
+	# Get folder path
+	my $dirname = dirname(__FILE__);
+	if ($debug) { print "(debug) folder this script lives in: $dirname\n"; }
+	
+	my $qdir = "$dirname/q";
+	my $finish_file = "$qdir/zFIN";
+	my $chunkid = "0";
+	my $padded_chunkid;
+	my $finished = 0;
+	my $tmp;
+	my $filehandle;
+	my $cmdoutput;
+	
+	# Clean up any old /tmp/syncoid-$sessionid folders that aren't in use by a running syncoid process before we get started
+	opendir($filehandle,"/tmp");
+	my @tmpfolders = readdir($filehandle);
+	closedir($filehandle);
+	foreach(@tmpfolders){
+		if ($_ =~ m/syncoid-([0-9]+)/) {
+			$tmp = $1;
+			$cmdoutput = `pgrep -cf '/tmp/syncoid-$tmp/syncoid'`;
+			#print "(debug) cmdoutput: $cmdoutput\n";
+			if ($cmdoutput < 2) {
+				# Find out if any running processes are in this session folder and remove if not
+				if ($debug) { print "(debug) removing old syncoid folder: /tmp/syncoid-$tmp\n"; }
+				system("rm -rf /tmp/syncoid-$tmp");
+			}
+		}
+	}
+
+	# Read the zfscmd in
+	my $zfscmd;
+	open($filehandle, '<', "$dirname/zfssend")
+		or die "Unable to open file, $!";
+	$zfscmd = <$filehandle>;
+	close($filehandle);
+	if ($debug) { print "(debug) zfscmd: $zfscmd\n"; }
+	
+	# Open pipe to ZFS command
+	my $zfs_fh;
+	open($zfs_fh, "$zfscmd |") || die "can't fork: $!";
+	binmode($zfs_fh) || die "cannot binmode handle";
+	local $SIG{PIPE} = sub { die "pipe broke" };
+	my $BUFSIZ   = $q_mb * 1024 * (2 ** 10);
+    my($chunkpath, $chunk_md5_path, $in_fh, $out_fh, $buffer, $timeOfLastActivity, $secondsSinceLastActivity);
+	$timeOfLastActivity = time;
+	my($num_files,$dh,$hash);
+    while (read($zfs_fh, $buffer, $BUFSIZ)) {
+		# Loop-delay until it's time to read more chunks off the pipe
+		$num_files = $q_max + 1;
+		while ($num_files >= $q_max) {
+			# Count how many files are in the /q/ folder
+			opendir $dh, $qdir;
+			$num_files = () = readdir($dh);
+			sleep 1; # idle 1 second
+			# If too much time has elapsed since the last activity, abort.
+			$secondsSinceLastActivity = time - $timeOfLastActivity;
+			if ($secondsSinceLastActivity > $max_idle_time) {
+				close($zfs_fh);
+				die "$max_idle_time seconds have elapsed since last activity! Aborting.\n";
+				exit(0);
+			}
+		}
+		# Pull another chunk off the pipe and put it in the queue directory if we're ready for another
+		if ($num_files < $q_max) {
+			$timeOfLastActivity = time;
+			$padded_chunkid = sprintf "%018d", $chunkid;
+			$chunkpath = "$qdir/$padded_chunkid";
+			# Write the chunk
+			if ($debug) { print "(debug) writing $chunkpath\n"; }
+			open($out_fh, ">", $chunkpath)
+				|| die "$0: cannot open $chunkpath for writing: $!";
+			binmode($out_fh)    || die "binmode failed";
+			unless (print $out_fh $buffer) {
+				die "couldn't write to $chunkpath: $!";
+			}
+			close($out_fh)   || die "couldn't close $chunkpath: $!";
+			# Write the chunk md5
+			$hash = md5_hex($buffer);
+			$chunk_md5_path = "$qdir/$padded_chunkid.md5";
+			open($out_fh, ">", $chunk_md5_path)
+				|| die "$0: cannot open $chunk_md5_path for writing: $!";
+			unless (print $out_fh $hash) {
+				die "couldn't write to $chunk_md5_path: $!";
+			}
+			close($out_fh)  || die "couldn't close $chunk_md5_path: $!";
+			# Increment chunkid
+			$chunkid++;
+		}
+    }
+
+	# Write the qFIN file so the other side knows this side has finished:
+	if ($debug) { print "(debug) writing $finish_file\n"; }
+	$chunkid--;
+	open($out_fh, ">", $finish_file)
+		|| die "$0: cannot open $finish_file for writing: $!";
+	print $out_fh $chunkid;
+	close($out_fh)  || die "couldn't close $finish_file file: $!";
+	
+	# Write a file indicating the daemon is done with its work so the main script knows.
+	my $daemon_fin_file="$dirname/dFIN";
+	open $filehandle, ">>$daemon_fin_file";
+	print $filehandle "done";
+	close ($filehandle);
+	
+	# Clean up
+    close($zfs_fh);
+	# Main script loop will clean up sender's session folder.
+	exit(1);
+}
+
+# Graham-Rsync-Mod
+sub pipereceive {
+	$debug = 1; # since all debug output from the daemons goes to a log file instead of to screen, might as well have it on
+	# Get folder path
+	my $dirname = dirname(__FILE__);
+	if ($debug) { print "(debug) folder this script lives in: $dirname\n"; }
+	
+	my $qdir = "$dirname/q";
+	my $finish_file = "$qdir/zFIN";
+	my $chunkid = "0";
+	my $padded_chunkid;
+	my $filehandle;
+	my $tmp;
+	my $last_chunk;
+	my $cmdoutput;
+	my $last_processed;
+	
+	# Clean up any old /tmp/syncoid-$sessionid folders that aren't in use by a running syncoid process before we get started
+	opendir($filehandle,"/tmp");
+	my @tmpfolders = readdir($filehandle);
+	closedir($filehandle);
+	foreach(@tmpfolders){
+		if ($_ =~ m/syncoid-([0-9]+)/) {
+			$tmp = $1;
+			$cmdoutput = `pgrep -cf '/tmp/syncoid-$tmp/syncoid'`;
+			#print "(debug) cmdoutput: $cmdoutput\n";
+			if ($cmdoutput < 2) {
+				# Find out if any running processes are in this session folder and remove if not
+				if ($debug) { print "(debug) removing old syncoid folder: /tmp/syncoid-$tmp\n"; }
+				system("rm -rf /tmp/syncoid-$tmp");
+			}
+		}
+	}
+
+	# Read the zfscmd in
+	my $zfscmd;
+	open($filehandle, '<', "$dirname/zfsrecv")
+		or die "Unable to open file, $!";
+	$zfscmd = <$filehandle>;
+	close($filehandle);
+	if ($debug) { print "(debug) zfscmd: $zfscmd\n"; }
+	
+	# Open pipe to ZFS command
+	my $zfs_fh;
+	open($zfs_fh, "| $zfscmd") || die "can't fork: $!";
+	binmode($zfs_fh) || die "cannot binmode handle";
+	local $SIG{PIPE} = sub { die "pipe broke" };
+	
+    my($chunkpath, $chunk_md5_path, $in_fh, $out_fh, $buffer, $timeOfLastActivity, $secondsSinceLastActivity, $delete_retry_timer);
+	$timeOfLastActivity = time;
+	
+	my($recvd_chunk_md5,$orig_chunk_md5);
+	my $BUFSIZ = $q_mb * 1024 * (2 ** 10);
+	
+	# Receive until $finished
+	my $finished = 0;
+	while (!($finished)) {
+		$padded_chunkid = sprintf "%018d", $chunkid;
+		$chunkpath = "$qdir/$padded_chunkid";
+		$chunk_md5_path = "$qdir/$padded_chunkid.md5";
+		# If the specially-named file is present, we know we're finished:
+		if (!(defined($last_chunk))) {
+			if (-e $finish_file) {
+				# If $finish_file has shown up, retrieve what the last chunk id is
+				if ($debug) { print "(debug) $finish_file found\n"; }
+				open($filehandle, '<', "$finish_file")
+					or die "Unable to open file, $!";
+				$last_chunk = <$filehandle>;
+				close($filehandle);
+			}
+		}
+		
+		# If the next expected chunk and its md5 are now present, process them.
+		if ((-e $chunkpath) && (-e $chunk_md5_path)) {
+			# Read the chunk into memory
+			open($filehandle, '<', $chunkpath)
+				or die "Unable to open file, $!";
+			binmode($filehandle) || die "cannot binmode handle";
+			read($filehandle, $buffer, $BUFSIZ);
+			close($filehandle) or die "Can't close handle: $!";
+			# Calculate the chunk's md5
+			$recvd_chunk_md5 = md5_hex($buffer);
+			# Read the original chunk's md5 and compare
+			open($filehandle, '<', $chunk_md5_path)
+				or die "Unable to open file, $!";
+			$orig_chunk_md5 = <$filehandle>;
+			close($filehandle) or die "Can't close handle: $!";
+			############print "(debug) orig_chunk_md5: $orig_chunk_md5\n";
+			if ($orig_chunk_md5 eq $recvd_chunk_md5) {
+				# Delete any older chunks .. a race condition exists between unlink and "-e" somehow, so this is necessary rather than just deleting after consuming.
+				opendir($filehandle,$qdir);
+				my @files = readdir($filehandle);
+				closedir($filehandle);
+				foreach(@files){
+					# Match chunkid of $_ file into $tmp var and delete any lingering old files
+					if ($_ =~ m/([0-9]{18})/) {
+						$tmp = $1;
+						if ($tmp < $chunkid) {
+							unlink $_ or do {
+								#Not sure what's going on here, but unlink seems to fail far too often...maybe ssh/rsync is mucking up things with lingering file handles or something... system rm works fine, though.
+								system("rm -f $qdir/$_");
+							}
+						}
+					}
+				}
+				# Write the chunk's content into the pipe
+				if ($debug) { print "(debug) consuming $chunkpath\n"; }
+				unless (print $zfs_fh $buffer) {
+					close($zfs_fh);
+					die "Error! Couldn't write to zfs pipe.";
+				}
+				$timeOfLastActivity = time;
+				# Log the chunkid that was just processed so that the control loop knows it was handled.
+				open $filehandle, ">$dirname/last_processed";
+				print $filehandle "$chunkid";
+				close ($filehandle);
+				# Delete the chunk
+				$delete_retry_timer = time;
+				while ((-e $chunkpath) || (-e $chunk_md5_path)) {
+					unlink $chunkpath or warn "WARNING: Failed to unlink $chunkpath\n";
+					unlink $chunk_md5_path or warn "WARNING: Failed to unlink $chunk_md5_path\n";
+					if ((time - $delete_retry_timer) > 30) {
+						close($zfs_fh);
+						die "More than 30 seconds have elapsed while trying to delete $chunkpath and its md5! Aborting.\n";
+						exit(0);
+					}
+				}
+				# Increment chunkid
+				$chunkid++;
+			} else {
+				close($zfs_fh);
+				die "Error! Received chunk md5 does not match original chunk md5. Aborting.\n";
+				exit(0);
+			}
+		} else {
+			usleep(100000); # 100ms
+		}
+		
+		# If the next-expected chunk id is greater than what we know is the last ID in the source dataset, mark as finished
+		if (defined($last_chunk)) {
+			if ($chunkid > $last_chunk) {
+				if ($debug) { print "(debug) chunkid ($chunkid) > last_chunk ($last_chunk) .. setting finished=1\n"; }
+				$finished = 1;
+			}
+		}
+
+		# If too much time has elapsed since the last activity, abort.
+		$secondsSinceLastActivity = time - $timeOfLastActivity;
+		if ($secondsSinceLastActivity > $max_idle_time) {
+			close($zfs_fh);
+			die "$max_idle_time seconds have elapsed since last activity! Aborting.\n";
+			exit(0);
+		}
+	}
+	
+	# Write a file indicating the daemon is done with its work so the main script knows.
+	my $daemon_fin_file="$dirname/dFIN";
+	open $filehandle, ">>$daemon_fin_file";
+	print $filehandle "done";
+	close ($filehandle);
+	
+	# Clean up
+    close($zfs_fh);
+	# Main script loop will clean up sender's session folder.
+	exit(1);
+}
+
+sub rsyncsnap { # Graham-Rsync-Mod
+	# Requirements:
+	# 	The following system utilities must be present in the source and destination systems, and are not currently verified:
+	# 	pkill, rm, test, cat, rsync, scp, pgrep
+	#
+	# Version: 1.00
+	my ($sendcmd,$recvcmd,$pvsize) = @_;
+
+	my $sessionid = int(rand(1000000000000));
+	
+	my $disp_pvsize = readablebytes($pvsize);
+	my $snapsizeinMB = ($pvsize / (1024 * 1024)) ;
+	my $transmitSpeed;
+	my $percentComplete = 0;
+	
+	if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
+	if ($debug) { print "(debug) pvsize: $pvsize\n"; }
+	if ($debug) { print "(debug) disp_pvsize: $disp_pvsize\n"; }
+	if ($debug) { print "(debug) snapsizeinMB: $snapsizeinMB\n" ; }
+	if ($debug) { print "(debug) sessionid = $sessionid\n"; }
+	if ($debug) { print "(debug) sourcehost: $sourcehost\n"; } # empty if local
+	if ($debug) { print "(debug) targethost: $targethost\n"; }
+	
+	# Populate some source/destination variables based on parameters we've been passed.
+	my $sourcecmdpref = "";
+	my $targetcmdpref = "";
+	my $source_is_remote = 0;
+	my $rhostforscp;
+	
+	if ($sourcehost ne '') {
+		$sourcecmdpref = "$sshcmd $sourcehost";
+		if ($sourcehost =~ m/([^ ]+?@[^ ]+?)$/) {
+			$rhostforscp = $1;
+		}
+		$source_is_remote = 1;
+	} else { $sourcecmdpref = ""; }
+	if ($targethost ne '') {
+		$targetcmdpref = "$sshcmd $targethost";
+		if ($targethost =~ m/([^ ]+?@[^ ]+?)$/) {
+			$rhostforscp = $1;
+		}
+	} else { $targetcmdpref = ""; }
+	if ($debug) { print "(debug) rhostforscp: $rhostforscp\n"; }
+	if (!(defined $rhostforscp)) {
+		die "Error! Couldn't determine USER\@HOST parameters to use. --rsync mode not supported for local copy sessions. Aborting.\n";
+		exit(0);
+	}
+	
+	# Create session directories
+	my $sessiondir = "/tmp/syncoid-$sessionid";
+	if ($debug) { print "(debug) Creating SRC session dir: $sourcecmdpref mkdir $sessiondir\n"; }
+	system("$sourcecmdpref mkdir /tmp/syncoid-$sessionid");
+	if ($debug) { print "(debug) Creating DST session dir: $targetcmdpref mkdir $sessiondir\n"; }
+	system("$targetcmdpref mkdir /tmp/syncoid-$sessionid");
+	
+	if ($debug) { print "(debug) sendcmd: $sendcmd\n"; }
+	if ($debug) { print "(debug) recvcmd: $recvcmd\n"; }
+	if ($debug) { print "(debug) sourcecmdpref: $sourcecmdpref\n"; } # empty if local
+	if ($debug) { print "(debug) targetcmdpref: $targetcmdpref\n"; }
+	
+	# Copy this script to the new session directories so we can call it in daemon mode
+	my $dirname = dirname(__FILE__);
+	my $scriptname = basename(__FILE__);
+	my $scriptpath = "$dirname/$scriptname";
+	if ($debug) { print "(debug) path to this script: $scriptpath\n"; }
+	if (($sourcehost eq '' && $targethost eq '') || ($sourcehost ne '' && $targethost ne '')) {
+		# both sides are local...  skip out in this case
+		die "ERROR! --rsync mode only supported when either source or destination is remote. Both sides being local or both being remoted is unsupported at this time.\n";
+		exit(0);
+	}
+	system("cp $scriptpath $sessiondir > /dev/null 2>&1");
+	system("$scpcmd $scriptpath $rhostforscp:$sessiondir > /dev/null 2>&1");
+	
+	# Make queue directories
+	system("$sourcecmdpref mkdir /tmp/syncoid-$sessionid/q");
+	system("$targetcmdpref mkdir /tmp/syncoid-$sessionid/q");
+	system("$targetcmdpref mkdir /tmp/syncoid-$sessionid/d");
+	
+	# Write a file containing the zfs cmd for send and receive, which the daemon modes will pick up on and use.
+	my $cmdline = '';
+	my $OUTFILE;
+	my $zfsrecvfile = "/tmp/syncoid-$sessionid/zfsrecv";
+	open $OUTFILE, ">>$zfsrecvfile";
+	if ($avail{'targetcompress'} ne '' && $avail{'sourcecompress'} ne '') {
+		$cmdline = $args{'decompresscmd'};
+		$cmdline .= " | $recvcmd";
+		print $OUTFILE $cmdline;
+	} else { # if compression isn't supported at both ends, proceed without compression
+		print "(warning) Compression not available on both sides. Proceeding without compression.\n";
+		print $OUTFILE "$recvcmd";
+	}
+	close ($OUTFILE);
+	my $zfssendfile = "/tmp/syncoid-$sessionid/zfssend";
+	open $OUTFILE, ">>$zfssendfile";
+	if ($avail{'targetcompress'} ne '' && $avail{'sourcecompress'} ne '') {
+		$cmdline = "$sendcmd | ";
+		$cmdline .= $args{'compresscmd'};
+		print $OUTFILE $cmdline;
+	} else { # if compression isn't supported at both ends, proceed without compression
+		print "(warning) Compression not available on both sides. Proceeding without compression.\n";
+		print $OUTFILE "$sendcmd";
+	}
+	close ($OUTFILE);
+	
+	if ($sourcehost ne '') { system("$scpcmd $zfssendfile $rhostforscp:$sessiondir > /dev/null 2>&1"); }
+	if ($targethost ne '') { system("$scpcmd $zfsrecvfile $rhostforscp:$sessiondir > /dev/null 2>&1"); }
+	
+	# Write files containing the daemon launch commands, since trying to escape everything properly to do something like "> /dev/null 2>&1 &" via ssh through system() is apparently a sisyphean nightmare
+	my $senddaemoncaller="/tmp/syncoid-$sessionid/senddaemon";
+	my $receivedaemoncaller="/tmp/syncoid-$sessionid/receivedaemon";
+	open $OUTFILE, ">>$senddaemoncaller";
+	print $OUTFILE "/tmp/syncoid-$sessionid/syncoid --senddaemon > /tmp/syncoid-$sessionid/log 2>&1 &";
+	close ($OUTFILE);
+	open $OUTFILE, ">>$receivedaemoncaller";
+	print $OUTFILE "/tmp/syncoid-$sessionid/syncoid --receivedaemon > /tmp/syncoid-$sessionid/log 2>&1 &";
+	close ($OUTFILE);
+	if ($sourcehost ne '') { system("$scpcmd $senddaemoncaller $rhostforscp:$sessiondir > /dev/null 2>&1"); }
+	if ($targethost ne '') { system("$scpcmd $receivedaemoncaller $rhostforscp:$sessiondir > /dev/null 2>&1"); }
+	
+	# Launch daemon processes
+	system("$sourcecmdpref sh $senddaemoncaller");
+	system("$targetcmdpref sh $receivedaemoncaller");
+	
+	# Loop and copy files until finished
+	my $finished = 0;
+	my $chunkid = "0";
+	my $qdir = "/tmp/syncoid-$sessionid/q";
+	my $finish_file = "$qdir/zFIN";
+	my ($chunkpath,$chunk_md5_path,$padded_chunkid,$cmdoutput,$cmdoutput2,$timeOfLastActivity,$chunkTransmitStartTime,$transmitTime,$secondsSinceLastActivity);
+	my $cmd_fh;
+	my $last_chunk;
+	$timeOfLastActivity = time;
+	my ($receiver_ready,$sender_ready,$unprocessed_chunk);
+	while (!($finished)) {
+		$padded_chunkid = sprintf "%018d", $chunkid;
+		$chunkpath = "$qdir/$padded_chunkid";
+		$chunk_md5_path = "$qdir/$padded_chunkid.md5";
+		$receiver_ready = 0;
+		$sender_ready = 0;
+		
+		# Check to see if the chunk we're on has already been digested by the receiver. If it has then clean up on source, increment chunkid, and restart the loop.
+		$cmdoutput = endable_system("$targetcmdpref test -e /tmp/syncoid-$sessionid/last_processed",$sessionid,$sourcecmdpref,$targetcmdpref);
+		if ($cmdoutput == 0) {
+			$cmdoutput = `$targetcmdpref cat /tmp/syncoid-$sessionid/last_processed`; # have to use `STRING` to get actual output instead of just return value system() gives
+			if ($cmdoutput =~ /[0-9]+/) {
+				if ($debug) { print "(debug) last processed chunk by receiver: $cmdoutput\n"; }
+				if ($chunkid == $cmdoutput) {
+					# Delete the source files that are now transferred
+					if ($debug) { print "(debug) last processed chunk matches current chunkid ($chunkid) .. cleaning up and incrementing\n"; }
+					if ($debug) { print "(debug) deleting transferred chunk: $chunkpath\n"; }
+					endable_system("$sourcecmdpref rm -f $chunkpath",$sessionid,$sourcecmdpref,$targetcmdpref);
+					endable_system("$sourcecmdpref rm -f $chunk_md5_path",$sessionid,$sourcecmdpref,$targetcmdpref);
+					# Update timestamp
+					$timeOfLastActivity = time;
+					# Output progress to console
+					$percentComplete = ((($q_mb * $chunkid) / $snapsizeinMB)*100);
+					if ($transmitTime > 0 ) {
+						$transmitSpeed = (($q_mb * 1024) / $transmitTime);
+					}
+					print "PROGRESS: $percentComplete% complete @ $transmitSpeed KB/s\n";
+					# Increment chunkid
+					$chunkid++;
+					next;
+				}
+			}
+		}
+		
+		# Check to see if the receiving end is ready for more files
+		open(my $cmd_fh, '-|', "$targetcmdpref sh -c 'find $qdir/*.md5 2>/dev/null | wc -l'") or die $@;
+		$cmdoutput = <$cmd_fh>;
+		close($cmd_fh);
+		$cmdoutput =~ s/\n\s*/ /g;
+		if ($cmdoutput) {
+			if ($cmdoutput < $q_max) { # The receiving side is ready for more files
+				$receiver_ready = 1;
+			}
+		}
+		
+		# Check to see if the next expected file is present on the sending side
+		#if ($debug) { print "(debug) testing for presence of the next anticipated chunk: $chunkpath\n"; }
+		$cmdoutput = endable_system("$sourcecmdpref test -e $chunkpath",$sessionid,$sourcecmdpref,$targetcmdpref);
+		$cmdoutput2 = endable_system("$sourcecmdpref test -e $chunk_md5_path",$sessionid,$sourcecmdpref,$targetcmdpref);
+		if (($cmdoutput == 0) && ($cmdoutput2 == 0)) {
+			if ($debug) { print "(debug) file present: $chunkpath\n"; }
+			if ($debug) { print "(debug) file present: $chunk_md5_path\n"; }
+			$sender_ready = 1;
+		}
+		
+		# Transfer the chunk if sender and receiver are ready.
+		if ($receiver_ready && $sender_ready) {
+			# Both files are present. Let's transfer them.
+			if ($source_is_remote) {
+				if ($debug) { print "(debug) running sync cmd: $rsynccmd $rhostforscp:$chunkpath $chunkpath\n"; }
+				$chunkTransmitStartTime = [gettimeofday];
+				endable_system("$rsynccmd $rhostforscp:$chunkpath $chunkpath > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+				$transmitTime = tv_interval($chunkTransmitStartTime);
+				endable_system("$rsynccmd $rhostforscp:$chunk_md5_path $chunk_md5_path > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+				endable_system("$rsynccmd $rhostforscp:$finish_file $finish_file > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+			} else { # otherwise assume target is remote for now
+				if ($debug) { print "(debug) running sync cmd: $rsynccmd $chunkpath $rhostforscp:$chunkpath\n"; }
+				$chunkTransmitStartTime = [gettimeofday];
+				endable_system("$rsynccmd $chunkpath $rhostforscp:$chunkpath > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+				$transmitTime = tv_interval($chunkTransmitStartTime);
+				endable_system("$rsynccmd $chunk_md5_path $rhostforscp:$chunk_md5_path > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+				endable_system("$rsynccmd $finish_file $rhostforscp:$finish_file > /dev/null 2>&1",$sessionid,$sourcecmdpref,$targetcmdpref);
+			}
+		} else {
+			usleep(100000); # 100ms
+		}
+		
+		# Check to see if the finish file is present on the sending side.
+		$cmdoutput = endable_system("$targetcmdpref test -e $finish_file",$sessionid,$sourcecmdpref,$targetcmdpref);
+		if ($cmdoutput == 0) {
+			$cmdoutput = `$targetcmdpref cat $finish_file`; # have to use `STRING` to get actual output instead of just return value system() gives
+			$last_chunk = $cmdoutput;
+			if ($debug) { print "(debug) finish_file found with content: $last_chunk\n"; }
+			# If the current chunkid is greater than last_chunk, then the last chunkid was transferred and we're finished.
+			if ($chunkid > $last_chunk) {
+				if ($debug) { print "(debug) chunkid > last_chunk .. setting finished=1\n"; }
+				$finished = 1;
+			}
+		}
+		
+		# If too much time has elapsed since the last activity, abort.
+		$secondsSinceLastActivity = time - $timeOfLastActivity;
+		if ($secondsSinceLastActivity > $max_idle_time) {
+			die "$max_idle_time seconds have elapsed since last activity! Aborting.\n";
+			exit(0);
+		}
+	}
+	
+	# To avoid race conditions, wait here for some time until we see an indication that the daemons are finished with their work.
+	my $daemon_fin_file="/tmp/syncoid-$sessionid/dFIN";
+	$cmdoutput = endable_system("$sourcecmdpref test -e $daemon_fin_file",$sessionid,$sourcecmdpref,$targetcmdpref);
+	$cmdoutput2 = endable_system("$targetcmdpref test -e $daemon_fin_file",$sessionid,$sourcecmdpref,$targetcmdpref);
+	$timeOfLastActivity = time;
+	while (!(($cmdoutput == 0) && ($cmdoutput2 == 0))) {
+		sleep 2;
+		if ($debug) { print "(debug) waiting on daemons to finish up...\n"; }
+		$cmdoutput = endable_system("$sourcecmdpref test -e $daemon_fin_file",$sessionid,$sourcecmdpref,$targetcmdpref);
+		$cmdoutput2 = endable_system("$targetcmdpref test -e $daemon_fin_file",$sessionid,$sourcecmdpref,$targetcmdpref);
+		# If too much time has elapsed while waiting for the daemons to finish up, abort.
+		$secondsSinceLastActivity = time - $timeOfLastActivity;
+		if ($secondsSinceLastActivity > $max_idle_time) {
+			die "$max_idle_time seconds have elapsed since last activity! Aborting.\n";
+			exit(0);
+		}
+	}
+	
+	# Now clean up the daemon working folders
+	system("$sourcecmdpref rm -rf /tmp/syncoid-$sessionid");
+	system("$targetcmdpref rm -rf /tmp/syncoid-$sessionid");
+}
+
+# Graham-Rsync-Mod
+sub rsync_signal_handler {
+	my ($sessionid,$sourcecmdpref,$targetcmdpref) = @_;
+	
+	print "Ctrl-C caught. Exiting.\n";
+	
+	# Kill the daemons
+	if ($debug) { print "running: $sourcecmdpref pkill -f syncoid-$sessionid \n"; }
+	if ($debug) { print "running: $targetcmdpref pkill -f syncoid-$sessionid \n"; }
+	system("$sourcecmdpref pkill -f syncoid-$sessionid");
+	system("$targetcmdpref pkill -f syncoid-$sessionid");
+	
+	# Clean up the daemon working folders
+	system("$sourcecmdpref rm -rf /tmp/syncoid-$sessionid");
+	system("$targetcmdpref rm -rf /tmp/syncoid-$sessionid");
+	
+    exit;
+}
+
+# Graham-Rsync-Mod
+sub endable_system {
+	# This is a workaround for the fact that it's basically impossible to ctrl-c a perl program that is spending most of its time in system() calls. This looks for an interrupt signal from the system process and gracefully exits this script (and cleans up the daemon processes).
+	my ($cmd,$sessionid,$sourcecmdpref,$targetcmdpref) = @_;
+	my $exitcode;
+	my $timeOfLastActivity = time;
+	$exitcode = system($cmd);
+	my $secondsSinceLastActivity = time - $timeOfLastActivity;
+	if ($secondsSinceLastActivity > 300) { # unusually long runtime, let's log this in debug mode
+		#if ($debug) { print "(debug) cmd ran for unusually long time ($secondsSinceLastActivity seconds) : $cmd (EXITCODE: $exitcode) \n"; }
+		print "(warning) cmd ran for unusually long time ($secondsSinceLastActivity seconds) : $cmd (EXITCODE: $exitcode) \n";
+	}
+	if ($exitcode & 127) {
+		rsync_signal_handler($sessionid,$sourcecmdpref,$targetcmdpref);
+	} else{
+		return $exitcode;
+	}
+}
 
 sub getchilddatasets {
 	my ($rhost,$fs,$isroot,%snaps) = @_;
@@ -215,9 +825,14 @@ sub syncdataset {
 			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
 			return 0;
 		}
-		system($synccmd) == 0 
-			or die "CRITICAL ERROR: $synccmd failed: $?";
-	
+		
+		# Graham-Rsync-Mod
+		if ($rsync) {
+			rsyncsnap($sendcmd,$recvcmd,$pvsize);
+		} else {
+			system($synccmd) == 0 
+				or die "CRITICAL ERROR: $synccmd failed: $?";
+		}
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course - and that we
 		# aren't invoked with --no-stream, in which case a full of the newest snap
@@ -246,9 +861,14 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
 			if ($oldestsnap ne $newsyncsnap) {
-				system($synccmd) == 0 
-					or warn "CRITICAL ERROR: $synccmd failed: $?";
-					return 0;
+				# Graham-Rsync-Mod
+				if ($rsync) {
+					rsyncsnap($sendcmd,$recvcmd,$pvsize);
+				} else {
+					system($synccmd) == 0 
+						or warn "CRITICAL ERROR: $synccmd failed: $?";
+						return 0;
+				}
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
 			}
@@ -306,9 +926,15 @@ sub syncdataset {
 		
 			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0 
-				or die "CRITICAL ERROR: $synccmd failed: $?";
-		
+			
+			# Graham-Rsync-Mod
+			if ($rsync) {
+				rsyncsnap($sendcmd,$recvcmd,$pvsize);
+			} else {
+				system("$synccmd") == 0 
+					or die "CRITICAL ERROR: $synccmd failed: $?";
+			}
+			
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
 				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
@@ -329,9 +955,9 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap','rsync','receivedaemon','senddaemon'); # Graham-Rsync-Mod
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
+	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap','rsync','receivedaemon','senddaemon'); # Graham-Rsync-Mod
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
 
 	while (my $rawarg = shift(@args)) {
@@ -629,7 +1255,7 @@ sub readablebytes {
 
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'guid'}<=>$snaps{'source'}{$b}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -643,7 +1269,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		print "NEWEST SNAPSHOT: $snap\n";
 		return $snap;
@@ -774,7 +1400,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($targetsize, $snaps) = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'guid'}<=>$snaps{'source'}{$a}{'guid'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}{'guid'}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -845,11 +1471,18 @@ sub getssh {
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
-		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
-		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $sshport $rhost exit |";
-		close FH;
-		$rhost = "-S $socket $rhost";
+		
+		# Graham-Rsync-Mod .. switching persistent ssh off for rsync mode to avoid situations in which the control session connection breaks, since that doesn't recover gracefully as-is ... might write a helper function to pass all other ssh commands through that first tests to see if the connection is open and reestablishes if not... even when using this, though, it doesn't seem to preclude doing user auths for each invocation according to the auth log, so...might not really be worth it...??
+		if (!$rsync) { 
+			# now we need to establish a persistent master SSH connection
+			$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+			open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $sshport $rhost exit |";
+			close FH;
+			$rhost = "-S $socket $rhost";
+		} else {
+			# add some options that help ssh close itself out instead of hanging forever in some situations
+			$sshcmd = "$sshcmd -o ServerAliveInterval=60 -o ConnectTimeout=30 -o ServerAliveCountMax=2";
+		}
 	} else {
 		my $localuid = $<;
 		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
@@ -871,21 +1504,36 @@ sub getsnaps() {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fs |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
 	close FH;
 
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
+
 	foreach my $line (@rawsnaps) {
-		# only import snaps from the specified filesystem
-		if ($line =~ /$fs\@/) {
+		# only import snap guids from the specified filesystem
+		if ($line =~ /$fs\@.*guid/) {
 			chomp $line;
 			my $guid = $line;
 			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^\S*\@(\S*)\s*guid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
+		}
+	}
+
+	foreach my $line (@rawsnaps) {
+		# only import snap creations from the specified filesystem
+		if ($line =~ /$fs\@.*creation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^\S*\@(\S*)\s*creation.*$/$1/;
+			$snaps{$type}{$snap}{'creation'}=$creation;
 		}
 	}
 
@@ -951,5 +1599,4 @@ sub getdate {
 	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
 	return %date;
 }
-
 
