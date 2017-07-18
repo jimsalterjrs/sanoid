@@ -1,30 +1,16 @@
-SYNCOID
+SYNCOID-RSYNC
 -------
-Syncoid depends on ssh, pv, gzip, lzop, and mbuffer.  It can run with reduced 
-functionality in the absence of any or all of the above. SSH is only required
-for remote synchronization.  On newer FreeBSD and Ubuntu Xenial 
-chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the 
-default for SSH transport since v1.4.6. Syncoid runs will fail if one of them 
-is not available on either end of the transport.
+This rsync-resumable variant of syncoid depends on the following commands being in the system path:
+rsync, pkill, rm, test, cat, rsync, scp, pgrep
 
-On Ubuntu: apt install pv lzop mbuffer
-On FreeBSD: pkg install pv lzop
+SSH is required only for remote synchronization.
 
-FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than
-               /usr/bin ; syncoid currently does not check path.
+It will optionally utilize the following if available, just like the base syncoid:
+ssh, pv, gzip, pigz, lzop, and mbuffer
 
-               Simplest path workaround is symlinks, eg:
-               root@bsd:~# ln -s /usr/bin/lzop /usr/local/bin/lzop
-               or similar, as appropriate, to create links in /usr/bin
-               to wherever the utilities actually are on your system.
+To "install":
+* place the "syncoid" file in /usr/local/bin
+chmod a+rx /usr/local/bin/syncoid
 
-
-SANOID
-------
-Sanoid depends on the Perl module Config::IniFiles and will not operate
-without it.  Config::IniFiles may be installed from CPAN, though the project
-strongly recommends using your distribution's repositories instead.
-
-On Ubuntu: apt install libconfig-inifiles-perl
-On FreeBSD: pkg install p5-Config-Inifiles
-
+Please see the base syncoid's INSTALL for further notes about installing 
+these, etc.
