@@ -39,6 +39,10 @@ if (defined $args{'c'}) {
 	$sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
 }
 my $sshport = '-p 22';
+my $sshoption;
+if (defined $args{'o'}) {
+	$sshoption = "-o $args{'o'}";
+}
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $sudocmd = '/usr/bin/sudo';
@@ -329,7 +333,7 @@ sub getargs {
 
 	my %novaluearg;
 	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
+	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','o','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
 	foreach my $item (@validargs) { $validarg{$item} = 1; }
 	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
 	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
