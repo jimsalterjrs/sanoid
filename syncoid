@@ -42,6 +42,11 @@ my $sshport = '-p 22';
 my $sshoption;
 if (defined $args{'o'}) {
 	$sshoption = "-o $args{'o'}";
+	if ($sshoption eq "NoneSwitch=yes"){
+		$sshcipher = ""
+	}
+} else {
+	$sshoption = "";
 }
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
@@ -56,10 +61,10 @@ if ( $args{'sshport'} ) {
 }
 # figure out if source and/or target are remote.
 if ( $args{'sshkey'} ) {
-  $sshcmd = "$sshcmd $sshcipher $sshport -i $args{'sshkey'}";
+  $sshcmd = "$sshcmd $sshoption $sshcipher $sshport -i $args{'sshkey'}";
 }
 else {
-  $sshcmd = "$sshcmd $sshcipher $sshport";
+  $sshcmd = "$sshcmd $sshoption $sshcipher $sshport";
 }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
