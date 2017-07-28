@@ -1,3 +1,7 @@
+1.4.15 merged @hrast01's -o option to pass ssh CLI options through. Currently only supports a single -o=option argument -
+       in the near future, need to add some simple parsing to expand -o=option1,option2 on the CLI to 
+       -o option1 -o option2 as passed to SSH.
+
 1.4.14 fixed significant regression in syncoid - now pulls creation AND guid on each snap; sorts by
        creation and matches by guid. regression reported in #112 by @da-me, thank you!
 
