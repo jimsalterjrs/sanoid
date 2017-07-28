@@ -41,12 +41,15 @@ if (defined $args{'c'}) {
 my $sshport = '-p 22';
 my $sshoption;
 if (defined $args{'o'}) {
-	$sshoption = "-o $args{'o'}";
-	if ($sshoption eq "NoneSwitch=yes"){
-		$sshcipher = ""
-	}
+    my @options = split(',', $args{'o'});
+    foreach my $option (@options) {
+         $sshoption .= " -o $option";
+         if ($option eq "NoneSwitch=yes") {
+              $sshcipher = "";
+         }
+    }
 } else {
-	$sshoption = "";
+        $sshoption = "";
 }
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
