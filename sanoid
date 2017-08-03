@@ -212,7 +212,7 @@ sub prune_snapshots {
 				# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
 				if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
 					if ( $islxd ) {
-					    push(@prunesnaps, "$lxc delete $section/snap");
+					    push(@prunesnaps, "$lxc delete $section/$snap");
 					} else {
 					    push(@prunesnaps, "$zfs destroy $path\@$snap");
 					}
@@ -523,7 +523,6 @@ sub getsnaps {
 	foreach my $snap (@rawsnaps) {
 		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
 		my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-#		if ($snapname =~ /^autosnap/) {
 		if ($snapname =~ /(^snapshot-)*autosnap/) {
 			$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 			$snaps{$fs}{$snapname}{'type'}=$snaptype;
