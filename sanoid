@@ -18,6 +18,7 @@ my %args = getargs(@ARGV);
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
+my $lxc = '/usr/bin/lxc';
 
 if ($args{'configdir'} eq '') { $args{'configdir'} = '/etc/sanoid'; }
 my $conf_file = "$args{'configdir'}/sanoid.conf";
@@ -181,6 +182,8 @@ sub prune_snapshots {
 		if (! $config{$section}{'autoprune'}) { next; }
 		if ($config{$section}{'process_children_only'}) { next; }
 
+		my $islxd = ($config{$section}{'lxd'});
+
 		my $path = $config{$section}{'path'};
 
 		my $period = 0;
@@ -208,8 +211,11 @@ sub prune_snapshots {
 			foreach my $snap( @sorted ){
 				# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
 				if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
-					my $fullpath = $path . '@' . $snap;
-					push(@prunesnaps,$fullpath);
+					if ( $islxd ) {
+					    push(@prunesnaps, "$lxc delete $section/snap");
+					} else {
+					    push(@prunesnaps, "$zfs destroy $path\@$snap");
+					}
 					# we just got rid of a snap, so we now have one fewer, duh
 					$numsnapsthistype--;
 				}
@@ -224,7 +230,7 @@ sub prune_snapshots {
 						if (iszfsbusy($path)) {
 							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 						} else {
-							if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or die "could not remove $snap : $?"; }
+							if (! $args{'readonly'}) { system($snap) == 0 or die "could not remove $snap : $?"; }
 						}
 					}
 					removelock('sanoid_pruning');
@@ -253,13 +259,15 @@ sub take_snapshots {
 	my $forcecacheupdate = 0;
 
 	my @newsnaps;
-
+	
 	if ($args{'verbose'}) { print "INFO: taking snapshots...\n"; }
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'autosnap'}) { next; }
 		if ($config{$section}{'process_children_only'}) { next; }		
 
+		my $islxd = ($config{$section}{'lxd'});
+		
 		my $path = $config{$section}{'path'};
 
 		foreach my $type (keys %{ $config{$section} }){
@@ -322,7 +330,11 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
+					if ( $islxd ) {
+					    push(@newsnaps, "$lxc snapshot $section autosnap_$datestamp{'sortable'}_$type");
+					} else {
+					    push(@newsnaps, "$zfs snapshot $path\@autosnap_$datestamp{'sortable'}_$type");
+					}
 				}
 			}
 		}
@@ -332,10 +344,10 @@ sub take_snapshots {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) { 
-				system($zfs, "snapshot", "$snap") == 0
-					or die "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+				system($snap) == 0
+				    or die "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
-				sleep 1;
+			        sleep 1;
 			}
 		}
 		$forcecacheupdate = 1;
@@ -511,7 +523,8 @@ sub getsnaps {
 	foreach my $snap (@rawsnaps) {
 		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
 		my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-		if ($snapname =~ /^autosnap/) {
+#		if ($snapname =~ /^autosnap/) {
+		if ($snapname =~ /(^snapshot-)*autosnap/) {
 			$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 			$snaps{$fs}{$snapname}{'type'}=$snaptype;
 		}
@@ -535,7 +548,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
+	my @toggles = ('autosnap','autoprune','lxd','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 	
