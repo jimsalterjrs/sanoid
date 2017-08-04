@@ -524,7 +524,10 @@ sub getsnaps {
 		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
 		my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
 		if ($snapname =~ /(^snapshot-)*autosnap/) {
-			$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
+		        if ($snapname =~ /^snapshot-/) {
+			        $snapname = substr $snapname, 9;
+			}
+		        $snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 			$snaps{$fs}{$snapname}{'type'}=$snaptype;
 		}
 	}
