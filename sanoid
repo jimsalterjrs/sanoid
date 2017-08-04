@@ -326,7 +326,7 @@ sub take_snapshots {
 				# reconstruct our human-formatted most recent preferred snapshot time into an epoch time, to compare with the epoch of our most recent snapshot
 				my $maxage = time()-$lastpreferred;
 				
-				if ( $newestage >= $maxage ) {
+				if ( $newestage > $maxage ) {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
