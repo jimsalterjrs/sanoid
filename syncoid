@@ -171,7 +171,7 @@ sub syncdataset {
 		# we don't want sync snapshots created, so use the newest snapshot we can find.
 		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 		if ($newsyncsnap eq 0) {
-			warn "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n";
+			# getnewestsnapshot has already made any relevant warning messages
 			return 0;
 		}
 	}
@@ -662,8 +662,11 @@ sub getnewestsnapshot {
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
 	if (defined ($args{'no-sync-snap'}) ) {
-		# well, actually we set --no-sync-snap, so no we *can't* make one. Whoops.
-		die "CRIT: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source!\n";
+		if (!defined ($args{'recursive'}) ) {
+			# well, actually we set --no-sync-snap and we're not recursive, so no we *can't* make one. Whoops.
+			die "CRIT: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source!\n";
+		}
+		warn "WARN: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source. Continuing.\n";
 	}
 	return 0;
 }
