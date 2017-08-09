@@ -1,3 +1,9 @@
+1.4.16 merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's 
+       off-by-one fix to stop unnecessary extra snapshots being taken under certain conditions. merged @stardude900's
+       update to INSTALL for FreeBSD users re:symlinks. Implemented @LordAro's update to change DIE to WARN when 
+       encountering a dataset with no snapshots and --no-sync-snap set during recursive replication. Implemented 
+       @LordAro's update to sanoid.conf to add an ignore template which does not snap, prune, or monitor.
+
 1.4.15 merged @hrast01's -o option to pass ssh CLI options through. Currently only supports a single -o=option argument -
        in the near future, need to add some simple parsing to expand -o=option1,option2 on the CLI to 
        -o option1 -o option2 as passed to SSH.
