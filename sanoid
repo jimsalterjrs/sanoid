@@ -4,22 +4,26 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.17';
+$::VERSION = '1.4.17';
 
 use strict;
-use Config::IniFiles;   # read samba-style conf file
-use File::Path;         # for rmtree command in use_prune
-use Data::Dumper;	# debugging - print contents of hash
-use Time::Local;	# to parse dates in reverse
+use Config::IniFiles; # read samba-style conf file
+use Data::Dumper;     # debugging - print contents of hash
+use File::Path;       # for rmtree command in use_prune
+use Getopt::Long qw(:config auto_version auto_help);
+use Pod::Usage;       # pod2usage
+use Time::Local;      # to parse dates in reverse
 
-# parse CLI arguments
-my %args = getargs(@ARGV);
+my %args = ("cron" => 1, "verbose" => 1, "configdir" => "/etc/sanoid");
+GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
+                   "monitor-health", "force-update", "configdir=s",
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots"
+          ) or pod2usage(2);
 
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
 
-if ($args{'configdir'} eq '') { $args{'configdir'} = '/etc/sanoid'; }
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
@@ -42,11 +46,9 @@ if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
 if ($args{'monitor-health'}) 	{ monitor_health(@params); }
 if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); } 
-if ($args{'version'}) 		{ print "INFO: Sanoid version: $version\n"; }
 
-if ($args{'cron'} || $args{'noargs'}) {
-	if ($args{'noargs'}) { print "INFO: No arguments given - assuming --cron and --verbose.\n"; }
-	if (!$args{'quiet'}) { $args{'verbose'} = 1; }
+if ($args{'cron'}) {
+	if ($args{'quiet'}) { $args{'verbose'} = 0; }
 	take_snapshots (@params);
 	prune_snapshots (@params);
 } else {
@@ -1026,71 +1028,6 @@ sub iszfsbusy {
 #######################################################################################################################3
 #######################################################################################################################3
 
-sub getargs {
-	my @args = @_;
-	my %args;
-
-	my @validargs;
-	my @novalueargs;
-	my %validargs;
-	my %novalueargs;
-
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir','quiet';
-	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','quiet';
-	foreach my $item (@validargs) { $validargs{$item}=1; }
-	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
-
-	if (! (scalar @args)) {
-		$args{'noargs'} = 1;
-	}
-
-	while (my $rawarg = shift(@args)) {
-		my $argvalue;
-		my $arg = $rawarg;
-		if ($rawarg =~ /=/) {
-			# user specified the value for a CLI argument with =
-			# instead of with blank space. separate appropriately.
-			$argvalue = $arg;
-			$arg =~ s/=.*$//;
-			$argvalue =~ s/^.*=//;
-		}
-		if ($rawarg =~ /^--/) {
-			# doubledash arg
-			$arg =~ s/^--//;
-			if ($novalueargs{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} elsif ($rawarg =~ /^-/) {
-			# singledash arg
-			$arg =~ s/^-//;
-			if ($novalueargs{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} else {
-			# bare arg
-			die "ERROR: don't know what to do with bare argument $rawarg.\n";
-		}
-		if (! ($validargs{$arg})) { die "ERROR: don't understand argument $rawarg.\n"; }
-	}
-	return %args;
-}
-
 sub getchilddatasets {
 	# for later, if we make sanoid itself support sudo use
 	my $fs = shift;
@@ -1105,3 +1042,29 @@ sub getchilddatasets {
 	return @children;
 }
 
+__END__
+
+=head1 NAME
+
+sanoid - ZFS snapshot management and replication tool
+
+=head1 SYNOPSIS
+
+sanoid [options]
+
+Options:
+  --configdir=DIR       Specify a directory to find config file sanoid.conf
+
+  --cron                Creates snapshots and purges expired snapshots
+  --readonly            Simulates creation/deletion of snapshots
+  --quiet               Suppresses non-error output
+  --force-update        Clears out sanoid's zfs snapshot cache
+
+  --monitor-health      Reports on zpool "health", in a Nagios compatible format
+  --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
+  --take-snapshots      Creates snapshots as specified in sanoid.conf
+  --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
+
+  --help                Prints this helptext
+  --verbose             Prints the version number
+  --debug               Prints out a lot of additional information during a sanoid run
