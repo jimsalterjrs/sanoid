@@ -161,7 +161,7 @@ sub syncdataset {
 		%snaps = (%sourcesnaps, %targetsnaps);
 	}
 
-	if ($args{'dumpsnaps'}) { print "merged snapshot list: \n"; dumphash(\%snaps); print "\n\n\n"; }
+	if ($args{'dumpsnaps'}) { print "merged snapshot list of $targetfs: \n"; dumphash(\%snaps); print "\n\n\n"; }
 	
 	# create a new syncoid snapshot on the source filesystem.
 	my $newsyncsnap;
@@ -171,7 +171,7 @@ sub syncdataset {
 		# we don't want sync snapshots created, so use the newest snapshot we can find.
 		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 		if ($newsyncsnap eq 0) { 
-			warn "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n"; 
+			warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
 			return 0; 
 		}
 	}
@@ -282,7 +282,7 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 	
-		my $matchingsnap = getmatchingsnapshot($targetsize, \%snaps);
+		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, $targetsize, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshot; we whined piteously already, but let's go ahead and return false
 			# now in case more child datasets need replication.
@@ -791,7 +791,7 @@ sub pruneoldsyncsnaps {
 }
 
 sub getmatchingsnapshot {
-	my ($targetsize, $snaps) = shift;
+	my ($sourcefs, $targetfs, $targetsize, $snaps) = @_;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}{'guid'}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
@@ -803,7 +803,7 @@ sub getmatchingsnapshot {
 	# if we got this far, we failed to find a matching snapshot.
 
 	print "\n";
-	print "CRITICAL ERROR: Target exists but has no matching snapshots!\n";
+	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
 	print "                Replication to target would require destroying existing\n";
 	print "                target. Cowardly refusing to destroy your existing target.\n\n";
 
@@ -811,7 +811,7 @@ sub getmatchingsnapshot {
 	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
 
 	if ( $targetsize < (64*1024*1024) ) {
-		print "          NOTE: Target dataset is < 64MB used - did you mistakenly run\n";
+		print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
 		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
 		print "                replication must be to a NON EXISTENT DATASET, which will\n";
 		print "                then be CREATED BY the initial replication process.\n\n";
