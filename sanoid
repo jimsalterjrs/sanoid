@@ -7,6 +7,7 @@
 $::VERSION = '1.4.17';
 
 use strict;
+use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
 use File::Path;       # for rmtree command in use_prune
@@ -195,45 +196,48 @@ sub prune_snapshots {
 			elsif ($type eq 'daily') { $period = 60*60*24; }
 			elsif ($type eq 'monthly') { $period = 60*60*24*31; }
 			elsif ($type eq 'yearly') { $period = 60*60*24*365.25; }
+
+			# avoid pissing off use warnings by not executing this block if no matching snaps exist
+			if (defined $snapsbytype{$path}{$type}{'sorted'}) {
+				my @sorted = split (/\|/,$snapsbytype{$path}{$type}{'sorted'});
 			
-			my @sorted = split (/\|/,$snapsbytype{$path}{$type}{'sorted'});
+				# if we say "daily=30" we really mean "don't keep any dailies more than 30 days old", etc
+				my $maxage = ( time() - $config{$section}{$type} * $period );
+				# but if we say "daily=30" we ALSO mean "don't get rid of ANY dailies unless we have more than 30".
+				my $minsnapsthistype = $config{$section}{$type};
 
-			# if we say "daily=30" we really mean "don't keep any dailies more than 30 days old", etc
-			my $maxage = ( time() - $config{$section}{$type} * $period );
-			# but if we say "daily=30" we ALSO mean "don't get rid of ANY dailies unless we have more than 30".
-			my $minsnapsthistype = $config{$section}{$type};
+				# how many total snaps of this type do we currently have?
+				my $numsnapsthistype = scalar (@sorted);
 
-			# how many total snaps of this type do we currently have?
-			my $numsnapsthistype = scalar (@sorted);
-
-			my @prunesnaps;
-			foreach my $snap( @sorted ){
-				# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
-				if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
-					my $fullpath = $path . '@' . $snap;
-					push(@prunesnaps,$fullpath);
-					# we just got rid of a snap, so we now have one fewer, duh
-					$numsnapsthistype--;
-				}
-			}
-
-			if ((scalar @prunesnaps) > 0) {
-				# print "found some snaps to prune!\n"
-				if (checklock('sanoid_pruning')) {
-					writelock('sanoid_pruning');
-					foreach my $snap( @prunesnaps ){
-						if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-						if (iszfsbusy($path)) {
-							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
-						} else {
-							if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or warn "could not remove $snap : $?"; }
-						}
+				my @prunesnaps;
+				foreach my $snap( @sorted ){
+					# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
+					if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
+						my $fullpath = $path . '@' . $snap;
+						push(@prunesnaps,$fullpath);
+						# we just got rid of a snap, so we now have one fewer, duh
+						$numsnapsthistype--;
 					}
-					removelock('sanoid_pruning');
-					$forcecacheupdate = 1;
-					%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
-				} else {
-					print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
+				}
+
+				if ((scalar @prunesnaps) > 0) {
+					# print "found some snaps to prune!\n"
+					if (checklock('sanoid_pruning')) {
+						writelock('sanoid_pruning');
+						foreach my $snap( @prunesnaps ){
+							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
+							if (iszfsbusy($path)) {
+								print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
+							} else {
+								if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or warn "could not remove $snap : $?"; }
+							}
+						}
+						removelock('sanoid_pruning');
+						$forcecacheupdate = 1;
+						%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
+					} else {
+						print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
+					}
 				}
 			}
 		}
@@ -512,10 +516,14 @@ sub getsnaps {
 
 	foreach my $snap (@rawsnaps) {
 		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
-		my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-		if ($snapname =~ /^autosnap/) {
-			$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
-			$snaps{$fs}{$snapname}{'type'}=$snaptype;
+
+		# avoid pissing off use warnings
+		if (defined $snapname) {
+			my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
+			if ($snapname =~ /^autosnap/) {
+				$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
+				$snaps{$fs}{$snapname}{'type'}=$snaptype;
+			}
 		}
 	}
 
@@ -603,10 +611,10 @@ sub init {
 		# make sure that true values are true and false values are false for any toggled values
 		foreach my $toggle(@toggles) {
 			foreach my $true (@istrue) {	
-				if ($config{$section}{$toggle} eq $true) { $config{$section}{$toggle} = 1; }
+				if (defined $config{$section}{$toggle} && $config{$section}{$toggle} eq $true) { $config{$section}{$toggle} = 1; }
 			}
 			foreach my $false (@isfalse) {
-				if ($config{$section}{$toggle} eq $false) { $config{$section}{$toggle} = 0; }
+				if (defined $config{$section}{$toggle} && $config{$section}{$toggle} eq $false) { $config{$section}{$toggle} = 0; }
 			}
 		}
 
@@ -1031,7 +1039,7 @@ sub iszfsbusy {
 sub getchilddatasets {
 	# for later, if we make sanoid itself support sudo use
 	my $fs = shift;
-	my $mysudocmd;
+	my $mysudocmd = '';
 
 	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
