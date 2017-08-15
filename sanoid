@@ -15,11 +15,17 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 
-my %args = ("cron" => 1, "verbose" => 1, "configdir" => "/etc/sanoid");
+my %args = ("configdir" => "/etc/sanoid");
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "monitor-health", "force-update", "configdir=s",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots"
           ) or pod2usage(2);
+
+# If only config directory (or nothing) has been specified, default to --cron --verbose
+if (keys %args < 2) {
+	$args{'cron'} = 1;
+	$args{'verbose'} = 1;
+}
 
 my $pscmd = '/bin/ps';
 
@@ -1059,6 +1065,8 @@ sanoid - ZFS snapshot management and replication tool
 =head1 SYNOPSIS
 
 sanoid [options]
+
+Assumes --cron --verbose if no other arguments (other than configdir) are specified
 
 Options:
   --configdir=DIR       Specify a directory to find config file sanoid.conf
