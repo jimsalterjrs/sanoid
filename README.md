@@ -163,10 +163,6 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 	Supress non-error output.	
 
-+ --verbose
-
-	This prints additional information during the sanoid run.
-
 + --debug
 
 	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
