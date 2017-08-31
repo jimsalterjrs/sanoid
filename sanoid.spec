@@ -110,7 +110,7 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
-* Wed Aug 30 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-2
+* Thu Aug 31 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-2
 - Add systemd timers
 * Wed Aug 30 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-1
 - Version bump
