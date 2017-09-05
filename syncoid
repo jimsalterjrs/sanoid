@@ -69,10 +69,11 @@ if (length $args{'sshport'}) {
 if (length $args{'sshkey'}) {
 	$args{'sshkey'} = "-i $args{'sshkey'}";
 }
-my $sshoptions = join " ", map { "-o " . $_ } $args{'sshoption'};
+my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
 
 # figure out if source and/or target are remote.
 $sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
+if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
@@ -90,7 +91,7 @@ my %snaps;
 ## can loop across children separately, for recursive     ##
 ## replication                                            ##
 
-if (defined $args{'recursive'}) {
+if (!defined $args{'recursive'}) {
 	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
