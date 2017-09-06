@@ -136,8 +136,10 @@ sub monitor_snapshots() {
 			my $warn = $config{$section}{$typewarn} * $smallerperiod;
 			my $crit = $config{$section}{$typecrit} * $smallerperiod;
 			my $elapsed = -1;
-			if (defined $snapsbytype{$path}{$type}{'newest'}) { $elapsed = $snapsbytype{$path}{$type}{'newest'}; }
-			my $dispelapsed = displaytime($snapsbytype{$path}{$type}{'newest'});
+			if (defined $snapsbytype{$path}{$type}{'newest'}) {
+				$elapsed = $snapsbytype{$path}{$type}{'newest'};
+			}
+			my $dispelapsed = displaytime($elapsed);
 			my $dispwarn = displaytime($warn);
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) { 
@@ -681,7 +683,7 @@ sub get_date {
 
 sub displaytime {
         # take a time in seconds, return it in human readable form
-        my $elapsed = shift;
+        my ($elapsed) = @_;
 
         my $days = int ($elapsed / 60 / 60 / 24);
         $elapsed -= $days * 60 * 60 * 24;
