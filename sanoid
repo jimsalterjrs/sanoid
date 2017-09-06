@@ -1072,6 +1072,7 @@ Options:
   --configdir=DIR       Specify a directory to find config file sanoid.conf
 
   --cron                Creates snapshots and purges expired snapshots
+  --verbose             Prints out additional information during a sanoid run
   --readonly            Simulates creation/deletion of snapshots
   --quiet               Suppresses non-error output
   --force-update        Clears out sanoid's zfs snapshot cache
@@ -1082,5 +1083,5 @@ Options:
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
 
   --help                Prints this helptext
-  --verbose             Prints the version number
+  --version             Prints the version number
   --debug               Prints out a lot of additional information during a sanoid run
