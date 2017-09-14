@@ -1,3 +1,7 @@
+1.4.17 changed die to warn when unexpectedly unable to remove a snapshot - this
+       allows sanoid to continue taking/removing other snapshots not affected by
+       whatever lock prevented the first from being taken or removed
+
 1.4.16 merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's 
        off-by-one fix to stop unnecessary extra snapshots being taken under certain conditions. merged @stardude900's
        update to INSTALL for FreeBSD users re:symlinks. Implemented @LordAro's update to change DIE to WARN when 
