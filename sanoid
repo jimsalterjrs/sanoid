@@ -1071,6 +1071,7 @@ sanoid [options]
 Assumes --cron --verbose if no other arguments (other than configdir) are specified
 
 Options:
+
   --configdir=DIR       Specify a directory to find config file sanoid.conf
 
   --cron                Creates snapshots and purges expired snapshots
