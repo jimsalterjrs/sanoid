@@ -343,32 +343,46 @@ sub syncdataset {
 
 sub compressargset {
 	my ($value) = @_;
-	my %comargs = ('rawcmd' => '', 'args' => '', 'decomrawcmd' => '', 'decomargs' => '');
+	my $DEFAULT_COMPRESSION = 'lzo';
+	my %COMPRESS_ARGS = (
+		'none' => {
+			rawcmd      => '',
+			args        => '',
+			decomrawcmd => '',
+			decomargs   => '',
+		},
+		'gzip' => {
+			rawcmd      => '/bin/gzip',
+			args        => '-3',
+			decomrawcmd => '/bin/zcat',
+			decomargs   => '',
+		},
+		'pigz-fast' => {
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-3',
+			decomrawcmd => '/usr/bin/pigz',
+			decomargs   => '-dc',
+		},
+		'pigz-slow' => {
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-9',
+			decomrawcmd => '/usr/bin/pigz',
+			decomargs   => '-dc',
+		},
+		'lzo' => {
+			rawcmd      => '/usr/bin/lzop',
+			args        => '',
+			decomrawcmd => '/usr/bin/lzop',
+			decomargs   => '-dfc',
+		},
+	);
+
 	if (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'default', 'none'))) {
-		warn "Unrecognised compression value $value, defaulting to lzo";
-		$value = 'default';
+		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
+		$value = $DEFAULT_COMPRESSION;
 	}
-	if ($value eq 'gzip') {
-		$comargs{'rawcmd'}      = '/bin/gzip';
-		$comargs{'args'}        = '-3';
-		$comargs{'decomrawcmd'} = '/bin/zcat';
-		$comargs{'decomargs'}   = '';
-	} elsif ($value eq 'pigz-fast') {
-		$comargs{'rawcmd'}      = '/usr/bin/pigz';
-		$comargs{'args'}        = '-3';
-		$comargs{'decomrawcmd'} = '/usr/bin/pigz';
-		$comargs{'decomargs'}   = '-dc';
-	} elsif ($value eq 'pigz-slow') {
-		$comargs{'rawcmd'}      = '/usr/bin/pigz';
-		$comargs{'args'}        = '-9';
-		$comargs{'decomrawcmd'} = '/usr/bin/pigz';
-		$comargs{'decomargs'}   = '-dc';
-	} elsif (($value eq 'lzo') || ($value eq 'default') ) {
-		$comargs{'rawcmd'}      = '/usr/bin/lzop';
-		$comargs{'args'}        = '';
-		$comargs{'decomrawcmd'} = '/usr/bin/lzop';
-		$comargs{'decomargs'}   = '-dfc';
-	}
+
+	my %comargs = %{$COMPRESS_ARGS{$value}}; # copy
 	$comargs{'compress'} = $value;
 	$comargs{'cmd'}      = "$comargs{'rawcmd'} $comargs{'args'}";
 	$comargs{'decomcmd'} = "$comargs{'decomrawcmd'} $comargs{'decomargs'}";
