@@ -932,6 +932,8 @@ Options:
   --recursive|r         Also transfers child datasets
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
+  --no-stream           Replicates using newest snapshot instead of intermediates
+  --no-sync-snap        Does not create new snapshot, only transfers existing
 
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
@@ -945,4 +947,3 @@ Options:
   --quiet               Suppresses non-error output
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
-
