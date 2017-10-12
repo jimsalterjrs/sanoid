@@ -111,11 +111,11 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 ##### Syncoid Command Line Options
 
-+ --[source]
++ [source]
 
 	This is the source dataset. It can be either local or remote.
 
-+ --[destination]
++ [destination]
 
 	This is the destination dataset. It can be either local or remote.
 
@@ -125,7 +125,7 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 + --compress <compression type>
 
-	Currently accepts gzip and lzo. lzo is fast and light on the processsor and is the default. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Currently accepted options: gzip, pigz-fast, pigz-slow, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -135,7 +135,7 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 	This is the bandwidth limit imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limites are desired.
 
-+ --nocommandchecks
++ --no-command-checks
 
 	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used.
 
