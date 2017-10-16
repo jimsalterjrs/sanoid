@@ -487,11 +487,9 @@ sub getsnaps {
 	my $cache = '/var/cache/sanoidsnapshots.txt';
 	my @rawsnaps;
 	
-	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
-       		$atime,$mtime,$ctime,$blksize,$blocks)
-           	= stat($cache);
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
 
-	if ( $forcecacheupdate || (time() - $mtime) > $cacheTTL ) {
+	if ( $forcecacheupdate || ! -f $cache || (time() - $mtime) > $cacheTTL ) {
 		if (checklock('sanoid_cacheupdate')) {
 			writelock('sanoid_cacheupdate');
 			if ($args{'verbose'}) { 
