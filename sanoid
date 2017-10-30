@@ -408,14 +408,8 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
-					if ($lastpreferred > time()) {
-						if ($preferredtime[3] > 1) {
-							$preferredtime[3] -= 1; # preferred time is later today - so look at yesterday's
-							$lastpreferred = timelocal(@preferredtime);
-						} else {
-							$lastpreferred -= 60*60*24; # workaround for first day of month
-						}
-					}
+					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24; } # preferred time is later this day - so look at yesterday's
+					if ($lastpreferred > time()) { $lastpreferred -= 60*60; } # DST crossing detected, skip another hour
 				} elsif ($type eq 'weekly')   {
 					# calculate offset in seconds for the desired weekday
 					my $offset = 0;
