@@ -2,21 +2,21 @@
        allows sanoid to continue taking/removing other snapshots not affected by
        whatever lock prevented the first from being taken or removed
 
-1.4.16 merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's 
+1.4.16 merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's
        off-by-one fix to stop unnecessary extra snapshots being taken under certain conditions. merged @stardude900's
-       update to INSTALL for FreeBSD users re:symlinks. Implemented @LordAro's update to change DIE to WARN when 
-       encountering a dataset with no snapshots and --no-sync-snap set during recursive replication. Implemented 
+       update to INSTALL for FreeBSD users re:symlinks. Implemented @LordAro's update to change DIE to WARN when
+       encountering a dataset with no snapshots and --no-sync-snap set during recursive replication. Implemented
        @LordAro's update to sanoid.conf to add an ignore template which does not snap, prune, or monitor.
 
 1.4.15 merged @hrast01's -o option to pass ssh CLI options through. Currently only supports a single -o=option argument -
-       in the near future, need to add some simple parsing to expand -o=option1,option2 on the CLI to 
+       in the near future, need to add some simple parsing to expand -o=option1,option2 on the CLI to
        -o option1 -o option2 as passed to SSH.
 
 1.4.14 fixed significant regression in syncoid - now pulls creation AND guid on each snap; sorts by
        creation and matches by guid. regression reported in #112 by @da-me, thank you!
 
 1.4.13 Syncoid will now continue trying to replicate other child datasets after one dataset fails replication
-       when called recursively. Eg syncoid -r source/parent target/parent when source/parent/child1 has been 
+       when called recursively. Eg syncoid -r source/parent target/parent when source/parent/child1 has been
        deleted and replaced with an imposter will no longer prevent source/parent/child2 from successfully
        replicating to target/parent/child2.  This could still use some cleanup TBH; syncoid SHOULD exit 3
        if any of these errors happen (to assist detection of errors in scripting) but now would exit 0.
@@ -28,7 +28,7 @@
        and also paves the way in the future for Syncoid to find matching snapshots even after `zfs rename` on source
        or target. Thank you Github user @mailinglists35 for the idea!
 
-1.4.10 added --compress=pigz-fast and --compress=pigz-slow. On a Xeon E3-1231v3, pigz-fast is equivalent compression 
+1.4.10 added --compress=pigz-fast and --compress=pigz-slow. On a Xeon E3-1231v3, pigz-fast is equivalent compression
        to --compress=gzip but with compressed throughput of 75.2 MiB/s instead of 18.1 MiB/s. pigz-slow is around 5%
        better compression than compress=gzip with roughly equivalent compressed throughput. Note that pigz-fast produces
        a whopping 20+% better compression on the test data (a linux boot drive) than lzop does, while still being fast
@@ -38,17 +38,17 @@
       Default compression remains lzop for SSH transport, with compression automatically set to none if there's no transport
       (ie syncoid replication from dataset to dataset on the local machine only).
 
-1.4.9 added -c option to manually specify the SSH cipher used.  Must use a cipher supported by both source and target! Thanks 
+1.4.9 added -c option to manually specify the SSH cipher used.  Must use a cipher supported by both source and target! Thanks
       Tamas Papp.
 
-1.4.8 added --no-stream argument to syncoid: allows use of -i incrementals (do not replicate a full snapshot stream, only a 
+1.4.8 added --no-stream argument to syncoid: allows use of -i incrementals (do not replicate a full snapshot stream, only a
       direct incremental update from oldest to most recent snapshot) instead of the normal -I incrementals which include
       all intermediate snapshots.
 
       added --no-sync-snap, which has syncoid replicate using only the newest PRE-EXISTING snapshot on source,
       instead of default behavior in which syncoid creates a new, ephemeral syncoid snapshot.
 
-1.4.7a (syncoid only) added standard invocation output when called without source or target 
+1.4.7a (syncoid only) added standard invocation output when called without source or target
        as per @rriley and @fajarnugraha suggestions
 
 1.4.7 reverted Perl shebangs to #!/usr/bin/perl - sorry FreeBSD folks, shebanged to /usr/bin/env perl bare calls to syncoid
@@ -63,7 +63,7 @@
 
 1.4.6c merged @gusson's pull request to add -sshport argument
 
-1.4.6b updated default cipherlist for syncoid to 
+1.4.6b updated default cipherlist for syncoid to
        chacha20-poly1305@openssh.com,arcfour - arcfour isn't supported on
        newer SSH (in Ubuntu Xenial and FreeBSD), chacha20 isn't supported on
        some older SSH versions (Ubuntu Precise< I think?)
@@ -85,17 +85,17 @@
 1.4.3 added SSH persistence to syncoid - using socket speeds up SSH overhead 300%! =)
       one extra commit to get rid of the "Exit request sent." SSH noise at the end.
 
-1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name 
+1.4.2 removed -r flag for zfs destroy of pruned snapshots in sanoid, which unintentionally caused same-name
       child snapshots to be deleted - thank you Lenz Weber!
 
 1.4.1 updated check_zpool() in sanoid to parse zpool list properly both pre- and post- ZoL v0.6.4
 
-1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots. 
+1.4.0 added findoid tool - find and list all versions of a given file in all available ZFS snapshots.
       use: findoid /path/to/file
 
 1.3.1 whoops - prevent process_children_only from getting set from blank value in defaults
 
-1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with 
+1.3.0 changed monitor_children_only to process_children_only. which keeps sanoid from messing around with
       empty parent datasets at all. also more thoroughly documented features in default config files.
 
 1.2.0 added monitor_children_only parameter to sanoid.conf for use with recursive definitions - in cases where container dataset is kept empty
@@ -115,7 +115,7 @@
 
 1.0.15 updated syncoid to accept compression engine flags - --compress=lzo|gzip|none
 
-1.0.14 updated syncoid to reduce output when fetching snapshot list - thank you github user @0xFate. 
+1.0.14 updated syncoid to reduce output when fetching snapshot list - thank you github user @0xFate.
 
 1.0.13 removed monitor_version again - sorry for the feature instability, forgot I removed it in the first place because I didn't like pulling
        in so many dependencies for such a trivial feature
