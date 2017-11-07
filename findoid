@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# this software is licensed for use under the Free Software Foundation's GPL v3.0 license, as retrieved 
+# this software is licensed for use under the Free Software Foundation's GPL v3.0 license, as retrieved
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
@@ -71,13 +71,13 @@ sub getversions {
 				$duplicate = 1;
 			}
 		}
-		if (! $duplicate) { 
+		if (! $duplicate) {
 			$versions{$filename}{'size'} = $size;
 			$versions{$filename}{'mtime'} = $mtime;
 		}
 	}
 
-	return %versions;		
+	return %versions;
 }
 
 sub findsnaps {
@@ -99,19 +99,19 @@ sub findsnaps {
 }
 
 sub getdataset {
-	
+
 	my ($path) = @_;
 
 	open FH, "$zfs list -Ho mountpoint |";
 	my @datasets = <FH>;
 	close FH;
-	
+
 	my @matchingdatasets;
 	foreach my $dataset (@datasets) {
 		chomp $dataset;
 		if ( $path =~ /^$dataset/ ) { push @matchingdatasets, $dataset; }
 	}
-	
+
 	my $bestmatch = '';
 	foreach my $dataset (@matchingdatasets) {
 		if ( length $dataset > length $bestmatch ) { $bestmatch = $dataset; }
@@ -150,7 +150,7 @@ sub getargs {
 				# if this CLI arg takes a user-specified value and
 				# we don't already have it, then the user must have
 				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
+				# from the array as this value rather than as the
 				# next argument.
 				if ($argvalue eq '') { $argvalue = shift(@args); }
 				$args{$arg} = $argvalue;
@@ -165,7 +165,7 @@ sub getargs {
 				# if this CLI arg takes a user-specified value and
 				# we don't already have it, then the user must have
 				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
+				# from the array as this value rather than as the
 				# next argument.
 				if ($argvalue eq '') { $argvalue = shift(@args); }
 				$args{$arg} = $argvalue;
