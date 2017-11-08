@@ -651,11 +651,11 @@ sub buildsynccmd {
 		# remote source, local target.
 		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $args{'decompress'}{'cmd'} | $mbuffercmd | $pvcmd | $recvcmd";
 		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'compresscmd'}"; }
+		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'cmd'}"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decompresscmd'} | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
