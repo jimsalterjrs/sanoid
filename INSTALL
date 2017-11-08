@@ -1,10 +1,10 @@
 SYNCOID
 -------
-Syncoid depends on ssh, pv, gzip, lzop, and mbuffer.  It can run with reduced 
+Syncoid depends on ssh, pv, gzip, lzop, and mbuffer.  It can run with reduced
 functionality in the absence of any or all of the above. SSH is only required
-for remote synchronization.  On newer FreeBSD and Ubuntu Xenial 
-chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the 
-default for SSH transport since v1.4.6. Syncoid runs will fail if one of them 
+for remote synchronization.  On newer FreeBSD and Ubuntu Xenial
+chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the
+default for SSH transport since v1.4.6. Syncoid runs will fail if one of them
 is not available on either end of the transport.
 
 On Ubuntu: apt install pv lzop mbuffer
@@ -15,7 +15,7 @@ FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than
                /usr/bin ; syncoid currently does not check path.
 
                Simplest path workaround is symlinks, eg:
-               root@bsd:~# ln -s /usr/local/bin/lzop /usr/bin/lzop 
+               root@bsd:~# ln -s /usr/local/bin/lzop /usr/bin/lzop
                or similar, as appropriate, to create links in /usr/bin
                to wherever the utilities actually are on your system.
 
@@ -29,4 +29,3 @@ strongly recommends using your distribution's repositories instead.
 On Ubuntu: apt install libconfig-inifiles-perl
 On CentOS: yum install perl-Config-IniFiles
 On FreeBSD: pkg install p5-Config-Inifiles
-

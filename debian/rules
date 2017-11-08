@@ -17,4 +17,3 @@ override_dh_auto_install:
 		cp sanoid.conf $(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example;
 	@mkdir -p $(DESTDIR)/lib/systemd/system; \
 		cp debian/sanoid.timer $(DESTDIR)/lib/systemd/system;
-
