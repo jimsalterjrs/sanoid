@@ -4,25 +4,43 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.16';
+$::VERSION = '1.4.16';
 
 use strict;
 use warnings;
 use Data::Dumper;
+use Getopt::Long qw(:config auto_version auto_help);
+use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
 
-my %args = getargs(@ARGV);
+# Blank defaults to use ssh client's default
+# TODO: Merge into a single "sshflags" option?
+my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
+GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
+                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
+                   "debug", "quiet", "no-stream", "no-sync-snap") or pod2usage(2);
 
-if ($args{'version'}) {
-	print "Syncoid version: $version\n";
-	exit 0;
+my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
+
+# TODO Expand to accept multiple sources?
+if (scalar(@ARGV) != 2) {
+	print("Source or target not found!\n");
+	pod2usage(2);
+	exit 127;
+} else {
+	$args{'source'} = $ARGV[0];
+	$args{'target'} = $ARGV[1];
 }
 
-if (!(defined $args{'source'} && defined $args{'target'})) {
-       print 'usage: syncoid [src_user@src_host:]src_pool/src_dataset [dst_user@dst_host:]dst_pool/dst_dataset'."\n";
-       exit 127;
+# Could possibly merge these into an options function
+if (length $args{'source-bwlimit'}) {
+	$args{'source-bwlimit'} = "-R $args{'source-bwlimit'}";
 }
+if (length $args{'target-bwlimit'}) {
+	$args{'target-bwlimit'} = "-r $args{'target-bwlimit'}";
+}
+$args{'streamarg'} = (defined $args{'no-stream'} ? '-i' : '-I');
 
 my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
@@ -32,28 +50,7 @@ my $quiet = $args{'quiet'};
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
-my $sshcipher;
-if (defined $args{'c'}) {
-	$sshcipher = "-c $args{'c'}";
-} else {
-	# default to no cipher specified now that SSH
-	# has not defaulted to a cripplingly slow cipher
-	# in a very long time
-	$sshcipher = '';
-}
-my $sshport = '-p 22';
-my $sshoption;
-if (defined $args{'o'}) {
-    my @options = split(',', $args{'o'});
-    foreach my $option (@options) {
-         $sshoption .= " -o $option";
-         if ($option eq "NoneSwitch=yes") {
-              $sshcipher = "";
-         }
-    }
-} else {
-        $sshoption = "";
-}
+
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $sudocmd = '/usr/bin/sudo';
@@ -62,23 +59,25 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # being present on remote machines.
 my $lscmd = '/bin/ls';
 
-if ( $args{'sshport'} ) {
-  $sshport = "-p $args{'sshport'}";
+if (length $args{'sshcipher'}) {
+	$args{'sshcipher'} = "-c $args{'sshcipher'}";
 }
+if (length $args{'sshport'}) {
+  $args{'sshport'} = "-p $args{'sshport'}";
+}
+if (length $args{'sshkey'}) {
+	$args{'sshkey'} = "-i $args{'sshkey'}";
+}
+my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
+
 # figure out if source and/or target are remote.
-if ( $args{'sshkey'} ) {
-  $sshcmd = "$sshcmd $sshoption $sshcipher $sshport -i $args{'sshkey'}";
-}
-else {
-  $sshcmd = "$sshcmd $sshoption $sshcipher $sshport";
-}
+$sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
+if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
-my $sourcesudocmd;
-my $targetsudocmd;
-if ($sourceisroot) { $sourcesudocmd = ''; } else { $sourcesudocmd = $sudocmd; }
-if ($targetisroot) { $targetsudocmd = ''; } else { $targetsudocmd = $sudocmd; }
+my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
+my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
@@ -91,7 +90,7 @@ my %snaps;
 ## can loop across children separately, for recursive     ##
 ## replication                                            ##
 
-if (! $args{'recursive'}) {
+if (!defined $args{'recursive'}) {
 	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
@@ -164,17 +163,21 @@ sub syncdataset {
 		%snaps = (%sourcesnaps, %targetsnaps);
 	}
 
-	if ($args{'dumpsnaps'}) { print "merged snapshot list: \n"; dumphash(\%snaps); print "\n\n\n"; }
+	if (defined $args{'dumpsnaps'}) {
+		print "merged snapshot list of $targetfs: \n";
+		dumphash(\%snaps);
+		print "\n\n\n";
+	}
 
 	# create a new syncoid snapshot on the source filesystem.
 	my $newsyncsnap;
-	if (!defined ($args{'no-sync-snap'}) ) {
+	if (!defined $args{'no-sync-snap'}) {
 		$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
 	} else {
 		# we don't want sync snapshots created, so use the newest snapshot we can find.
 		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 		if ($newsyncsnap eq 0) {
-			warn "CRITICAL: no snapshots exist on source, and you asked for --no-sync-snap.\n";
+			warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
 			return 0;
 		}
 	}
@@ -285,7 +288,7 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my $matchingsnap = getmatchingsnapshot($targetsize, \%snaps);
+		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, $targetsize, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshot; we whined piteously already, but let's go ahead and return false
 			# now in case more child datasets need replication.
@@ -337,111 +340,54 @@ sub syncdataset {
 
 } # end syncdataset()
 
+sub compressargset {
+	my ($value) = @_;
+	my $DEFAULT_COMPRESSION = 'lzo';
+	my %COMPRESS_ARGS = (
+		'none' => {
+			rawcmd      => '',
+			args        => '',
+			decomrawcmd => '',
+			decomargs   => '',
+		},
+		'gzip' => {
+			rawcmd      => '/bin/gzip',
+			args        => '-3',
+			decomrawcmd => '/bin/zcat',
+			decomargs   => '',
+		},
+		'pigz-fast' => {
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-3',
+			decomrawcmd => '/usr/bin/pigz',
+			decomargs   => '-dc',
+		},
+		'pigz-slow' => {
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-9',
+			decomrawcmd => '/usr/bin/pigz',
+			decomargs   => '-dc',
+		},
+		'lzo' => {
+			rawcmd      => '/usr/bin/lzop',
+			args        => '',
+			decomrawcmd => '/usr/bin/lzop',
+			decomargs   => '-dfc',
+		},
+	);
 
-sub getargs {
-	my @args = @_;
-	my %args;
-
-	my %novaluearg;
-	my %validarg;
-	push my @validargs, ('debug','nocommandchecks','version','monitor-version','compress','c','o','source-bwlimit','target-bwlimit','dumpsnaps','recursive','r','sshkey','sshport','quiet','no-stream','no-sync-snap');
-	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','nocommandchecks','version','monitor-version','dumpsnaps','recursive','r','quiet','no-stream','no-sync-snap');
-	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
-
-	while (my $rawarg = shift(@args)) {
-		my $arg = $rawarg;
-		my $argvalue = '';
-		if ($rawarg =~ /=/) {
-			# user specified the value for a CLI argument with =
-			# instead of with blank space. separate appropriately.
-			$argvalue = $arg;
-			$arg =~ s/=.*$//;
-			$argvalue =~ s/^.*=//;
-		}
-		if ($rawarg =~ /^--/) {
-			# doubledash arg
-			$arg =~ s/^--//;
-			if (! $validarg{$arg}) { die "ERROR: don't understand argument $rawarg.\n"; }
-			if ($novaluearg{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} elsif ($arg =~ /^-/) {
-			# singledash arg
-			$arg =~ s/^-//;
-			if (! $validarg{$arg}) { die "ERROR: don't understand argument $rawarg.\n"; }
-			if ($novaluearg{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} else {
-			# bare arg
-			if (defined $args{'source'}) {
-				if (! defined $args{'target'}) {
-					$args{'target'} = $arg;
-				} else {
-					die "ERROR: don't know what to do with third bare argument $rawarg.\n";
-				}
-			} else {
-				$args{'source'} = $arg;
-			}
-		}
+	if ($value eq 'default') {
+		$value = $DEFAULT_COMPRESSION;
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'default', 'none'))) {
+		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
+		$value = $DEFAULT_COMPRESSION;
 	}
 
-	if (defined $args{'source-bwlimit'}) { $args{'source-bwlimit'} = "-R $args{'source-bwlimit'}"; } else { $args{'source-bwlimit'} = ''; }
-	if (defined $args{'target-bwlimit'}) { $args{'target-bwlimit'} = "-r $args{'target-bwlimit'}"; } else { $args{'target-bwlimit'} = ''; }
-
-	if (defined $args{'no-stream'}) { $args{'streamarg'} = '-i'; } else { $args{'streamarg'} = '-I'; }
-
-	if ($args{'r'}) { $args{'recursive'} = $args{'r'}; }
-
-	if (!defined $args{'compress'}) { $args{'compress'} = 'default'; }
-
-	if ($args{'compress'} eq 'gzip') {
-		$args{'rawcompresscmd'} = '/bin/gzip';
-		$args{'compressargs'} = '-3';
-		$args{'rawdecompresscmd'} = '/bin/zcat';
-		$args{'decompressargs'} = '';
-	} elsif ( ($args{'compress'} eq 'pigz-fast')) {
-		$args{'rawcompresscmd'} = '/usr/bin/pigz';
-		$args{'compressargs'} = '-3';
-		$args{'rawdecompresscmd'} = '/usr/bin/pigz';
-		$args{'decompressargs'} = '-dc';
-	} elsif ( ($args{'compress'} eq 'pigz-slow')) {
-		$args{'rawcompresscmd'} = '/usr/bin/pigz';
-		$args{'compressargs'} = '-9';
-		$args{'rawdecompresscmd'} = '/usr/bin/pigz';
-		$args{'decompressargs'} = '-dc';
-	} elsif ( ($args{'compress'} eq 'lzo') || ($args{'compress'} eq 'default') ) {
-		$args{'rawcompresscmd'} = '/usr/bin/lzop';
-		$args{'compressargs'} = '';
-		$args{'rawdecompresscmd'} = '/usr/bin/lzop';
-		$args{'decompressargs'} = '-dfc';
-	} else {
-		$args{'rawcompresscmd'} = '';
-		$args{'compressargs'} = '';
-		$args{'rawdecompresscmd'} = '';
-		$args{'decompressargs'} = '';
-	}
-	$args{'compresscmd'} = "$args{'rawcompresscmd'} $args{'compressargs'}";
-	$args{'decompresscmd'} = "$args{'rawdecompresscmd'} $args{'decompressargs'}";
-
-	return %args;
+	my %comargs = %{$COMPRESS_ARGS{$value}}; # copy
+	$comargs{'compress'} = $value;
+	$comargs{'cmd'}      = "$comargs{'rawcmd'} $comargs{'args'}";
+	$comargs{'decomcmd'} = "$comargs{'decomrawcmd'} $comargs{'decomargs'}";
+	return \%comargs;
 }
 
 sub checkcommands {
@@ -471,24 +417,15 @@ sub checkcommands {
 
 	# if raw compress command is null, we must have specified no compression. otherwise,
 	# make sure that compression is available everywhere we need it
-	if ($args{'rawcompresscmd'} eq '') {
-		$avail{'sourcecompress'} = 0;
-		$avail{'sourcecompress'} = 0;
-		$avail{'localcompress'} = 0;
-		if ($args{'compress'} eq 'none' ||
-		    $args{'compress'} eq 'no' ||
-		    $args{'compress'} eq '0') {
-			if ($debug) { print "DEBUG: compression forced off from command line arguments.\n"; }
-		} else {
-			print "WARN: value $args{'compress'} for argument --compress not understood, proceeding without compression.\n";
-		}
+	if ($compressargs{'compress'} eq 'none') {
+		if ($debug) { print "DEBUG: compression forced off from command line arguments.\n"; }
 	} else {
-		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on source...\n"; }
-		$avail{'sourcecompress'} = `$sourcessh $lscmd $args{'rawcompresscmd'} 2>/dev/null`;
-		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on target...\n"; }
-		$avail{'targetcompress'} = `$targetssh $lscmd $args{'rawcompresscmd'} 2>/dev/null`;
-		if ($debug) { print "DEBUG: checking availability of $args{'rawcompresscmd'} on local machine...\n"; }
-		$avail{'localcompress'} = `$lscmd $args{'rawcompresscmd'} 2>/dev/null`;
+		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on source...\n"; }
+		$avail{'sourcecompress'} = `$sourcessh $lscmd $compressargs{'rawcmd'} 2>/dev/null`;
+		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on target...\n"; }
+		$avail{'targetcompress'} = `$targetssh $lscmd $compressargs{'rawcmd'} 2>/dev/null`;
+		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on local machine...\n"; }
+		$avail{'localcompress'} = `$lscmd $compressargs{'rawcmd'} 2>/dev/null`;
 	}
 
 	my ($s,$t);
@@ -514,14 +451,14 @@ sub checkcommands {
 
 
 	if ($avail{'sourcecompress'} eq '') {
-		if ($args{'rawcompresscmd'} ne '') {
-			print "WARN: $args{'compresscmd'} not available on source $s- sync will continue without compression.\n";
+		if ($compressargs{'rawcmd'} ne '') {
+			print "WARN: $compressargs{'rawcmd'} not available on source $s- sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
 	if ($avail{'targetcompress'} eq '') {
-		if ($args{'rawcompresscmd'} ne '') {
-			print "WARN: $args{'compresscmd'} not available on target $t - sync will continue without compression.\n";
+		if ($compressargs{'rawcmd'} ne '') {
+			print "WARN: $compressargs{'rawcmd'} not available on target $t - sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
@@ -533,8 +470,8 @@ sub checkcommands {
 
 	# corner case - if source AND target are BOTH remote, we have to check for local compress too
 	if ($sourcehost ne '' && $targethost ne '' && $avail{'localcompress'} eq '') {
-		if ($args{'rawcompresscmd'} ne '') {
-			print "WARN: $args{'compresscmd'} not available on local machine - sync will continue without compression.\n";
+		if ($compressargs{'rawcmd'} ne '') {
+			print "WARN: $compressargs{'rawcmd'} not available on local machine - sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
@@ -690,9 +627,9 @@ sub buildsynccmd {
 		$synccmd = "$sendcmd |";
 		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
 		my $bwlimit = '';
-		if (defined $args{'source-bwlimit'}) {
+		if (length $args{'bwlimit'}) {
 			$bwlimit = $args{'source-bwlimit'};
-		} elsif (defined $args{'target-bwlimit'}) {
+		} elsif (length $args{'target-bwlimit'}) {
 			$bwlimit = $args{'target-bwlimit'};
 		}
 
@@ -701,40 +638,40 @@ sub buildsynccmd {
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
 		# local source, remote target.
-		#$synccmd = "$sendcmd | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
+		#$synccmd = "$sendcmd | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
-		if ($avail{'compress'}) { $synccmd .= " $args{'compresscmd'} |"; }
+		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		$synccmd .= " $sshcmd $targethost '";
 		if ($avail{'targetmbuffer'}) { $synccmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
-		if ($avail{'compress'}) { $synccmd .= " $args{'decompresscmd'} |"; }
+		if ($avail{'compress'}) { $synccmd .= " $compressargs{'decomcmd'} |"; }
 		$synccmd .= " $recvcmd'";
 	} elsif ($targethost eq '') {
 		# remote source, local target.
-		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $args{'compresscmd'} | $mbuffercmd' | $args{'decompresscmd'} | $mbuffercmd | $pvcmd | $recvcmd";
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $args{'decompress'}{'cmd'} | $mbuffercmd | $pvcmd | $recvcmd";
 		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $args{'compresscmd'}"; }
+		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'cmd'}"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
-		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $args{'compresscmd'} | $mbuffercmd' | $args{'decompresscmd'} | $pvcmd | $args{'compresscmd'} | $mbuffercmd | $sshcmd $targethost '$args{'decompresscmd'} | $mbuffercmd | $recvcmd'";
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $compressargs{'decomcmd'} | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $args{'compresscmd'}"; }
+		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'cmd'}"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		$synccmd .= "' | ";
-		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
-		if ($avail{'compress'}) { $synccmd .= "$args{'compresscmd'} | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compressargs{'cmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost '";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$args{'decompresscmd'} | "; }
+		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		$synccmd .= "$recvcmd'";
 	}
 	return $synccmd;
@@ -794,7 +731,7 @@ sub pruneoldsyncsnaps {
 }
 
 sub getmatchingsnapshot {
-	my ($targetsize, $snaps) = shift;
+	my ($sourcefs, $targetfs, $targetsize, $snaps) = @_;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}{'guid'}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
@@ -806,7 +743,7 @@ sub getmatchingsnapshot {
 	# if we got this far, we failed to find a matching snapshot.
 
 	print "\n";
-	print "CRITICAL ERROR: Target exists but has no matching snapshots!\n";
+	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
 	print "                Replication to target would require destroying existing\n";
 	print "                target. Cowardly refusing to destroy your existing target.\n\n";
 
@@ -814,7 +751,7 @@ sub getmatchingsnapshot {
 	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
 
 	if ( $targetsize < (64*1024*1024) ) {
-		print "          NOTE: Target dataset is < 64MB used - did you mistakenly run\n";
+		print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
 		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
 		print "                replication must be to a NON EXISTENT DATASET, which will\n";
 		print "                then be CREATED BY the initial replication process.\n\n";
@@ -868,7 +805,7 @@ sub getssh {
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
-		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $sshport $rhost exit |";
+		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
 		$rhost = "-S $socket $rhost";
 	} else {
@@ -987,3 +924,41 @@ sub getdate {
 	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
 	return %date;
 }
+
+__END__
+
+=head1 NAME
+
+syncoid - ZFS snapshot replication tool
+
+=head1 SYNOPSIS
+
+ syncoid [options]... SOURCE TARGET
+ or   syncoid [options]... SOURCE [USER@]HOST:TARGET
+ or   syncoid [options]... [USER@]HOST:SOURCE [TARGET]
+ or   syncoid [options]... [USER@]HOST:SOURCE [USER@]HOST:TARGET
+
+ SOURCE                Source ZFS dataset. Can be either local or remote
+ TARGET                Target ZFS dataset. Can be either local or remote
+
+Options:
+
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --recursive|r         Also transfers child datasets
+  --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
+  --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
+  --no-stream           Replicates using newest snapshot instead of intermediates
+  --no-sync-snap        Does not create new snapshot, only transfers existing
+
+  --sshkey=FILE         Specifies a ssh public key to use to connect
+  --sshport=PORT        Connects to remote on a particular port
+  --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
+  --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+
+  --help                Prints this helptext
+  --verbose             Prints the version number
+  --debug               Prints out a lot of additional information during a syncoid run
+  --monitor-version     Currently does nothing
+  --quiet               Suppresses non-error output
+  --dumpsnaps           Dumps a list of snapshots during the run
+  --no-command-checks   Do not check command existence before attempting transfer. Not recommended
