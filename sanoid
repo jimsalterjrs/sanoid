@@ -553,6 +553,18 @@ sub getsnaps {
 ####################################################################################
 ####################################################################################
 
+sub verify_option_existence {
+    my ($hash, $key, $default) = @_;
+
+    if (! defined (%$hash{$key})) {
+       $hash->{$key} = $default;
+    }
+}
+
+####################################################################################
+####################################################################################
+####################################################################################
+
 sub init {
 	my ($conf_file, $default_conf_file) = @_;
 	my %config;
@@ -567,6 +579,12 @@ sub init {
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
+
+	# hardcoded defaults which may be missing from older default configuration file
+	verify_option_existence($defaults{'template_default'}, 'frequent_period', 15);
+	verify_option_existence($defaults{'template_default'}, 'frequently', 0);
+	verify_option_existence($defaults{'template_default'}, 'frequently_warn', 2000);
+	verify_option_existence($defaults{'template_default'}, 'frequently_crit', 8000);
 
 	foreach my $section (keys %ini) {
 
