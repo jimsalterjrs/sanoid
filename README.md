@@ -26,6 +26,7 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 #############################
 
 [template_production]
+        frequently = 0
         hourly = 36
         daily = 30
         monthly = 3
