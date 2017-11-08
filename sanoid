@@ -5,6 +5,7 @@
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
 $::VERSION = '1.4.17';
+my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
 use warnings;
@@ -567,6 +568,17 @@ sub init {
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
+
+	# check if default configuration file is up to date
+	my $defaults_version = 1;
+	if (defined $defaults{'version'}{'version'}) {
+		$defaults_version = $defaults{'version'}{'version'};
+		delete $defaults{'version'};
+	}
+
+	if ($defaults_version < $MINIMUM_DEFAULTS_VERSION) {
+		die "FATAL: you're using sanoid.defaults.conf v$defaults_version, this version of sanoid requires a minimum sanoid.defaults.conf v$MINIMUM_DEFAULTS_VERSION";
+	}
 
 	foreach my $section (keys %ini) {
 
