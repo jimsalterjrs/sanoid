@@ -36,7 +36,10 @@ my $sshcipher;
 if (defined $args{'c'}) {
 	$sshcipher = "-c $args{'c'}";
 } else {
-	$sshcipher = '-c chacha20-poly1305@openssh.com,arcfour';
+	# default to no cipher specified now that SSH
+	# has not defaulted to a cripplingly slow cipher
+	# in a very long time
+	$sshcipher = '';
 }
 my $sshport = '-p 22';
 my $sshoption;
