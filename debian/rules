@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+# See debhelper(7) for more info
+
+# output every command that modifies files on the build system.
+#export DH_VERBOSE = 1
+
+%:
+	dh $@ --with systemd
+
+DESTDIR = $(CURDIR)/debian/sanoid
+override_dh_auto_install:
+	@mkdir -p $(DESTDIR)/usr/sbin; \
+		cp sanoid syncoid findoid sleepymutex $(DESTDIR)/usr/sbin;
+	@mkdir -p $(DESTDIR)/etc/sanoid; \
+		cp sanoid.defaults.conf $(DESTDIR)/etc/sanoid;
+	@mkdir -p $(DESTDIR)/usr/share/doc/sanoid; \
+		cp sanoid.conf $(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example;
+	@mkdir -p $(DESTDIR)/lib/systemd/system; \
+		cp debian/sanoid.timer $(DESTDIR)/lib/systemd/system;

@@ -4,22 +4,33 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-my $version = '1.4.16';
+$::VERSION = '1.4.17';
 
 use strict;
-use Config::IniFiles;   # read samba-style conf file
-use File::Path;         # for rmtree command in use_prune
-use Data::Dumper;	# debugging - print contents of hash
-use Time::Local;	# to parse dates in reverse
+use warnings;
+use Config::IniFiles; # read samba-style conf file
+use Data::Dumper;     # debugging - print contents of hash
+use File::Path;       # for rmtree command in use_prune
+use Getopt::Long qw(:config auto_version auto_help);
+use Pod::Usage;       # pod2usage
+use Time::Local;      # to parse dates in reverse
 
-# parse CLI arguments
-my %args = getargs(@ARGV);
+my %args = ("configdir" => "/etc/sanoid");
+GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
+                   "monitor-health", "force-update", "configdir=s",
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots"
+          ) or pod2usage(2);
+
+# If only config directory (or nothing) has been specified, default to --cron --verbose
+if (keys %args < 2) {
+	$args{'cron'} = 1;
+	$args{'verbose'} = 1;
+}
 
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
 
-if ($args{'configdir'} eq '') { $args{'configdir'} = '/etc/sanoid'; }
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
@@ -41,12 +52,10 @@ my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
 if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
 if ($args{'monitor-health'}) 	{ monitor_health(@params); }
-if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); } 
-if ($args{'version'}) 		{ print "INFO: Sanoid version: $version\n"; }
+if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); }
 
-if ($args{'cron'} || $args{'noargs'}) {
-	if ($args{'noargs'}) { print "INFO: No arguments given - assuming --cron and --verbose.\n"; }
-	if (!$args{'quiet'}) { $args{'verbose'} = 1; }
+if ($args{'cron'}) {
+	if ($args{'quiet'}) { $args{'verbose'} = 0; }
 	take_snapshots (@params);
 	prune_snapshots (@params);
 } else {
@@ -55,13 +64,13 @@ if ($args{'cron'} || $args{'noargs'}) {
 }
 
 exit 0;
- 
+
 
 ####################################################################################
 ####################################################################################
 ####################################################################################
 
-sub monitor_health() {
+sub monitor_health {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %pools;
 	my @messages;
@@ -84,16 +93,16 @@ sub monitor_health() {
 	print "$message\n";
 	exit $errlevel;
 
-} # end monitor_health()
+}
 
 ####################################################################################
 ####################################################################################
 ####################################################################################
 
-sub monitor_snapshots() {
+sub monitor_snapshots {
 
 	# nagios plugin format: exit 0,1,2,3 for OK, WARN, CRITICAL, or ERROR.
-	
+
 	# check_snapshot_date - test ZFS fs creation timestamp for recentness
 	# accepts arguments: $filesystem, $warn (in seconds elapsed), $crit (in seconds elapsed)
 
@@ -107,14 +116,14 @@ sub monitor_snapshots() {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'monitor'}) { next; }
-		if ($config{$section}{'process_children_only'}) { next; }		
+		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
 
 		my @types = ('yearly','monthly','daily','hourly');
 		foreach my $type (@types) {
-			
+
 			my $smallerperiod = 0;
 			# we need to set the period length in seconds first
 			if ($type eq 'hourly') { $smallerperiod = 60; }
@@ -127,11 +136,13 @@ sub monitor_snapshots() {
 			my $warn = $config{$section}{$typewarn} * $smallerperiod;
 			my $crit = $config{$section}{$typecrit} * $smallerperiod;
 			my $elapsed = -1;
-			if (defined $snapsbytype{$path}{$type}{'newest'}) { $elapsed = $snapsbytype{$path}{$type}{'newest'}; }
-			my $dispelapsed = displaytime($snapsbytype{$path}{$type}{'newest'});
+			if (defined $snapsbytype{$path}{$type}{'newest'}) {
+				$elapsed = $snapsbytype{$path}{$type}{'newest'};
+			}
+			my $dispelapsed = displaytime($elapsed);
 			my $dispwarn = displaytime($warn);
 			my $dispcrit = displaytime($crit);
-			if ( $elapsed > $crit || $elapsed == -1) { 
+			if ( $elapsed > $crit || $elapsed == -1) {
 				if ($config{$section}{$typecrit} > 0) {
 					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
 					if ($elapsed == -1) {
@@ -148,20 +159,20 @@ sub monitor_snapshots() {
 			} else {
 				# push @msgs .= "OK: $path\'s newest $type snapshot is $dispelapsed old \n";
 			}
-			
+
 		}
 	}
-	
+
 	my @sorted_msgs = sort { lc($a) cmp lc($b) } @msgs;
 	my @sorted_paths = sort { lc($a) cmp lc($b) } @paths;
 	$msg = join (", ", @sorted_msgs);
 	my $paths = join (", ", @sorted_paths);
-	
+
 	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
-	
+
 	print "$msg\n";
 	exit $errorlevel;
-} # end monitor()
+}
 
 ####################################################################################
 ####################################################################################
@@ -193,45 +204,48 @@ sub prune_snapshots {
 			elsif ($type eq 'daily') { $period = 60*60*24; }
 			elsif ($type eq 'monthly') { $period = 60*60*24*31; }
 			elsif ($type eq 'yearly') { $period = 60*60*24*365.25; }
-			
-			my @sorted = split (/\|/,$snapsbytype{$path}{$type}{'sorted'});
 
-			# if we say "daily=30" we really mean "don't keep any dailies more than 30 days old", etc
-			my $maxage = ( time() - $config{$section}{$type} * $period );
-			# but if we say "daily=30" we ALSO mean "don't get rid of ANY dailies unless we have more than 30".
-			my $minsnapsthistype = $config{$section}{$type};
+			# avoid pissing off use warnings by not executing this block if no matching snaps exist
+			if (defined $snapsbytype{$path}{$type}{'sorted'}) {
+				my @sorted = split (/\|/,$snapsbytype{$path}{$type}{'sorted'});
 
-			# how many total snaps of this type do we currently have?
-			my $numsnapsthistype = scalar (@sorted);
+				# if we say "daily=30" we really mean "don't keep any dailies more than 30 days old", etc
+				my $maxage = ( time() - $config{$section}{$type} * $period );
+				# but if we say "daily=30" we ALSO mean "don't get rid of ANY dailies unless we have more than 30".
+				my $minsnapsthistype = $config{$section}{$type};
 
-			my @prunesnaps;
-			foreach my $snap( @sorted ){
-				# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
-				if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
-					my $fullpath = $path . '@' . $snap;
-					push(@prunesnaps,$fullpath);
-					# we just got rid of a snap, so we now have one fewer, duh
-					$numsnapsthistype--;
-				}
-			}
+				# how many total snaps of this type do we currently have?
+				my $numsnapsthistype = scalar (@sorted);
 
-			if ((scalar @prunesnaps) > 0) {
-				# print "found some snaps to prune!\n"
-				if (checklock('sanoid_pruning')) {
-					writelock('sanoid_pruning');
-					foreach my $snap( @prunesnaps ){
-						if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-						if (iszfsbusy($path)) {
-							print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
-						} else {
-							if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or die "could not remove $snap : $?"; }
-						}
+				my @prunesnaps;
+				foreach my $snap( @sorted ){
+					# print "snap $path\@$snap has age $snaps{$path}{$snap}{'ctime'}, maxage is $maxage.\n";
+					if ( ($snaps{$path}{$snap}{'ctime'} < $maxage) && ($numsnapsthistype > $minsnapsthistype) ) {
+						my $fullpath = $path . '@' . $snap;
+						push(@prunesnaps,$fullpath);
+						# we just got rid of a snap, so we now have one fewer, duh
+						$numsnapsthistype--;
 					}
-					removelock('sanoid_pruning');
-					$forcecacheupdate = 1;
-					%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
-				} else {
-					print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
+				}
+
+				if ((scalar @prunesnaps) > 0) {
+					# print "found some snaps to prune!\n"
+					if (checklock('sanoid_pruning')) {
+						writelock('sanoid_pruning');
+						foreach my $snap( @prunesnaps ){
+							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
+							if (iszfsbusy($path)) {
+								print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
+							} else {
+								if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or warn "could not remove $snap : $?"; }
+							}
+						}
+						removelock('sanoid_pruning');
+						$forcecacheupdate = 1;
+						%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
+					} else {
+						print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
+					}
 				}
 			}
 		}
@@ -258,7 +272,7 @@ sub take_snapshots {
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'autosnap'}) { next; }
-		if ($config{$section}{'process_children_only'}) { next; }		
+		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
 
@@ -270,14 +284,14 @@ sub take_snapshots {
 				if (defined $snapsbytype{$path}{$type}{'newest'}) {
 					$newestage = $snapsbytype{$path}{$type}{'newest'};
 				} else{
-					$newestage = 9999999999999999;	
+					$newestage = 9999999999999999;
 				}
 
 				# for use with localtime: @preferredtime will be most recent preferred snapshot time in ($sec,$min,$hour,$mon-1,$year) format
 				my @preferredtime;
 				my $lastpreferred;
 
-				if ($type eq 'hourly')     { 
+				if ($type eq 'hourly')     {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'hourly_min'};
 					push @preferredtime,$datestamp{'hour'};
@@ -286,7 +300,7 @@ sub take_snapshots {
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60; } # preferred time is later this hour - so look at last hour's
-				} elsif ($type eq 'daily')   { 
+				} elsif ($type eq 'daily')   {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'daily_min'};
 					push @preferredtime,$config{$section}{'daily_hour'};
@@ -295,7 +309,7 @@ sub take_snapshots {
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24; } # preferred time is later today - so look at yesterday's
-				} elsif ($type eq 'monthly') { 
+				} elsif ($type eq 'monthly') {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'monthly_min'};
 					push @preferredtime,$config{$section}{'monthly_hour'};
@@ -304,7 +318,7 @@ sub take_snapshots {
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24*31; } # preferred time is later this month - so look at last month's
-				} elsif ($type eq 'yearly')  { 
+				} elsif ($type eq 'yearly')  {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'yearly_min'};
 					push @preferredtime,$config{$section}{'yearly_hour'};
@@ -317,7 +331,7 @@ sub take_snapshots {
 
 				# reconstruct our human-formatted most recent preferred snapshot time into an epoch time, to compare with the epoch of our most recent snapshot
 				my $maxage = time()-$lastpreferred;
-				
+
 				if ( $newestage > $maxage ) {
 					# update to most current possible datestamp
 					%datestamp = get_date();
@@ -331,9 +345,9 @@ sub take_snapshots {
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
-			if (!$args{'readonly'}) { 
+			if (!$args{'readonly'}) {
 				system($zfs, "snapshot", "$snap") == 0
-					or die "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
 				sleep 1;
 			}
@@ -360,9 +374,9 @@ sub blabber {
 	#print Dumper(\%snapsbytype);
 	#print "****** SNAPSBYPATH ******\n";
 	#print Dumper(\%snapsbypath);
-	
+
 	print "\n";
-	
+
 	foreach my $section (keys %config) {
 		my $path = $config{$section}{'path'};
 		print "Filesystem $path has:\n";
@@ -370,7 +384,7 @@ sub blabber {
 		print "(newest: ";
 		my $newest = sprintf("%.1f",$snapsbypath{$path}{'newest'} / 60 / 60);
 		print "$newest hours old)\n";
-	
+
 		foreach my $type (keys %{ $snapsbytype{$path} }){
 			print "          $snapsbytype{$path}{$type}{'numsnaps'} $type\n";
 			print "              desired: $config{$section}{$type}\n";
@@ -380,7 +394,7 @@ sub blabber {
 		}
 		print "\n\n";
 	}
-	
+
 } # end blabber
 
 
@@ -390,7 +404,7 @@ sub blabber {
 
 
 sub getsnapsbytype {
-	
+
 	my ($config, $snaps) = @_;
 	my %snapsbytype;
 
@@ -407,7 +421,7 @@ sub getsnapsbytype {
 		# iterate through snapshots of each type, ordered by creation time of each snapshot within that type
 		foreach my $type (keys %rawsnaps) {
 			$snapsbytype{$path}{$type}{'numsnaps'} = scalar (keys %{ $rawsnaps{$type} });
-			my @sortedsnaps;	
+			my @sortedsnaps;
 			foreach my $name (
 				sort { $rawsnaps{$type}{$a} <=> $rawsnaps{$type}{$b} } keys %{ $rawsnaps{$type} }
 				) {
@@ -420,7 +434,7 @@ sub getsnapsbytype {
 	}
 
 	return %snapsbytype;
-	
+
 } # end getsnapsbytype
 
 
@@ -430,22 +444,22 @@ sub getsnapsbytype {
 
 
 sub getsnapsbypath {
-	
+
 	my ($config,$snaps) = @_;
 	my %snapsbypath;
-	
+
 	# iterate through each module section - each section is a single ZFS path
 	foreach my $section (keys %config) {
 		my $path = $config{$section}{'path'};
 		$snapsbypath{$path}{'numsnaps'} = scalar (keys %{ $snaps{$path} });
-		
+
 		# iterate through snapshots of each type, ordered by creation time of each snapshot within that type
 		my %rawsnaps;
 		foreach my $snapname ( keys %{ $snaps{$path} } ) {
 			$rawsnaps{$path}{$snapname} = $snaps{$path}{$snapname}{'ctime'};
 		}
 		my @sortedsnaps;
-		foreach my $snapname ( 
+		foreach my $snapname (
 				sort { $rawsnaps{$path}{$a} <=> $rawsnaps{$path}{$b} } keys %{ $rawsnaps{$path} }
 				) {
 				push @sortedsnaps, $snapname;
@@ -454,9 +468,9 @@ sub getsnapsbypath {
 		my $sortedsnaps = join ('|',@sortedsnaps);
 		$snapsbypath{$path}{'sorted'} = $sortedsnaps;
 	}
-	
+
 	return %snapsbypath;
-	
+
 } # end getsnapsbypath
 
 
@@ -472,25 +486,23 @@ sub getsnaps {
 
 	my $cache = '/var/cache/sanoidsnapshots.txt';
 	my @rawsnaps;
-	
-	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
-       		$atime,$mtime,$ctime,$blksize,$blocks)
-           	= stat($cache);
 
-	if ( $forcecacheupdate || (time() - $mtime) > $cacheTTL ) {
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
+
+	if ( $forcecacheupdate || ! -f $cache || (time() - $mtime) > $cacheTTL ) {
 		if (checklock('sanoid_cacheupdate')) {
 			writelock('sanoid_cacheupdate');
-			if ($args{'verbose'}) { 
+			if ($args{'verbose'}) {
 				if ($args{'force-update'}) {
 					print "INFO: cache forcibly expired - updating from zfs list.\n";
 				} else {
-					print "INFO: cache expired - updating from zfs list.\n"; 
+					print "INFO: cache expired - updating from zfs list.\n";
 				}
 			}
 			open FH, "$zfs get -Hpt snapshot creation |";
 			@rawsnaps = <FH>;
 			close FH;
-	
+
 			open FH, "> $cache" or die 'Could not write to $cache!\n';
 			print FH @rawsnaps;
 			close FH;
@@ -510,10 +522,14 @@ sub getsnaps {
 
 	foreach my $snap (@rawsnaps) {
 		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
-		my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-		if ($snapname =~ /^autosnap/) {
-			$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
-			$snaps{$fs}{$snapname}{'type'}=$snaptype;
+
+		# avoid pissing off use warnings
+		if (defined $snapname) {
+			my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
+			if ($snapname =~ /^autosnap/) {
+				$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
+				$snaps{$fs}{$snapname}{'type'}=$snaptype;
+			}
 		}
 	}
 
@@ -538,7 +554,7 @@ sub init {
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
-	
+
 	foreach my $section (keys %ini) {
 
 		# first up - die with honor if unknown parameters are set in any modules or templates by the user.
@@ -549,7 +565,7 @@ sub init {
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
-		
+
 		# only set defaults on sections that haven't already been initialized - this allows us to override values
 		# for sections directly when they've already been defined recursively, without starting them over from scratch.
 		if (! defined ($config{$section}{'initialized'})) {
@@ -557,17 +573,17 @@ sub init {
 			# set default values from %defaults, which can then be overriden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
-				if (! ($key =~ /template|recursive|children_only/)) { 
-					$config{$section}{$key} = $defaults{'template_default'}{$key}; 
+				if (! ($key =~ /template|recursive|children_only/)) {
+					$config{$section}{$key} = $defaults{'template_default'}{$key};
 				}
 			}
-	
+
 			# override with values from user-defined default template, if any
-	
+
 			foreach my $key (keys %{$ini{'template_default'}}) {
-				if (! ($key =~ /template|recursive/)) { 
+				if (! ($key =~ /template|recursive/)) {
 				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined default template.\n"; }
-					$config{$section}{$key} = $ini{'template_default'}{$key}; 
+					$config{$section}{$key} = $ini{'template_default'}{$key};
 				}
 			}
 		}
@@ -582,9 +598,9 @@ sub init {
 
 				my $template = 'template_'.$rawtemplate;
 				foreach my $key (keys %{$ini{$template}}) {
-					if (! ($key =~ /template|recursive/)) { 
+					if (! ($key =~ /template|recursive/)) {
 						if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
-						$config{$section}{$key} = $ini{$template}{$key}; 
+						$config{$section}{$key} = $ini{$template}{$key};
 					}
 				}
 			}
@@ -597,19 +613,19 @@ sub init {
 				$config{$section}{$key} = $ini{$section}{$key};
 			}
 		}
-	
+
 		# make sure that true values are true and false values are false for any toggled values
 		foreach my $toggle(@toggles) {
-			foreach my $true (@istrue) {	
-				if ($config{$section}{$toggle} eq $true) { $config{$section}{$toggle} = 1; }
+			foreach my $true (@istrue) {
+				if (defined $config{$section}{$toggle} && $config{$section}{$toggle} eq $true) { $config{$section}{$toggle} = 1; }
 			}
 			foreach my $false (@isfalse) {
-				if ($config{$section}{$toggle} eq $false) { $config{$section}{$toggle} = 0; }
+				if (defined $config{$section}{$toggle} && $config{$section}{$toggle} eq $false) { $config{$section}{$toggle} = 0; }
 			}
 		}
 
-		# section path is the section name, unless section path has been explicitly defined	
-		if (defined ($ini{$section}{'path'})) { 
+		# section path is the section name, unless section path has been explicitly defined
+		if (defined ($ini{$section}{'path'})) {
 			$config{$section}{'path'} = $ini{$section}{'path'};
 		} else {
 			$config{$section}{'path'} = $section;
@@ -665,7 +681,7 @@ sub get_date {
 
 sub displaytime {
         # take a time in seconds, return it in human readable form
-        my $elapsed = shift;
+        my ($elapsed) = @_;
 
         my $days = int ($elapsed / 60 / 60 / 24);
         $elapsed -= $days * 60 * 60 * 24;
@@ -690,7 +706,7 @@ sub displaytime {
 
 sub check_zpool() {
 	# check_zfs Nagios plugin for monitoring Sun ZFS zpools
-	# Copyright (c) 2007 
+	# Copyright (c) 2007
 	# original Written by Nathan Butcher
 	# adapted for use within Sanoid framework by Jim Salter (2014)
 	#
@@ -709,13 +725,13 @@ sub check_zpool() {
 	# You should have received a copy of the GNU General Public License
 	# along with this program; if not, write to the Free Software
 	# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-	
+
 	# Version: 0.9.2
 	# Date : 24th July 2007
 	# This plugin has tested on FreeBSD 7.0-CURRENT and Solaris 10
 	# With a bit of fondling, it could be expanded to recognize other OSes in
 	# future (e.g. if FUSE Linux gets off the ground)
-	
+
 	# Verbose levels:-
 	# 1 - Only alert us of zpool health and size stats
 	# 2 - ...also alert us of failed devices when things go bad
@@ -725,14 +741,14 @@ sub check_zpool() {
 	# Example: check_zfs zeepool 1
 	#	ZPOOL zeedata : ONLINE {Size:3.97G Used:183K Avail:3.97G Cap:0%}
 
-	
+
 	my %ERRORS=('DEPENDENT'=>4,'UNKNOWN'=>3,'OK'=>0,'WARNING'=>1,'CRITICAL'=>2);
 	my $state="UNKNOWN";
 	my $msg="FAILURE";
-	
+
 	my $pool=shift;
 	my $verbose=shift;
-	
+
 	my $size="";
 	my $used="";
 	my $avail="";
@@ -740,14 +756,14 @@ sub check_zpool() {
 	my $health="";
 	my $dmge="";
 	my $dedup="";
-	
+
 	if ($verbose < 1 || $verbose > 3) {
 		print "Verbose levels range from 1-3\n";
 		exit $ERRORS{$state};
 	}
-	
+
 	my $statcommand="/sbin/zpool list -o name,size,cap,health,free $pool";
-	
+
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
 		exit $ERRORS{$state};
@@ -756,7 +772,7 @@ sub check_zpool() {
 	# chuck the header line
 	my $header = <STAT>;
 
-	# find and parse the line with values for the pool	
+	# find and parse the line with values for the pool
 	while(<STAT>) {
 		chomp;
 		if (/^${pool}\s+/) {
@@ -765,12 +781,12 @@ sub check_zpool() {
 			($name, $size, $cap, $health, $avail) = @row;
 		}
 	}
-	
+
 	# Tony: Debuging
 	# print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
-	
+
 	close(STAT);
-	
+
 	## check for valid zpool list response from zpool
 	if (! $health ) {
 		$state = "CRITICAL";
@@ -778,7 +794,7 @@ sub check_zpool() {
 		print $state, " ", $msg;
 		exit ($ERRORS{$state});
 	}
-	
+
 	## determine health of zpool and subsequent error status
 	if ($health eq "ONLINE" ) {
 		$state = "OK";
@@ -789,39 +805,39 @@ sub check_zpool() {
 			$state = "CRITICAL";
 		}
 	}
-	
+
 	## get more detail on possible device failure
 	## flag to detect section of zpool status involving our zpool
 	my $poolfind=0;
-	
+
 	$statcommand="/sbin/zpool status $pool";
 	if (! open STAT, "$statcommand|") {
 		$state = 'CRITICAL';
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
 		exit $ERRORS{$state};
 	}
-	
+
 	## go through zfs status output to find zpool fses and devices
 	while(<STAT>) {
 		chomp;
-	
+
 		if (/^\s${pool}/ && $poolfind==1) {
 			$poolfind=2;
 			next;
 		} elsif ( $poolfind==1 ) {
 			$poolfind=0;
 		}
-	
+
 		if (/NAME\s+STATE\s+READ\s+WRITE\s+CKSUM/) {
 			$poolfind=1;
 		}
-	
+
 		if ( /^$/ ) {
 			$poolfind=0;
 		}
-	
+
 		if ($poolfind == 2) {
-	
+
 			## special cases pertaining to full verbose
 			if (/^\sspares/) {
 				next unless $verbose == 3;
@@ -839,33 +855,33 @@ sub check_zpool() {
 				my $perc;
 				my ($sta) = /^\s+\S+\s+(\S+)/;
 				if (/%/) {
-					($perc) = /([0-9]+%)/;	
+					($perc) = /([0-9]+%)/;
 				} else {
 					$perc = "working";
 				}
 				$dmge=$dmge . "[REPLACING:${sta} (${perc})]:- ";
 				next;
 			}
-	
+
 			## other cases
 			my ($dev, $sta) = /^\s+(\S+)\s+(\S+)/;
-	
+
 			## pool online, not degraded thanks to dead/corrupted disk
 			if ($state eq "OK" && $sta eq "UNAVAIL") {
 				$state="WARNING";
-	
+
 				## switching to verbose level 2 to explain weirdness
 				if ($verbose == 1) {
 					$verbose =2;
 				}
 			}
-	
+
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
 			next if ($verbose==2 && $state eq "OK");
 			next if ($verbose==2 && ($sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE"));
-	
+
 			## show everything else
 			if (/^\s{3}(\S+)/) {
 				$dmge=$dmge . "<" . $dev . ":" . $sta . "> ";
@@ -876,9 +892,9 @@ sub check_zpool() {
 			}
 		}
 	}
-	
+
 	## calling all goats!
-	
+
 	$msg = sprintf "ZPOOL %s : %s {Size:%s Free:%s Cap:%s} %s\n", $pool, $health, $size, $avail, $cap, $dmge;
 	$msg = "$state $msg";
 	return ($ERRORS{$state},$msg);
@@ -891,7 +907,7 @@ sub check_zpool() {
 ######################################################################################################
 
 sub checklock {
-	# take argument $lockname. 
+	# take argument $lockname.
 	#
 	# read /var/run/$lockname.lock for a pid on first line and a mutex on second line.
 	#
@@ -905,19 +921,19 @@ sub checklock {
 	#
 	# shorthand - any true return indicates we are clear to lock; a false return indicates
 	#             that somebody else already has the lock and therefore we cannot.
-	#             
+	#
 
 	my $lockname = shift;
 	my $lockfile = "/var/run/$lockname.lock";
-	
+
 	if (! -e $lockfile) {
 		# no lockfile
 		return 1;
 	}
 
-	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if 
+	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if
 	# there's still a process running with that pid and with the same mutex.
-	
+
 	open FH, "< $lockfile";
 	my @lock = <FH>;
 	close FH;
@@ -984,14 +1000,14 @@ sub writelock {
 	}
 
 	my $pid = $$;
-	
+
 	open PL, "$pscmd -p $$ -o args= |";
 	my @processlist = <PL>;
 	close PL;
-	
+
 	my $mutex = pop(@processlist);
 	chomp $mutex;
-	
+
 	open FH, "> $lockfile";
 	print FH "$pid\n";
 	print FH "$mutex\n";
@@ -1026,75 +1042,10 @@ sub iszfsbusy {
 #######################################################################################################################3
 #######################################################################################################################3
 
-sub getargs {
-	my @args = @_;
-	my %args;
-
-	my @validargs;
-	my @novalueargs;
-	my %validargs;
-	my %novalueargs;
-
-	push my @validargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','configdir','quiet';
-	push my @novalueargs, 'verbose','debug','version','monitor-health','monitor-snapshots','force-update','cron','take-snapshots','prune-snapshots','readonly','quiet';
-	foreach my $item (@validargs) { $validargs{$item}=1; }
-	foreach my $item (@novalueargs) { $novalueargs{$item}=1; }
-
-	if (! (scalar @args)) {
-		$args{'noargs'} = 1;
-	}
-
-	while (my $rawarg = shift(@args)) {
-		my $argvalue;
-		my $arg = $rawarg;
-		if ($rawarg =~ /=/) {
-			# user specified the value for a CLI argument with =
-			# instead of with blank space. separate appropriately.
-			$argvalue = $arg;
-			$arg =~ s/=.*$//;
-			$argvalue =~ s/^.*=//;
-		}
-		if ($rawarg =~ /^--/) {
-			# doubledash arg
-			$arg =~ s/^--//;
-			if ($novalueargs{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} elsif ($rawarg =~ /^-/) {
-			# singledash arg
-			$arg =~ s/^-//;
-			if ($novalueargs{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the 
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} else {
-			# bare arg
-			die "ERROR: don't know what to do with bare argument $rawarg.\n";
-		}
-		if (! ($validargs{$arg})) { die "ERROR: don't understand argument $rawarg.\n"; }
-	}
-	return %args;
-}
-
 sub getchilddatasets {
 	# for later, if we make sanoid itself support sudo use
 	my $fs = shift;
-	my $mysudocmd;
+	my $mysudocmd = '';
 
 	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
@@ -1105,3 +1056,33 @@ sub getchilddatasets {
 	return @children;
 }
 
+__END__
+
+=head1 NAME
+
+sanoid - ZFS snapshot management and replication tool
+
+=head1 SYNOPSIS
+
+sanoid [options]
+
+Assumes --cron --verbose if no other arguments (other than configdir) are specified
+
+Options:
+
+  --configdir=DIR       Specify a directory to find config file sanoid.conf
+
+  --cron                Creates snapshots and purges expired snapshots
+  --verbose             Prints out additional information during a sanoid run
+  --readonly            Simulates creation/deletion of snapshots
+  --quiet               Suppresses non-error output
+  --force-update        Clears out sanoid's zfs snapshot cache
+
+  --monitor-health      Reports on zpool "health", in a Nagios compatible format
+  --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
+  --take-snapshots      Creates snapshots as specified in sanoid.conf
+  --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
+
+  --help                Prints this helptext
+  --version             Prints the version number
+  --debug               Prints out a lot of additional information during a sanoid run

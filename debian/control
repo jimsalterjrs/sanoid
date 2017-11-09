@@ -1,0 +1,14 @@
+Source: sanoid
+Section: unknown
+Priority: optional
+Maintainer: Jim Salter <jim@openoid.net>
+Build-Depends: debhelper (>= 9)
+Standards-Version: 3.9.8
+Homepage: https://github.com/jimsalterjrs/sanoid
+Vcs-Git: https://github.com/jimsalterjrs/sanoid.git
+Vcs-Browser: https://github.com/jimsalterjrs/sanoid
+
+Package: sanoid
+Architecture: all
+Depends: ${misc:Depends}, ${perl:Depends}, zfsutils-linux | zfs, libconfig-inifiles-perl
+Description: Policy-driven snapshot management and replication tools

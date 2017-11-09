@@ -49,19 +49,19 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 + --take-snapshots
 
 	This will process your sanoid.conf file, create snapshots, but it will NOT purge expired ones. (Note that snapshots taken are atomic in an individual dataset context, <i>not</i> a global context - snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent and atomic, but one may be a few filesystem transactions "newer" than the other.)
-	
+
 + --prune-snapshots
 
 	This will process your sanoid.conf file, it will NOT create snapshots, but it will purge expired ones.
-	
+
 + --monitor-snapshots
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of your snapshots.
-	
+
 + --monitor-health
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of the zpool your filesystems are on. It only monitors filesystems that are configured in the sanoid.conf file.
-	
+
 + --force-update
 
 	This clears out sanoid's zfs snapshot listing cache. This is normally not needed.
@@ -111,11 +111,11 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 ##### Syncoid Command Line Options
 
-+ --[source]
++ [source]
 
 	This is the source dataset. It can be either local or remote.
 
-+ --[destination]
++ [destination]
 
 	This is the destination dataset. It can be either local or remote.
 
@@ -125,7 +125,7 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 + --compress <compression type>
 
-	Currently accepts gzip and lzo. lzo is fast and light on the processsor and is the default. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Currently accepted options: gzip, pigz-fast, pigz-slow, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -135,7 +135,7 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 	This is the bandwidth limit imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limites are desired.
 
-+ --nocommandchecks
++ --no-command-checks
 
 	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used.
 
@@ -161,11 +161,7 @@ Syncoid supports recursive replication (replication of a dataset and all its chi
 
 + --quiet
 
-	Supress non-error output.	
-
-+ --verbose
-
-	This prints additional information during the sanoid run.
+	Supress non-error output.
 
 + --debug
 

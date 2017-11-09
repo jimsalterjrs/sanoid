@@ -1,0 +1,9 @@
+[Unit]
+Description=Snapshot ZFS Pool
+Requires=zfs.target
+After=zfs.target
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/sanoid --cron
