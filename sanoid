@@ -121,7 +121,7 @@ sub monitor_snapshots {
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
 
-		my @types = ('yearly','monthly', 'weekly', 'daily','hourly');
+		my @types = ('yearly','monthly','weekly','daily','hourly');
 		foreach my $type (@types) {
 
 			my $smallerperiod = 0;
