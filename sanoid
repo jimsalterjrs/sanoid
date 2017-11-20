@@ -930,13 +930,22 @@ sub checklock {
 		# no lockfile
 		return 1;
 	}
+	# make sure lockfile contains something
+	if ( -z $lockfile) {
+	        # zero size lockfile, something is wrong
+	        die "ERROR: something is wrong! $lockfile is empty\n"; 
+	}
 
 	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if
 	# there's still a process running with that pid and with the same mutex.
 
-	open FH, "< $lockfile";
+	open FH, "< $lockfile" or die "ERROR: unable to open $lockfile";
 	my @lock = <FH>;
 	close FH;
+	# if we didn't get exactly 2 items from the lock file there is a problem
+	if (scalar(@lock) != 2) {
+	    die "ERROR: $lockfile is invalid.\n"
+	}
 
 	my $lockmutex = pop(@lock);
 	my $lockpid = pop(@lock);
@@ -948,7 +957,6 @@ sub checklock {
 		# we own the lockfile. no need to check any further.
 		return 2;
 	}
-
 	open PL, "$pscmd -p $lockpid -o args= |";
 	my @processlist = <PL>;
 	close PL;
