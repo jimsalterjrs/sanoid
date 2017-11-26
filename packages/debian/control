@@ -16,4 +16,9 @@ Depends: libcapture-tiny-perl,
          zfsutils-linux | zfs,
          ${misc:Depends},
          ${perl:Depends}
+Recommends: gzip,
+            lzop,
+            mbuffer,
+            openssh-client | ssh-client,
+            pv
 Description: Policy-driven snapshot management and replication tools
