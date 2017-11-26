@@ -1,5 +1,5 @@
 Source: sanoid
-Section: unknown
+Section: utils
 Priority: optional
 Maintainer: Jim Salter <jim@openoid.net>
 Build-Depends: debhelper (>= 9)
