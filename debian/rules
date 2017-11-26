@@ -18,7 +18,7 @@ override_dh_auto_install:
 
 	install -d $(DESTDIR)/usr/sbin
 	install -m 775 \
-		findoid sanoid sleepymutex syncoid \
+		findoid sanoid syncoid \
 		$(DESTDIR)/usr/sbin
 
 	install -d $(DESTDIR)/usr/share/doc/sanoid
