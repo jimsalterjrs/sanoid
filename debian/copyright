@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: sanoid
-Source: <https://github.com/jimsalterjrs/sanoid>
+Source: https://github.com/jimsalterjrs/sanoid
 
 Files: *
 Copyright: 2017 Jim Salter <github@jrs-s.net>
