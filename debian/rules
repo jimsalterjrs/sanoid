@@ -5,7 +5,7 @@
 #export DH_VERBOSE = 1
 
 %:
-	dh $@ --with systemd
+	dh $@
 
 DESTDIR = $(CURDIR)/debian/sanoid
 override_dh_auto_install:
