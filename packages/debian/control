@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: Jim Salter <jim@openoid.net>
 Build-Depends: debhelper (>= 10)
-Standards-Version: 4.1.1
+Standards-Version: 4.1.2
 Homepage: https://github.com/jimsalterjrs/sanoid
 Vcs-Git: https://github.com/jimsalterjrs/sanoid.git
 Vcs-Browser: https://github.com/jimsalterjrs/sanoid
