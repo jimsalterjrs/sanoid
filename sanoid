@@ -317,7 +317,7 @@ sub take_snapshots {
 					$lastpreferred = timelocal(@preferredtime);
 
 					if ($dstOffset ne 0) {
-                        # timelocal doesn't take DST into account
+						# timelocal doesn't take DST into account
 						$lastpreferred += $dstOffset;
 						# DST ended, avoid duplicates
 						$dateSuffix = "_y";
