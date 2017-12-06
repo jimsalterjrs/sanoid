@@ -1,3 +1,7 @@
+sanoid (1.4.17-SNAPSHOT) unstable; urgency=medium
+
+-- Jim Salter <github@jrs-s.net>  Wed, 9 Aug 2017 12:28:49 -0400
+
 sanoid (1.4.16) unstable; urgency=medium
 
   * merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's

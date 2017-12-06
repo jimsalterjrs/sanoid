@@ -103,4 +103,5 @@ function verifySnapshotList {
     echo "TEST FAILED:" >&2
     echo -n -e "${message}" >&2
 
+    exit 1
 }
