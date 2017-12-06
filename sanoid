@@ -268,6 +268,19 @@ sub take_snapshots {
 
 	my @newsnaps;
 
+	# get utc timestamp of the current day for DST check
+	my $daystartUtc = timelocal(0, 0, 0, $datestamp{'mday'}, ($datestamp{'mon'}-1), $datestamp{'year'});
+	my ($isdst) = (localtime($daystartUtc))[8];
+	my $dstOffset = 0;
+
+	if ($isdst ne $datestamp{'isdst'}) {
+		# current dst is different then at the beginning og the day
+		if ($isdst) {
+			# DST ended in the current day
+			$dstOffset = 60*60;
+		}
+	}
+
 	if ($args{'verbose'}) { print "INFO: taking snapshots...\n"; }
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
@@ -291,6 +304,9 @@ sub take_snapshots {
 				my @preferredtime;
 				my $lastpreferred;
 
+				# to avoid duplicates with DST
+				my $dateSuffix = "";
+
 				if ($type eq 'hourly')     {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'hourly_min'};
@@ -299,6 +315,13 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
+
+					if ($dstOffset ne 0) {
+                        # timelocal doesn't take DST into account
+						$lastpreferred += $dstOffset;
+						# DST ended, avoid duplicates
+						$dateSuffix = "_y";
+					}
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60; } # preferred time is later this hour - so look at last hour's
 				} elsif ($type eq 'daily')   {
 					push @preferredtime,0; # try to hit 0 seconds
@@ -308,7 +331,29 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
-					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24; } # preferred time is later today - so look at yesterday's
+
+					# timelocal doesn't take DST into account
+					$lastpreferred += $dstOffset;
+
+					# check if the planned time has different DST flag than the current
+					my ($isdst) = (localtime($lastpreferred))[8];
+					if ($isdst ne $datestamp{'isdst'}) {
+						if (!$isdst) {
+							# correct DST difference
+							$lastpreferred -= 60*60;
+						}
+					}
+
+					if ($lastpreferred > time()) {
+						$lastpreferred -= 60*60*24;
+
+						if ($dstOffset ne 0) {
+							# because we are going back one day
+							# the DST difference has to be accounted
+							# for in reverse now
+							$lastpreferred -= 2*$dstOffset;
+						}
+					} # preferred time is later today - so look at yesterday's
 				} elsif ($type eq 'monthly') {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'monthly_min'};
@@ -336,7 +381,7 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
+					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_${dateSuffix}_$type");
 				}
 			}
 		}
