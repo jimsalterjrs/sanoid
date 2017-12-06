@@ -381,7 +381,7 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_${dateSuffix}_$type");
+					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}${dateSuffix}_$type");
 				}
 			}
 		}
