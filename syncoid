@@ -919,7 +919,7 @@ sub getssh {
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
 		$fs =~ s/^\S*\@\S*://;
-		$rhost =~ s/:$fs$//;
+		$rhost =~ s/:\Q$fs\E$//;
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
