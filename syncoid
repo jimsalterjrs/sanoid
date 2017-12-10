@@ -1005,3 +1005,41 @@ sub escapeshellparam {
 	# single-quote entire string
 	return "'$par'";
 }
+
+__END__
+
+=head1 NAME
+
+syncoid - ZFS snapshot replication tool
+
+=head1 SYNOPSIS
+
+ syncoid [options]... SOURCE TARGET
+ or   syncoid [options]... SOURCE [USER@]HOST:TARGET
+ or   syncoid [options]... [USER@]HOST:SOURCE [TARGET]
+ or   syncoid [options]... [USER@]HOST:SOURCE [USER@]HOST:TARGET
+
+ SOURCE                Source ZFS dataset. Can be either local or remote
+ TARGET                Target ZFS dataset. Can be either local or remote
+
+Options:
+
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --recursive|r         Also transfers child datasets
+  --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
+  --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
+  --no-stream           Replicates using newest snapshot instead of intermediates
+  --no-sync-snap        Does not create new snapshot, only transfers existing
+
+  --sshkey=FILE         Specifies a ssh public key to use to connect
+  --sshport=PORT        Connects to remote on a particular port
+  --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
+  --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+
+  --help                Prints this helptext
+  --verbose             Prints the version number
+  --debug               Prints out a lot of additional information during a syncoid run
+  --monitor-version     Currently does nothing
+  --quiet               Suppresses non-error output
+  --dumpsnaps           Dumps a list of snapshots during the run
+  --no-command-checks   Do not check command existence before attempting transfer. Not recommended
