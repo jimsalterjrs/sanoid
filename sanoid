@@ -313,9 +313,9 @@ sub take_snapshots {
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24; } # preferred time is later today - so look at yesterday's
 				} elsif ($type eq 'weekly')   {
 					# calculate offset in seconds for the desired weekday
-					my $offset;
+					my $offset = 0;
 					if ($config{$section}{'weekly_wday'} < $datestamp{'wday'}) {
-						$offset += 6;
+						$offset += 7;
 					}
 					$offset += $config{$section}{'weekly_wday'} - $datestamp{'wday'};
 					$offset *= 60*60*24; # full day
@@ -327,7 +327,7 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
-					$lastpreferred -= $offset;
+					$lastpreferred += $offset;
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24*7; } # preferred time is later today - so look at yesterday's
 				} elsif ($type eq 'monthly') {
 					push @preferredtime,0; # try to hit 0 seconds
