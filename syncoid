@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "direct") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "direct", "rsh") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -48,7 +48,6 @@ my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
 
 my $zfscmd = '/sbin/zfs';
-my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
 
 my $pvcmd = '/usr/bin/pv';
@@ -59,19 +58,24 @@ my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
 # being present on remote machines.
 my $lscmd = '/bin/ls';
 
-if (length $args{'sshcipher'}) {
-	$args{'sshcipher'} = "-c $args{'sshcipher'}";
+my $sshcmd = (defined $args{'rsh'} ? '/usr/bin/rsh' : '/usr/bin/ssh');
+
+if (!defined $args{'rsh'}) {
+  if (length $args{'sshcipher'}) {
+  	$args{'sshcipher'} = "-c $args{'sshcipher'}";
+  }
+  if (length $args{'sshport'}) {
+    $args{'sshport'} = "-p $args{'sshport'}";
+  }
+  if (length $args{'sshkey'}) {
+  	$args{'sshkey'} = "-i $args{'sshkey'}";
+  }
+  my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
+  
+  $sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
 }
-if (length $args{'sshport'}) {
-  $args{'sshport'} = "-p $args{'sshport'}";
-}
-if (length $args{'sshkey'}) {
-	$args{'sshkey'} = "-i $args{'sshkey'}";
-}
-my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
 
 # figure out if source and/or target are remote.
-$sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
 if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
@@ -111,14 +115,16 @@ if (!defined $args{'recursive'}) {
 	}
 }
 
-# close SSH sockets for master connections as applicable
-if ($sourcehost ne '') {
-	open FH, "$sshcmd $sourcehost -O exit 2>&1 |";
-	close FH;
-}
-if ($targethost ne '') {
-	open FH, "$sshcmd $targethost -O exit 2>&1 |";
-	close FH;
+if (!defined $args{'rsh'}) {
+  # close SSH sockets for master connections as applicable
+  if ($sourcehost ne '') {
+  	open FH, "$sshcmd $sourcehost -O exit 2>&1 |";
+  	close FH;
+  }
+  if ($targethost ne '') {
+  	open FH, "$sshcmd $targethost -O exit 2>&1 |";
+  	close FH;
+  }
 }
 
 exit 0;
@@ -823,11 +829,13 @@ sub getssh {
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
-		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
-		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
-		close FH;
-		$rhost = "-S $socket $rhost";
+		if (!defined $args{'rsh'}) {
+		  # now we need to establish a persistent master SSH connection
+			$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+			open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
+			close FH;
+			$rhost = "-S $socket $rhost";
+		}
 	} else {
 		my $localuid = $<;
 		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
@@ -984,3 +992,4 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --direct              Disable external compression, buffering, and progress view
+  --rsh									Use rsh instead of ssh (to avoid encryption overhead)
