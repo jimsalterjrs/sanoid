@@ -82,6 +82,8 @@ if (!defined $targethost) { $targethost = ''; }
 my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
 my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 
+my $send_compressed = $args{'compress'} eq 'zfs' ? ' -c ' : '';
+
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
 # warn user of anything missing, then continue with sync.
@@ -216,7 +218,7 @@ sub syncdataset {
 		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
 		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
 
-		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
+		my $sendcmd = "$sourcesudocmd $zfscmd send $send_compressed $sourcefs\@$oldestsnap";
 		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
@@ -252,7 +254,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+			$sendcmd = "$sourcesudocmd $zfscmd send $send_compressed $args{'streamarg'} $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -319,7 +321,7 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
+			my $sendcmd = "$sourcesudocmd $zfscmd send $send_compressed $args{'streamarg'} $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
 			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
@@ -354,6 +356,12 @@ sub compressargset {
 			decomrawcmd => '',
 			decomargs   => '',
 		},
+		'zfs' => {
+			rawcmd      => '',
+			args        => '',
+			decomrawcmd => '',
+			decomargs   => '',
+		},
 		'gzip' => {
 			rawcmd      => '/bin/gzip',
 			args        => '-3',
@@ -382,7 +390,7 @@ sub compressargset {
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'zfs', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -896,7 +904,7 @@ sub getsendsize {
 	my $sourcessh;
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $send_compressed -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
@@ -955,7 +963,8 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options: gzip, pigz-fast, pigz-slow, lzo (default), zfs & none
+												--compress=zfs will use zfs send -c for pool-to-pool compression (avoids decompression/recompression inefficiency)
   --recursive|r         Also transfers child datasets
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
