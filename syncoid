@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "direct") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -85,6 +85,7 @@ my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
 # warn user of anything missing, then continue with sync.
+# --direct, --no-command-checks are evaluated here
 my %avail = checkcommands();
 
 my %snaps;
@@ -409,6 +410,17 @@ sub checkcommands {
 		$avail{'localmbuffer'} = 1;
 		$avail{'sourcembuffer'} = 1;
 		$avail{'targetmbuffer'} = 1;
+		return %avail;
+	}
+
+  # if --direct then disable all of these
+	if ($args{'direct'}) {
+		if ($debug) { print "DEBUG: Disabling compression, buffering, and progress view due to --direct\n"; }
+		$avail{'compress'} = 0;
+		$avail{'localpv'} = 0;
+		$avail{'localmbuffer'} = 0;
+		$avail{'sourcembuffer'} = 0;
+		$avail{'targetmbuffer'} = 0;
 		return %avail;
 	}
 
@@ -962,3 +974,4 @@ Options:
   --quiet               Suppresses non-error output
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
+  --direct              Disable external compression, buffering, and progress view
