@@ -76,6 +76,9 @@ if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
+if (!defined $sourcehost) { $sourcehost = ''; }
+if (!defined $targethost) { $targethost = ''; }
+
 my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
 my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 
@@ -408,9 +411,6 @@ sub checkcommands {
 		$avail{'targetmbuffer'} = 1;
 		return %avail;
 	}
-
-	if (!defined $sourcehost) { $sourcehost = ''; }
-	if (!defined $targethost) { $targethost = ''; }
 
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; } else { $targetssh = ''; }
