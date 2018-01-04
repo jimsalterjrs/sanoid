@@ -18,7 +18,7 @@ use Time::Local;      # to parse dates in reverse
 my %args = ("configdir" => "/etc/sanoid");
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "monitor-health", "force-update", "configdir=s",
-                   "monitor-snapshots", "take-snapshots", "prune-snapshots"
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune"
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
@@ -234,7 +234,7 @@ sub prune_snapshots {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-							if (iszfsbusy($path)) {
+							if (iszfsbusy($path) && !$args{'force-prune'}) {
 								print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
 							} else {
 								if (! $args{'readonly'}) { system($zfs, "destroy",$snap) == 0 or warn "could not remove $snap : $?"; }
@@ -1082,6 +1082,7 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
+  --force-prune		Purges expired snapshots even if a send/recv is in progress
 
   --help                Prints this helptext
   --version             Prints the version number
