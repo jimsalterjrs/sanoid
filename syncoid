@@ -183,6 +183,11 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
+	if (getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:no-sync') eq 'true') {
+		print "Skipping dataset (syncoid:nosync=true): $sourcefs...\n";
+		return 0;
+	}
+
 	# make sure target is not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 		warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
