@@ -452,13 +452,13 @@ sub checkcommands {
 
 	if ($avail{'sourcecompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			print "WARN: $compressargs{'rawcmd'} not available on source $s- sync will continue without compression.\n";
+			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on source $s- sync will continue without compression.\n"; }
 		}
 		$avail{'compress'} = 0;
 	}
 	if ($avail{'targetcompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			print "WARN: $compressargs{'rawcmd'} not available on target $t - sync will continue without compression.\n";
+			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on target $t - sync will continue without compression.\n"; }
 		}
 		$avail{'compress'} = 0;
 	}
@@ -471,7 +471,7 @@ sub checkcommands {
 	# corner case - if source AND target are BOTH remote, we have to check for local compress too
 	if ($sourcehost ne '' && $targethost ne '' && $avail{'localcompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			print "WARN: $compressargs{'rawcmd'} not available on local machine - sync will continue without compression.\n";
+			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on local machine - sync will continue without compression.\n"; }
 		}
 		$avail{'compress'} = 0;
 	}
@@ -479,7 +479,7 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
 	$avail{'sourcembuffer'} = `$sourcessh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
-		print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n";
+		if (!$quiet) { print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n"; }
 		$avail{'sourcembuffer'} = 0;
 	} else {
 		$avail{'sourcembuffer'} = 1;
@@ -488,7 +488,7 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
 	$avail{'targetmbuffer'} = `$targetssh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
-		print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n";
+		if (!$quiet) { print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n"; }
 		$avail{'targetmbuffer'} = 0;
 	} else {
 		$avail{'targetmbuffer'} = 1;
@@ -500,14 +500,14 @@ sub checkcommands {
 		$avail{'localmbuffer'} = `$lscmd $mbuffercmd 2>/dev/null`;
 		if ($avail{'localmbuffer'} eq '') {
 			$avail{'localmbuffer'} = 0;
-			print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n";
+			if (!$quiet) { print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n"; }
 		}
 	}
 
 	if ($debug) { print "DEBUG: checking availability of $pvcmd on local machine...\n"; }
 	$avail{'localpv'} = `$lscmd $pvcmd 2>/dev/null`;
 	if ($avail{'localpv'} eq '') {
-		print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n";
+		if (!$quiet) { print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n"; }
 		$avail{'localpv'} = 0;
 	} else {
 		$avail{'localpv'} = 1;
