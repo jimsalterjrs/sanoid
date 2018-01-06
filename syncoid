@@ -184,7 +184,7 @@ sub syncdataset {
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
 	if (getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:no-sync') eq 'true') {
-		print "Skipping dataset (syncoid:nosync=true): $sourcefs...\n";
+		if (!$quiet) { print "INFO: Skipping dataset (syncoid:nosync=true): $sourcefs...\n"; }
 		return 0;
 	}
 
