@@ -597,7 +597,7 @@ sub getnewestsnapshot {
 	my $snaps = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
-		print "NEWEST SNAPSHOT: $snap\n";
+		if (!$quiet) { print "NEWEST SNAPSHOT: $snap\n"; }
 		return $snap;
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
