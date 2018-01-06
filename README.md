@@ -118,6 +118,14 @@ If ZFS supports resumeable send/receive streams on both the source and target th
 
 As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
 
+##### Syncoid Dataset Properties
+
++ syncoid:no-sync
+
+  Setting this to `true` will prevent the dataset from being handled by syncoid in _any_ way - it will be skipped. This can be useful for preventing certain datasets from being transferred when recursively handling a tree.
+
+  Note that this will also prevent syncoid from handling the dataset if given explicitly on the command line.
+
 ##### Syncoid Command Line Options
 
 + [source]
