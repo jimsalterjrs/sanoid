@@ -455,12 +455,35 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
+			my $dataset = (split '@', $snap)[0];
+			my $presnapshotfailure = 0;
+			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
+				$ENV{'SANOID_TARGET'} = $dataset;
+				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
+				if (system($config{$dataset}{'pre_snapshot_script'}) != 0) {
+					warn "WARN: pre_snapshot_script failed, $?";
+					$config{$dataset}{'no_inconsistent_snapshot'} and next;
+					$presnapshotfailure = 1;
+				}
+				delete $ENV{'SANOID_TARGET'};
+			}
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
 				sleep 1;
+			}
+			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
+				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
+					$ENV{'SANOID_TARGET'} = $dataset;
+					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
+					if (system($config{$dataset}{'post_snapshot_script'}) != 0) {
+						warn "WARN: post_snapshot_script failed, $?";
+						$config{$dataset}{'no_inconsistent_snapshot'} and next;
+					}
+					delete $ENV{'SANOID_TARGET'};
+				}
 			}
 		}
 		$forcecacheupdate = 1;
@@ -661,7 +684,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','no_inconsistent_snapshot','force_post_snapshot_script');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 
