@@ -42,6 +42,7 @@ my $forcecacheupdate = 0;
 my $cache = '/var/cache/sanoidsnapshots.txt';
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
+my %pruned;
 
 my %snapsbytype = getsnapsbytype( \%config, \%snaps );
 
@@ -233,7 +234,6 @@ sub prune_snapshots {
 					# print "found some snaps to prune!\n"
 					if (checklock('sanoid_pruning')) {
 						writelock('sanoid_pruning');
-						my @pruned;
 						foreach my $snap( @prunesnaps ){
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 							if (iszfsbusy($path)) {
@@ -241,7 +241,7 @@ sub prune_snapshots {
 							} else {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
-										push(@pruned, $snap);
+										$pruned{$snap} = 1;
 									} else {
 										warn "could not remove $snap : $?";
 									}
@@ -249,7 +249,7 @@ sub prune_snapshots {
 							}
 						}
 						removelock('sanoid_pruning');
-						removecachedsnapshots(@pruned);
+						removecachedsnapshots(0);
 					} else {
 						print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
 					}
@@ -258,7 +258,9 @@ sub prune_snapshots {
 		}
 	}
 
-
+	# if there were any deferred cache updates,
+	# do them now and wait if necessary
+	removecachedsnapshots(1);
 } # end prune_snapshots
 
 
@@ -1067,32 +1069,48 @@ sub getchilddatasets {
 #######################################################################################################################3
 
 sub removecachedsnapshots {
-	my @prunedlist = shift;
-	my %pruned = map { $_ => 1 } @prunedlist;
+	my $wait = shift;
 
-	if (checklock('sanoid_cacheupdate')) {
-		writelock('sanoid_cacheupdate');
-
-		if ($args{'verbose'}) {
-			print "INFO: removing destroyed snapshots from cache.\n";
-		}
-		open FH, "< $cache";
-		my @rawsnaps = <FH>;
-		close FH;
-
-		open FH, "> $cache" or die 'Could not write to $cache!\n';
-		foreach my $snapline ( @rawsnaps ) {
-			my @columns = split("\t", $snapline);
-			my $snap = $columns[0];
-			print FH $snapline unless ( exists($pruned{$snap}) );
-		}
-		close FH;
-
-		removelock('sanoid_cacheupdate');
-		%snaps = getsnaps(\%config,$cacheTTL,$forcecacheupdate);
-	} else {
-		if ($args{'verbose'}) { print "WARN: skipping cache update (snapshot removal) - valid cache update lock held by another sanoid process.\n"; }
+	if (not %pruned) {
+		return;
 	}
+
+	my $unlocked = checklock('sanoid_cacheupdate');
+
+	if ($wait != 1 && not $unlocked) {
+		if ($args{'verbose'}) { print "INFO: deferring cache update (snapshot removal) - valid cache update lock held by another sanoid process.\n"; }
+		return;
+	}
+
+	# wait until we can get a lock to do our cache changes
+	while (not $unlocked) {
+		if ($args{'verbose'}) { print "INFO: waiting for cache update lock held by another sanoid process.\n"; }
+		sleep(10);
+		$unlocked = checklock('sanoid_cacheupdate');
+	}
+
+	writelock('sanoid_cacheupdate');
+
+	if ($args{'verbose'}) {
+		print "INFO: removing destroyed snapshots from cache.\n";
+	}
+	open FH, "< $cache";
+	my @rawsnaps = <FH>;
+	close FH;
+
+	open FH, "> $cache" or die 'Could not write to $cache!\n';
+	foreach my $snapline ( @rawsnaps ) {
+		my @columns = split("\t", $snapline);
+		my $snap = $columns[0];
+		print FH $snapline unless ( exists($pruned{$snap}) );
+	}
+	close FH;
+
+	removelock('sanoid_cacheupdate');
+	%snaps = getsnaps(\%config,$cacheTTL,$forcecacheupdate);
+
+	# clear hash
+	undef %pruned;
 }
 
 __END__
