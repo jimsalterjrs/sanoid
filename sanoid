@@ -798,17 +798,6 @@ sub check_zpool() {
 	## determine health of zpool and subsequent error status
 	if ($health eq "ONLINE" ) {
 		$state = "OK";
-
-		# check capacity
-		my $capn = $cap;
-		$capn =~ s/\D//g;
-
-		if ($capn >= 80) {
-			$state = "WARNING";
-		}
-		if ($capn >= 95) {
-			$state = "CRITICAL";
-		}
 	} else {
 		if ($health eq "DEGRADED") {
 			$state = "WARNING";
