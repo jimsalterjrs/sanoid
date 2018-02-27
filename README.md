@@ -62,6 +62,11 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of the zpool your filesystems are on. It only monitors filesystems that are configured in the sanoid.conf file.
 
++ --monitor-capacity
+
+	This option is designed to be run by a Nagios monitoring system. It reports on the capacity of the zpool your filesystems are on. It only monitors pools that are configured in the sanoid.conf file. The default limits are 80% for the warning and 95% for the critical state. Those can be overridden by providing them
+	along like '=80,95". 
+
 + --force-update
 
 	This clears out sanoid's zfs snapshot listing cache. This is normally not needed.
