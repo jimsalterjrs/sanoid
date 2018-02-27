@@ -17,7 +17,7 @@ use Time::Local;      # to parse dates in reverse
 
 my %args = ("configdir" => "/etc/sanoid");
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
-                   "monitor-health:s", "force-update", "configdir=s",
+                   "monitor-health", "force-update", "configdir=s",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots"
           ) or pod2usage(2);
 
@@ -51,7 +51,7 @@ my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
 
 if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
-if (defined($args{'monitor-health'})) 	{ monitor_health(@params); }
+if ($args{'monitor-health'}) 	{ monitor_health(@params); }
 if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); }
 
 if ($args{'cron'}) {
@@ -76,32 +76,13 @@ sub monitor_health {
 	my @messages;
 	my $errlevel=0;
 
-	my %capacitylimits;
-
-	# if provided, parse capacity limits
-	if ($args{'monitor-health'} ne "") {
-		my @values = split(',', $args{'monitor-health'});
-
-		if (!check_capacity_limit($values[0])) {
-			die "ERROR: invalid zpool capacity warning limit!\n";
-		}
-		$capacitylimits{"warn"} = $values[0];
-
-		if (scalar @values > 1) {
-			if (!check_capacity_limit($values[1])) {
-				die "ERROR: invalid zpool capacity critical limit!\n";
-			}
-			$capacitylimits{"crit"} = $values[1];
-		}
-	}
-
 	foreach my $path (keys %{ $snapsbypath}) {
 		my @pool = split ('/',$path);
 		$pools{$pool[0]}=1;
 	}
 
 	foreach my $pool (keys %pools) {
-		my ($exitcode, $msg) = check_zpool($pool,2,\%capacitylimits);
+		my ($exitcode, $msg) = check_zpool($pool,2);
 		if ($exitcode > $errlevel) { $errlevel = $exitcode; }
 		chomp $msg;
 		push (@messages, $msg);
@@ -767,8 +748,6 @@ sub check_zpool() {
 
 	my $pool=shift;
 	my $verbose=shift;
-	my $capacitylimitsref=shift;
-	my %capacitylimits=%$capacitylimitsref;
 
 	my $size="";
 	my $used="";
@@ -820,21 +799,15 @@ sub check_zpool() {
 	if ($health eq "ONLINE" ) {
 		$state = "OK";
 
-		if (%capacitylimits) {
-			# check capacity
-			my $capn = $cap;
-			$capn =~ s/\D//g;
+		# check capacity
+		my $capn = $cap;
+		$capn =~ s/\D//g;
 
-			if ($capacitylimits{"warn"}) {
-				if ($capn >= $capacitylimits{"warn"}) {
-					$state = "WARNING";
-				}
-			}
-			if ($capacitylimits{"crit"}) {
-				if ($capn >= $capacitylimits{"crit"}) {
-					$state = "CRITICAL";
-				}
-			}
+		if ($capn >= 80) {
+			$state = "WARNING";
+		}
+		if ($capn >= 95) {
+			$state = "CRITICAL";
 		}
 	} else {
 		if ($health eq "DEGRADED") {
@@ -937,20 +910,6 @@ sub check_zpool() {
 	$msg = "$state $msg";
 	return ($ERRORS{$state},$msg);
 } # end check_zpool()
-
-sub check_capacity_limit() {
-	my $value = shift;
-
-	if ($value !~ /^\d+\z/) {
-		return undef;
-	}
-
-	if ($value < 1 || $value > 100) {
-		return undef;
-	}
-
-	return 1
-}
 
 ######################################################################################################
 ######################################################################################################
@@ -1122,19 +1081,19 @@ Assumes --cron --verbose if no other arguments (other than configdir) are specif
 
 Options:
 
-  --configdir=DIR       		Specify a directory to find config file sanoid.conf
+  --configdir=DIR       Specify a directory to find config file sanoid.conf
 
-  --cron                		Creates snapshots and purges expired snapshots
-  --verbose             		Prints out additional information during a sanoid run
-  --readonly            		Simulates creation/deletion of snapshots
-  --quiet               		Suppresses non-error output
-  --force-update        		Clears out sanoid's zfs snapshot cache
+  --cron                Creates snapshots and purges expired snapshots
+  --verbose             Prints out additional information during a sanoid run
+  --readonly            Simulates creation/deletion of snapshots
+  --quiet               Suppresses non-error output
+  --force-update        Clears out sanoid's zfs snapshot cache
 
-  --monitor-health[=wlimit[,climit]]    Reports on zpool "health", in a Nagios compatible format
-  --monitor-snapshots   		Reports on snapshot "health", in a Nagios compatible format
-  --take-snapshots      		Creates snapshots as specified in sanoid.conf
-  --prune-snapshots     		Purges expired snapshots as specified in sanoid.conf
+  --monitor-health      Reports on zpool "health", in a Nagios compatible format
+  --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
+  --take-snapshots      Creates snapshots as specified in sanoid.conf
+  --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
 
-  --help                		Prints this helptext
-  --version             		Prints the version number
-  --debug               		Prints out a lot of additional information during a sanoid run
+  --help                Prints this helptext
+  --version             Prints the version number
+  --debug               Prints out a lot of additional information during a sanoid run
