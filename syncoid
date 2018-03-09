@@ -183,9 +183,20 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
-	if (getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync') eq 'false') {
+	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+
+	if ($sync eq 'true' || $sync eq '-') {
+		# definitely sync this dataset - if a host is called 'true' or '-', then you're special
+	} elsif ($sync eq 'false') {
 		if (!$quiet) { print "INFO: Skipping dataset (syncoid:sync=false): $sourcefs...\n"; }
 		return 0;
+	} else {
+		my $hostid = hostname();
+		my @hosts = split(/,/,$sync);
+		if (!(grep $hostid eq $_, @hosts)) {
+			if (!$quiet) { print "INFO: Skipping dataset (syncoid:sync doesn't include $hostid): $sourcefs...\n"; }
+			return 0;
+		}
 	}
 
 	# make sure target is not currently in receive.
