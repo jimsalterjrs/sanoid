@@ -120,11 +120,27 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 ##### Syncoid Dataset Properties
 
-+ syncoid:no-sync
++ syncoid:sync
 
-  Setting this to `true` will prevent the dataset from being handled by syncoid in _any_ way - it will be skipped. This can be useful for preventing certain datasets from being transferred when recursively handling a tree.
+  Available values:
 
-  Note that this will also prevent syncoid from handling the dataset if given explicitly on the command line.
+  + `true` (default if unset)
+
+    This dataset will be synchronised to all hosts.
+
+  + `false`
+
+    This dataset will not be synchronised to any hosts - it will be skipped. This can be useful for preventing certain datasets from being transferred when recursively handling a tree.
+
+  + `host1,host2,...`
+
+    A comma seperated list of hosts. This dataset will only be synchronised by hosts listed in the property.
+
+    _Note_: this check is performed by the host running `syncoid`, thus the local hostname must be present for inclusion during a push operation // the remote hostname must be present for a pull.
+
+  _Note_: this will also prevent syncoid from handling the dataset if given explicitly on the command line.
+
+  _Note_: syncing a child of a no-sync dataset will currently result in a critical error
 
 ##### Syncoid Command Line Options
 
