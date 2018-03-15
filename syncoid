@@ -956,7 +956,7 @@ Options:
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
 
   --help                Prints this helptext
-  --verbose             Prints the version number
+  --version             Prints the version number
   --debug               Prints out a lot of additional information during a syncoid run
   --monitor-version     Currently does nothing
   --quiet               Suppresses non-error output
