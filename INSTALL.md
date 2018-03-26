@@ -10,7 +10,7 @@
 	- [FreeBSD](#freebsd)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
-	- [sanoid.conf](#sanoidconf)
+	- [Sanoid](#sanoid)
 
 <!-- /TOC -->
 
@@ -124,8 +124,10 @@ pkg install p5-Config-Inifiles pv lzop
 
 # Configuration
 
-**Sanoid** won't do anything useful unless you tell it how to handle your ZFS datasets in `/etc/sanoid/sanoid.conf`. **Syncoid** is a command line utility that doesn't require any configuration, with all of its switches set at runtime.
+**Sanoid** won't do anything useful unless you tell it how to handle your ZFS datasets in `/etc/sanoid/sanoid.conf`.
 
-## sanoid.conf
+**Syncoid** is a command line utility that doesn't require any configuration, with all of its switches set at runtime.
+
+## Sanoid
 
 Instructions on how to set up `sanoid.conf`.  Maybe just copy/paste the example `sanoid.conf` file in here but clean it up a little bit.
