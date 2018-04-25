@@ -1087,11 +1087,14 @@ sub getdate {
 }
 
 sub escapeshellparam {
-	my $par;
-	if (scalar @_) {
-		($par) = @_;
+	my ($par) = @_;
+	# avoid use of uninitialized string in regex
+	if (length($par)) {
 		# "escape" all single quotes
 		$par =~ s/'/'"'"'/g;
+	} else {
+		# avoid use of uninitialized string in concatenation below
+		$par = '';
 	}
 	# single-quote entire string
 	return "'$par'";
