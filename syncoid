@@ -427,6 +427,18 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/lzop',
 			decomargs   => '-dfc',
 		},
+		'lz4-fast' => {
+			rawcmd      => '/usr/bin/lz4',
+			args        => '-1',
+			decomrawcmd => '/usr/bin/lz4',
+			decomargs   => '-dc',
+		},
+		'lz4-slow' => {
+			rawcmd      => '/usr/bin/lz4',
+			args        => '-9',
+			decomrawcmd => '/usr/bin/lz4',
+			decomargs   => '-dc',
+		},
 	);
 
 	if ($value eq 'default') {
