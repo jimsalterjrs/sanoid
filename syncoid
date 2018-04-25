@@ -1087,9 +1087,12 @@ sub getdate {
 }
 
 sub escapeshellparam {
-	my ($par) = @_;
-	# "escape" all single quotes
-	$par =~ s/'/'"'"'/g;
+	my $par;
+	if (scalar @_) {
+		($par) = @_;
+		# "escape" all single quotes
+		$par =~ s/'/'"'"'/g;
+	}
 	# single-quote entire string
 	return "'$par'";
 }
