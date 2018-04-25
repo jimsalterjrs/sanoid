@@ -96,7 +96,7 @@ if (!defined $args{'recursive'}) {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
 	foreach my $dataset(@datasets) {
-		$dataset =~ s/$sourcefs//;
+		$dataset =~ s/\Q$sourcefs\E//;
 		chomp $dataset;
 		my $childsourcefs = $sourcefs . $dataset;
 		my $childtargetfs = $targetfs . $dataset;
@@ -125,11 +125,16 @@ exit 0;
 sub getchilddatasets {
 	my ($rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
 
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem,volume -Hr $fs |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem,volume -Hr $fsescaped |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
@@ -141,6 +146,9 @@ sub getchilddatasets {
 sub syncdataset {
 
 	my ($sourcehost, $sourcefs, $targethost, $targetfs) = @_;
+
+	my $sourcefsescaped = escapeshellparam($sourcefs);
+	my $targetfsescaped = escapeshellparam($targetfs);
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
@@ -211,9 +219,10 @@ sub syncdataset {
 
 		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
 		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
+		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
-		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefs\@$oldestsnap";
-		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
+		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
+		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfsescaped";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
@@ -248,7 +257,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$oldestsnap $sourcefs\@$newsyncsnap";
+			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnap";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -305,18 +314,19 @@ sub syncdataset {
 			# barf some text but don't touch the filesystem
 			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
 		} else {
+			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
 			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 			if ($targethost ne '') {
-				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-				system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped\n"; }
+				system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped"));
 			} else {
-				if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-				system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+				if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped\n"; }
+				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
-			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfs";
+			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnap";
+			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -527,7 +537,7 @@ sub iszfsbusy {
 
 	foreach my $process (@processes) {
 		# if ($debug) { print "DEBUG: checking process $process...\n"; }
-		if ($process =~ /zfs *(receive|recv).*$fs/) {
+		if ($process =~ /zfs *(receive|recv).*\Q$fs\E/) {
 			# there's already a zfs receive process for our target filesystem - return true
 			if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
 			return 1;
@@ -540,24 +550,40 @@ sub iszfsbusy {
 
 sub setzfsvalue {
 	my ($rhost,$fs,$isroot,$property,$value) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
 	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fs\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fs") == 0
-		or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fs died: $?, proceeding anyway.\n";
+	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fsescaped\n"; }
+	system("$rhost $mysudocmd $zfscmd set $property=$value $fsescaped") == 0
+		or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fsescaped died: $?, proceeding anyway.\n";
 	return;
 }
 
 sub getzfsvalue {
 	my ($rhost,$fs,$isroot,$property) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
 	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fs\n"; }
-	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fs |";
+	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fsescaped\n"; }
+	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
 	my @values = split(/\s/,$value);
@@ -643,17 +669,24 @@ sub buildsynccmd {
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
-		$synccmd .= " $sshcmd $targethost '";
-		if ($avail{'targetmbuffer'}) { $synccmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
-		if ($avail{'compress'}) { $synccmd .= " $compressargs{'decomcmd'} |"; }
-		$synccmd .= " $recvcmd'";
+		$synccmd .= " $sshcmd $targethost ";
+
+		my $remotecmd = "";
+		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
+		$remotecmd .= " $recvcmd";
+
+		$synccmd .= escapeshellparam($remotecmd);
 	} elsif ($targethost eq '') {
 		# remote source, local target.
-		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $args{'decompress'}{'cmd'} | $mbuffercmd | $pvcmd | $recvcmd";
-		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'cmd'}"; }
-		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
-		$synccmd .= "' | ";
+		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $compressargs{'decomcmd'} | $mbuffercmd | $pvcmd | $recvcmd";
+
+		my $remotecmd = $sendcmd;
+		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
+		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+
+		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
+		$synccmd .= " | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
@@ -661,25 +694,37 @@ sub buildsynccmd {
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
 		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $compressargs{'decomcmd'} | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
-		$synccmd = "$sshcmd $sourcehost '$sendcmd";
-		if ($avail{'compress'}) { $synccmd .= " | $compressargs{'cmd'}"; }
-		if ($avail{'sourcembuffer'}) { $synccmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
-		$synccmd .= "' | ";
+
+		my $remotecmd = $sendcmd;
+		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
+		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+
+		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
+		$synccmd .= " | ";
+
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'cmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
-		$synccmd .= "$sshcmd $targethost '";
-		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
-		$synccmd .= "$recvcmd'";
+		$synccmd .= "$sshcmd $targethost ";
+
+		$remotecmd = "";
+		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
+		$remotecmd .= " $recvcmd";
+
+		$synccmd .= escapeshellparam($remotecmd);
 	}
 	return $synccmd;
 }
 
 sub pruneoldsyncsnaps {
 	my ($rhost,$fs,$newsyncsnap,$isroot,@snaps) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+
 	my $hostid = hostname();
 
 	my $mysudocmd;
@@ -689,7 +734,7 @@ sub pruneoldsyncsnaps {
 
 	# only prune snaps beginning with syncoid and our own hostname
 	foreach my $snap(@snaps) {
-		if ($snap =~ /^syncoid_$hostid/) {
+		if ($snap =~ /^syncoid_\Q$hostid\E/) {
 			# no matter what, we categorically refuse to
 			# prune the new sync snap we created for this run
 			if ($snap ne $newsyncsnap) {
@@ -705,12 +750,14 @@ sub pruneoldsyncsnaps {
 	my $prunecmd;
 	foreach my $snap(@prunesnaps) {
 		$counter ++;
-		$prunecmd .= "$mysudocmd $zfscmd destroy $fs\@$snap; ";
+		$prunecmd .= "$mysudocmd $zfscmd destroy $fsescaped\@$snap; ";
 		if ($counter > $maxsnapspercmd) {
 			$prunecmd =~ s/\; $//;
-			if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 			if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
+			if ($rhost ne '') {
+				$prunecmd = escapeshellparam($prunecmd);
+			}
 			system("$rhost $prunecmd") == 0
 				or warn "CRITICAL ERROR: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
@@ -721,9 +768,11 @@ sub pruneoldsyncsnaps {
 	# the loop, commit 'em now
 	if ($counter) {
 		$prunecmd =~ s/\; $//;
-		if ($rhost ne '') { $prunecmd = '"' . $prunecmd . '"'; }
 		if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
 		if ($debug) { print "DEBUG: $rhost $prunecmd\n"; }
+		if ($rhost ne '') {
+			$prunecmd = escapeshellparam($prunecmd);
+		}
 		system("$rhost $prunecmd") == 0
 			or warn "WARNING: $rhost $prunecmd failed: $?";
 	}
@@ -761,13 +810,18 @@ sub getmatchingsnapshot {
 
 sub newsyncsnap {
 	my ($rhost,$fs,$isroot) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $fsescaped = escapeshellparam($fs);
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
 	my %date = getdate();
 	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
-	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fs\@$snapname\n";
+	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	system($snapcmd) == 0
 		or die "CRITICAL ERROR: $snapcmd failed: $?";
 	return $snapname;
@@ -775,16 +829,21 @@ sub newsyncsnap {
 
 sub targetexists {
 	my ($rhost,$fs,$isroot) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	my $fsescaped = escapeshellparam($fs);
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	my $checktargetcmd = "$rhost $mysudocmd $zfscmd get -H name $fs";
+	my $checktargetcmd = "$rhost $mysudocmd $zfscmd get -H name $fsescaped";
 	if ($debug) { print "DEBUG: checking to see if target filesystem exists using \"$checktargetcmd 2>&1 |\"...\n"; }
 	open FH, "$checktargetcmd 2>&1 |";
 	my $targetexists = <FH>;
 	close FH;
 	my $exit = $?;
-	$targetexists = ( $targetexists =~ /^$fs/ && $exit == 0 );
+	$targetexists = ( $targetexists =~ /^\Q$fs\E/ && $exit == 0 );
 	return $targetexists;
 }
 
@@ -799,7 +858,7 @@ sub getssh {
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
 		$fs =~ s/^\S*\@\S*://;
-		$rhost =~ s/:$fs$//;
+		$rhost =~ s/:\Q$fs\E$//;
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
@@ -825,11 +884,16 @@ sub dumphash() {
 sub getsnaps() {
 	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fs |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped |";
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
@@ -840,24 +904,24 @@ sub getsnaps() {
 
 	foreach my $line (@rawsnaps) {
 		# only import snap guids from the specified filesystem
-		if ($line =~ /$fs\@.*guid/) {
+		if ($line =~ /\Q$fs\E\@.*guid/) {
 			chomp $line;
 			my $guid = $line;
 			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/^\S*\@(\S*)\s*guid.*$/$1/;
+			$snap =~ s/^.*\@(\S*)\s*guid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		}
 	}
 
 	foreach my $line (@rawsnaps) {
 		# only import snap creations from the specified filesystem
-		if ($line =~ /$fs\@.*creation/) {
+		if ($line =~ /\Q$fs\E\@.*creation/) {
 			chomp $line;
 			my $creation = $line;
 			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/^\S*\@(\S*)\s*creation.*$/$1/;
+			$snap =~ s/^.*\@(\S*)\s*creation.*$/$1/;
 			$snaps{$type}{$snap}{'creation'}=$creation;
 		}
 	}
@@ -869,20 +933,29 @@ sub getsnaps() {
 sub getsendsize {
 	my ($sourcehost,$snap1,$snap2,$isroot) = @_;
 
+	my $snap1escaped = escapeshellparam($snap1);
+	my $snap2escaped = escapeshellparam($snap2);
+
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	my $sourcessh;
+	if ($sourcehost ne '') {
+		$sourcessh = "$sshcmd $sourcehost";
+		$snap1escaped = escapeshellparam($snap1escaped);
+		$snap2escaped = escapeshellparam($snap2escaped);
+	} else {
+		$sourcessh = '';
+	}
 
 	my $snaps;
 	if ($snap2) {
 		# if we got a $snap2 argument, we want an incremental send estimate from $snap1 to $snap2.
-		$snaps = "$args{'streamarg'} $snap1 $snap2";
+		$snaps = "$args{'streamarg'} $snap1escaped $snap2escaped";
 	} else {
 		# if we didn't get a $snap2 arg, we want a full send estimate for $snap1.
-		$snaps = "$snap1";
+		$snaps = "$snap1escaped";
 	}
-
-	my $sourcessh;
-	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
@@ -923,6 +996,14 @@ sub getdate {
 	$date{'mon'} = sprintf ("%02u", ($mon + 1));
 	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
 	return %date;
+}
+
+sub escapeshellparam {
+	my ($par) = @_;
+	# "escape" all single quotes
+	$par =~ s/'/'"'"'/g;
+	# single-quote entire string
+	return "'$par'";
 }
 
 __END__
