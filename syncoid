@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -46,6 +46,7 @@ my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
+my $resume = !$args{'no-resume'};
 
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
@@ -161,32 +162,52 @@ sub syncdataset {
 	# does the target filesystem exist yet?
 	my $targetexists = targetexists($targethost,$targetfs,$targetisroot);
 
-	# build hashes of the snaps on the source and target filesystems.
+	my $receiveextraargs = "";
+	my $receivetoken;
+	if ($resume) {
+		# save state of interrupted receive stream
+		$receiveextraargs = "-s";
 
-	%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+		if ($targetexists) {
+			# check remote dataset for receive resume token (interrupted receive)
+			$receivetoken = getreceivetoken($targethost,$targetfs,$targetisroot);
 
-	if ($targetexists) {
-		my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
-		my %sourcesnaps = %snaps;
-		%snaps = (%sourcesnaps, %targetsnaps);
+			if ($debug && defined($receivetoken)) {
+				print "DEBUG: got receive resume token: $receivetoken: \n";
+			}
+		}
 	}
 
-	if (defined $args{'dumpsnaps'}) {
-		print "merged snapshot list of $targetfs: \n";
-		dumphash(\%snaps);
-		print "\n\n\n";
-	}
-
-	# create a new syncoid snapshot on the source filesystem.
 	my $newsyncsnap;
-	if (!defined $args{'no-sync-snap'}) {
-		$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
-	} else {
-		# we don't want sync snapshots created, so use the newest snapshot we can find.
-		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
-		if ($newsyncsnap eq 0) {
-			warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
-			return 0;
+
+	# skip snapshot checking/creation in case of resumed receive
+	if (!defined($receivetoken)) {
+		# build hashes of the snaps on the source and target filesystems.
+
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+
+		if ($targetexists) {
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
+		    my %sourcesnaps = %snaps;
+		    %snaps = (%sourcesnaps, %targetsnaps);
+		}
+
+		if (defined $args{'dumpsnaps'}) {
+		    print "merged snapshot list of $targetfs: \n";
+		    dumphash(\%snaps);
+		    print "\n\n\n";
+		}
+
+		if (!defined $args{'no-sync-snap'}) {
+			# create a new syncoid snapshot on the source filesystem.
+			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
+		} else {
+			# we don't want sync snapshots created, so use the newest snapshot we can find.
+			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+			if ($newsyncsnap eq 0) {
+				warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
+				return 0;
+			}
 		}
 	}
 	my $newsyncsnapescaped = escapeshellparam($newsyncsnap);
@@ -223,7 +244,7 @@ sub syncdataset {
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
-		my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfsescaped";
+		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
@@ -287,6 +308,27 @@ sub syncdataset {
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);
 		}
 	} else {
+		# resume interrupted receive if there is a valid resume $token
+		# and because this will ony resume the receive to the next
+		# snapshot, do a normal sync after that
+		if (defined($receivetoken)) {
+		    my $sendcmd = "$sourcesudocmd $zfscmd send -t $receivetoken";
+		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
+		    my $disp_pvsize = readablebytes($pvsize);
+		    if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+		    my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+		    if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
+		    if ($debug) { print "DEBUG: $synccmd\n"; }
+		    system("$synccmd") == 0
+		        or die "CRITICAL ERROR: $synccmd failed: $?";
+
+		    # a resumed transfer will only be done to the next snapshot,
+		    # so do an normal sync cycle
+		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+		}
+
 		# find most recent matching snapshot and do an -I
 		# to the new snapshot
 
@@ -327,7 +369,7 @@ sub syncdataset {
 			}
 
 			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfsescaped";
+			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -417,6 +459,8 @@ sub checkcommands {
 		$avail{'localmbuffer'} = 1;
 		$avail{'sourcembuffer'} = 1;
 		$avail{'targetmbuffer'} = 1;
+		$avail{'sourceresume'} = 1;
+		$avail{'targetresume'} = 1;
 		return %avail;
 	}
 
@@ -522,6 +566,37 @@ sub checkcommands {
 		$avail{'localpv'} = 0;
 	} else {
 		$avail{'localpv'} = 1;
+	}
+
+	# check for ZFS resume feature support
+	if ($resume) {
+		my $resumechkcmd = "$zfscmd get receive_resume_token -d 0";
+
+		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
+		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
+		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
+
+		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
+		$avail{'targetresume'} = system("$targetssh $resumechkcmd >/dev/null 2>&1");
+		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
+
+		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
+			# disable resume
+			$resume = '';
+
+			my @hosts = ();
+			if ($avail{'sourceresume'} == 0) {
+				push @hosts, 'source';
+			}
+			if ($avail{'targetresume'} == 0) {
+				push @hosts, 'target';
+			}
+			my $affected = join(" and ", @hosts);
+			print "WARN: ZFS resume feature not available on $affected machine - sync will continue without resume support.\n";
+		}
+	} else {
+		$avail{'sourceresume'} = 0;
+		$avail{'targetresume'} = 0;
 	}
 
 	return %avail;
@@ -932,7 +1007,7 @@ sub getsnaps() {
 
 
 sub getsendsize {
-	my ($sourcehost,$snap1,$snap2,$isroot) = @_;
+	my ($sourcehost,$snap1,$snap2,$isroot,$receivetoken) = @_;
 
 	my $snap1escaped = escapeshellparam($snap1);
 	my $snap2escaped = escapeshellparam($snap2);
@@ -958,6 +1033,12 @@ sub getsendsize {
 		$snaps = "$snap1escaped";
 	}
 
+	# in case of a resumed receive, get the remaining
+	# size based on the resume token
+	if (defined($receivetoken)) {
+		$snaps = "-t $receivetoken";
+	}
+
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
@@ -970,7 +1051,13 @@ sub getsendsize {
 	# size of proposed xfer in bytes, but we need to remove
 	# human-readable crap from it
 	my $sendsize = pop(@rawsize);
-	$sendsize =~ s/^size\s*//;
+	# the output format is different in case of
+	# a resumed receive
+	if (defined($receivetoken)) {
+		$sendsize =~ s/.*\s([0-9]+)$/$1/;
+	} else {
+		$sendsize =~ s/^size\s*//;
+	}
 	chomp $sendsize;
 
 	# to avoid confusion with a zero size pv, give sendsize
@@ -1005,6 +1092,21 @@ sub escapeshellparam {
 	$par =~ s/'/'"'"'/g;
 	# single-quote entire string
 	return "'$par'";
+}
+
+sub getreceivetoken() {
+	my ($rhost,$fs,$isroot) = @_;
+	my $token = getzfsvalue($rhost,$fs,$isroot,"receive_resume_token");
+
+	if ($token ne '-' && $token ne '') {
+		return $token;
+	}
+
+	if ($debug) {
+        print "DEBUG: no receive token found \n";
+    }
+
+	return
 }
 
 __END__
@@ -1044,3 +1146,4 @@ Options:
   --quiet               Suppresses non-error output
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
+  --no-resume           Don't use the ZFS resume feature if available
