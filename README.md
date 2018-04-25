@@ -110,6 +110,8 @@ Which would pull-replicate the filesystem from the remote host to the local syst
 Syncoid supports recursive replication (replication of a dataset and all its child datasets) and uses mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
 If ZFS supports resumeable send/receive streams on both the source and target those will be enabled as default.
 
+As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
+
 ##### Syncoid Command Line Options
 
 + [source]
