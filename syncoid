@@ -189,6 +189,7 @@ sub syncdataset {
 			return 0;
 		}
 	}
+	my $newsyncsnapescaped = escapeshellparam($newsyncsnap);
 
 	# there is currently (2014-09-01) a bug in ZFS on Linux
 	# that causes readonly to always show on if it's EVER
@@ -257,7 +258,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnap";
+			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -325,7 +326,7 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnap";
+			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			my $recvcmd = "$targetsudocmd $zfscmd receive -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
@@ -909,7 +910,7 @@ sub getsnaps() {
 			my $guid = $line;
 			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/^.*\@(\S*)\s*guid.*$/$1/;
+			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		}
 	}
@@ -921,7 +922,7 @@ sub getsnaps() {
 			my $creation = $line;
 			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
 			my $snap = $line;
-			$snap =~ s/^.*\@(\S*)\s*creation.*$/$1/;
+			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
 			$snaps{$type}{$snap}{'creation'}=$creation;
 		}
 	}
