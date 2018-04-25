@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "resume") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -46,6 +46,7 @@ my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
+my $resume = !$args{'no-resume'};
 
 my $zfscmd = '/sbin/zfs';
 my $sshcmd = '/usr/bin/ssh';
@@ -163,7 +164,7 @@ sub syncdataset {
 
 	my $receiveextraargs = "";
 	my $receivetoken;
-	if (defined $args{'resume'}) {
+	if ($resume) {
 		# save state of interrupted receive stream
 		$receiveextraargs = "-s";
 
@@ -457,6 +458,8 @@ sub checkcommands {
 		$avail{'localmbuffer'} = 1;
 		$avail{'sourcembuffer'} = 1;
 		$avail{'targetmbuffer'} = 1;
+		$avail{'sourceresume'} = 1;
+		$avail{'targetresume'} = 1;
 		return %avail;
 	}
 
@@ -562,6 +565,37 @@ sub checkcommands {
 		$avail{'localpv'} = 0;
 	} else {
 		$avail{'localpv'} = 1;
+	}
+
+	# check for ZFS resume feature support
+	if ($resume) {
+		my $resumechkcmd = "$zfscmd get receive_resume_token -d 0";
+
+		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
+		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
+		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
+
+		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
+		$avail{'targetresume'} = system("$targetssh $resumechkcmd >/dev/null 2>&1");
+		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
+
+		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
+			# disable resume
+			$resume = '';
+
+			my @hosts = ();
+			if ($avail{'sourceresume'} == 0) {
+				push @hosts, 'source';
+			}
+			if ($avail{'targetresume'} == 0) {
+				push @hosts, 'target';
+			}
+			my $affected = join(" and ", @hosts);
+			print "WARN: ZFS resume feature not available on $affected machine - sync will continue without resume support.\n";
+		}
+	} else {
+		$avail{'sourceresume'} = 0;
+		$avail{'targetresume'} = 0;
 	}
 
 	return %avail;
@@ -1111,4 +1145,4 @@ Options:
   --quiet               Suppresses non-error output
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
-  --resume              Save the state of unfinished receive streams and resume interrupted ones if available
+  --no-resume           Don't use the ZFS resume feature if available
