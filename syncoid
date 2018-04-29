@@ -930,20 +930,22 @@ sub getssh {
 	my $isroot;
 	my $socket;
 
-	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
-	if ($fs =~ /\@/) {
+	# if we got passed something with an : in it, but not at the beginning,
+	# we assume it's an ssh connection, eg root@myotherbox:pool/dataset
+	if ($fs =~ /^[^:]+:/) {
 		$rhost = $fs;
-		$fs =~ s/^\S*\@\S*://;
+		# host and usernames must not have colons
+		$fs =~ s/^[^:]*://;
 		$rhost =~ s/:\Q$fs\E$//;
-		my $remoteuser = $rhost;
-		 $remoteuser =~ s/\@.*$//;
-		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
+		if ($rhost =~ /^root\@/ ) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+		$socket = "/tmp/syncoid-$rhost-" . time();
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
 		$rhost = "-S $socket $rhost";
 	} else {
+		# remove a leading :, if any
+		$fs =~ s/^://;
 		my $localuid = $<;
 		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
 	}
@@ -1130,6 +1132,12 @@ syncoid - ZFS snapshot replication tool
 
  SOURCE                Source ZFS dataset. Can be either local or remote
  TARGET                Target ZFS dataset. Can be either local or remote
+
+Notes:
+  If HOST is empty, a local dataset is assumed. This is required to specify a
+  local dataset that has a colon (:) in it, e.g.,
+
+ :poolname/dataset:name
 
 Options:
 
