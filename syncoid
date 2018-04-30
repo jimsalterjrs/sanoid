@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-clone-rollback") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -306,13 +306,17 @@ sub syncdataset {
 			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
 		} else {
 			# rollback target to matchingsnap
+			my $rollbacktype="-R";
+			if (defined $args{'no-clone-rollback'}) {
+				$rollbacktype = "-r";
+			}
 			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 			if ($targethost ne '') {
-				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-				system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
+				system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap");
 			} else {
-				if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap\n"; }
-				system ("$targetsudocmd $zfscmd rollback -R $targetfs\@$matchingsnap");
+				if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
+				system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap");
 			}
 
 			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefs\@$matchingsnap $sourcefs\@$newsyncsnap";
@@ -949,6 +953,7 @@ Options:
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --no-clone-rollback	Does not rollback clones on target
 
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
