@@ -387,9 +387,11 @@ sub syncdataset {
 		}
 	}
 
-	# prune obsolete sync snaps on source and target.
-	pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
-	pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+	if (!defined $args{'no-sync-snap'}) {
+		# prune obsolete sync snaps on source and target (only if this run created ones).
+		pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
+		pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+	}
 
 } # end syncdataset()
 
