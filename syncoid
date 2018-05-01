@@ -359,19 +359,18 @@ sub syncdataset {
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
-			my $rollbacktype="-R";
+			my $rollbacktype = "-R";
 			if (defined $args{'no-clone-rollback'}) {
 				$rollbacktype = "-r";
 			}
 			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 			if ($targethost ne '') {
-				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
+				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
 				system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
 			} else {
-				if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
-				system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap");
+				if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
+				system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
 			}
-
 			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
