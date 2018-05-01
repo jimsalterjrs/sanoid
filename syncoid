@@ -366,7 +366,7 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 			if ($targethost ne '') {
 				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
-				system ("$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap");
+				system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
 			} else {
 				if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap\n"; }
 				system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfs\@$matchingsnap");
