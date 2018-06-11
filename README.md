@@ -156,7 +156,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-clone-rollback
 
-	Does not rollback clones on target
+	Do not rollback clones on target
+
++ --no-rollback
+	Do not rollback anything (clones or snapshots) on target host
 
 + --no-resume
 
