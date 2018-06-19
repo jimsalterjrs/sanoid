@@ -1142,7 +1142,7 @@ Options:
 
   --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
   --recursive|r         Also transfers child datasets
-  --skip-parent         Skipp the syncing of the parent dataset. Doesg nothing without '--recursive' option.
+  --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates
