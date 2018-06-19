@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "identifier=s") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -70,6 +70,17 @@ if (length $args{'sshkey'}) {
 	$args{'sshkey'} = "-i $args{'sshkey'}";
 }
 my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
+
+my $identifier = "";
+if (length $args{'identifier'}) {
+	if ($args{'identifier'} !~ /^[a-zA-Z0-9-]+$/) {
+		# invalid extra identifier
+		print("CRITICAL: extra identifier contains invalid chars!\n");
+		pod2usage(2);
+		exit 127;
+	}
+	$identifier = "$args{'identifier'}_";
+}
 
 # figure out if source and/or target are remote.
 $sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
@@ -812,7 +823,7 @@ sub pruneoldsyncsnaps {
 
 	# only prune snaps beginning with syncoid and our own hostname
 	foreach my $snap(@snaps) {
-		if ($snap =~ /^syncoid_\Q$hostid\E/) {
+		if ($snap =~ /^syncoid_\Q$identifier$hostid\E/) {
 			# no matter what, we categorically refuse to
 			# prune the new sync snap we created for this run
 			if ($snap ne $newsyncsnap) {
@@ -898,7 +909,7 @@ sub newsyncsnap {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
 	my %date = getdate();
-	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
+	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	system($snapcmd) == 0
 		or die "CRITICAL ERROR: $snapcmd failed: $?";
@@ -1136,6 +1147,7 @@ syncoid - ZFS snapshot replication tool
 Options:
 
   --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
