@@ -126,6 +126,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This will also transfer child datasets.
 
++ --skip-parent
+
+	This will skip the syncing of the parent dataset. Does nothing without '--recursive' option.
+
 + --compress <compression type>
 
 	Currently accepted options: gzip, pigz-fast, pigz-slow, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
