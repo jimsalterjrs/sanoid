@@ -664,7 +664,7 @@ sub getzfsvalue {
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
-	my @values = split(/\s/,$value);
+	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
 }
@@ -985,7 +985,7 @@ sub getsnaps() {
 		if ($line =~ /\Q$fs\E\@.*guid/) {
 			chomp $line;
 			my $guid = $line;
-			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
@@ -997,7 +997,7 @@ sub getsnaps() {
 		if ($line =~ /\Q$fs\E\@.*creation/) {
 			chomp $line;
 			my $creation = $line;
-			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
 			$snaps{$type}{$snap}{'creation'}=$creation;
@@ -1056,9 +1056,9 @@ sub getsendsize {
 	# the output format is different in case of
 	# a resumed receive
 	if (defined($receivetoken)) {
-		$sendsize =~ s/.*\s([0-9]+)$/$1/;
+		$sendsize =~ s/.*\t([0-9]+)$/$1/;
 	} else {
-		$sendsize =~ s/^size\s*//;
+		$sendsize =~ s/^size\t*//;
 	}
 	chomp $sendsize;
 

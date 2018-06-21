@@ -521,7 +521,7 @@ sub getsnaps {
 	}
 
 	foreach my $snap (@rawsnaps) {
-		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\s*creation\s*(\d*)/);
+		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\t*creation\t*(\d*)/);
 
 		# avoid pissing off use warnings
 		if (defined $snapname) {
