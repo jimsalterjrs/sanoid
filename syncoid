@@ -437,6 +437,18 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/pigz',
 			decomargs   => '-dc',
 		},
+		'zstd-fast' => {
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-3',
+			decomrawcmd => '/usr/bin/zstd',
+			decomargs   => '-dc',
+		},
+		'zstd-slow' => {
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-19',
+			decomrawcmd => '/usr/bin/zstd',
+			decomargs   => '-dc',
+		},
 		'lzo' => {
 			rawcmd      => '/usr/bin/lzop',
 			args        => '',
@@ -447,7 +459,7 @@ sub compressargset {
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
