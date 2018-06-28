@@ -294,7 +294,7 @@ sub prune_snapshots {
 						foreach my $snap( @prunesnaps ){
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 							if (iszfsbusy($path)) {
-								print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n";
+								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
 							} else {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
@@ -308,7 +308,7 @@ sub prune_snapshots {
 						removelock('sanoid_pruning');
 						removecachedsnapshots(0);
 					} else {
-						print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n";
+						if ($args{'verbose'}) { print "INFO: deferring snapshot pruning - valid pruning lock held by other sanoid process.\n"; }
 					}
 				}
 			}
