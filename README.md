@@ -6,8 +6,10 @@
 
 More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job:
 ```
-* * * * * /usr/local/bin/sanoid --cron
+* * * * * TZ=UTC /usr/local/bin/sanoid --cron
 ```
+
+`Note`: Using UTC as timezone is recommend to prevent problems with daylight saving times
 
 And its /etc/sanoid/sanoid.conf might look something like this:
 
