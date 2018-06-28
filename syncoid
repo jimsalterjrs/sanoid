@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -140,6 +140,20 @@ sub getchilddatasets {
 	open FH, $getchildrencmd;
 	my @children = <FH>;
 	close FH;
+
+	if (defined $args{'exclude'}) {
+		my $excludes = $args{'exclude'};
+		foreach (@$excludes) {
+			for my $i ( 0 .. $#children ) {
+				if ($children[$i] =~ /$_/) {
+					if ($debug) { print "DEBUG: excluded $children[$i] because of $_\n"; }
+					undef $children[$i]
+				}
+			}
+
+			@children = grep{ defined }@children;
+		}
+	}
 
 	return @children;
 }
@@ -1141,6 +1155,7 @@ Options:
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
 
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
