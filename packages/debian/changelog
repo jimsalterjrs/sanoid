@@ -1,3 +1,18 @@
+sanoid (1.4.18) unstable; urgency=medium
+
+  implemented special character handling and support of ZFS resume/receive tokens by default in syncoid,
+  thank you @phreaker0!
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 25 Apr 2018 16:24:00 -0400
+
+sanoid (1.4.17) unstable; urgency=medium
+
+  changed die to warn when unexpectedly unable to remove a snapshot - this
+  allows sanoid to continue taking/removing other snapshots not affected by
+  whatever lock prevented the first from being taken or removed
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 8 Nov 2017 15:25:00 -0400
+
 sanoid (1.4.16) unstable; urgency=medium
 
   * merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's

@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-clone-rollback", "no-rollback", "no-resume") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-clone-rollback", "no-rollback", "no-resume", "exclude=s@") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -140,6 +140,20 @@ sub getchilddatasets {
 	open FH, $getchildrencmd;
 	my @children = <FH>;
 	close FH;
+
+	if (defined $args{'exclude'}) {
+		my $excludes = $args{'exclude'};
+		foreach (@$excludes) {
+			for my $i ( 0 .. $#children ) {
+				if ($children[$i] =~ /$_/) {
+					if ($debug) { print "DEBUG: excluded $children[$i] because of $_\n"; }
+					undef $children[$i]
+				}
+			}
+
+			@children = grep{ defined }@children;
+		}
+	}
 
 	return @children;
 }
@@ -434,6 +448,18 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/pigz',
 			decomargs   => '-dc',
 		},
+		'zstd-fast' => {
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-3',
+			decomrawcmd => '/usr/bin/zstd',
+			decomargs   => '-dc',
+		},
+		'zstd-slow' => {
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-19',
+			decomrawcmd => '/usr/bin/zstd',
+			decomargs   => '-dc',
+		},
 		'lzo' => {
 			rawcmd      => '/usr/bin/lzop',
 			args        => '',
@@ -444,7 +470,7 @@ sub compressargset {
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -675,7 +701,7 @@ sub getzfsvalue {
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
-	my @values = split(/\s/,$value);
+	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
 }
@@ -996,7 +1022,7 @@ sub getsnaps() {
 		if ($line =~ /\Q$fs\E\@.*guid/) {
 			chomp $line;
 			my $guid = $line;
-			$guid =~ s/^.*\sguid\s*(\d*).*/$1/;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
@@ -1008,7 +1034,7 @@ sub getsnaps() {
 		if ($line =~ /\Q$fs\E\@.*creation/) {
 			chomp $line;
 			my $creation = $line;
-			$creation =~ s/^.*\screation\s*(\d*).*/$1/;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
 			$snaps{$type}{$snap}{'creation'}=$creation;
@@ -1067,9 +1093,9 @@ sub getsendsize {
 	# the output format is different in case of
 	# a resumed receive
 	if (defined($receivetoken)) {
-		$sendsize =~ s/.*\s([0-9]+)$/$1/;
+		$sendsize =~ s/.*\t([0-9]+)$/$1/;
 	} else {
-		$sendsize =~ s/^size\s*//;
+		$sendsize =~ s/^size\t*//;
 	}
 	chomp $sendsize;
 
@@ -1154,14 +1180,14 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --no-clone-rollback	Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
-
+  --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
 
   --help                Prints this helptext
-  --verbose             Prints the version number
+  --version             Prints the version number
   --debug               Prints out a lot of additional information during a syncoid run
   --monitor-version     Currently does nothing
   --quiet               Suppresses non-error output
