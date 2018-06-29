@@ -58,6 +58,7 @@ Requires=zfs.target
 After=zfs.target
 
 [Service]
+Environment=TZ=UTC
 Type=oneshot
 ExecStart=%{_sbindir}/sanoid --cron
 EOF

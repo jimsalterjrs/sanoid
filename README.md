@@ -6,8 +6,10 @@
 
 More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job:
 ```
-* * * * * /usr/local/bin/sanoid --cron
+* * * * * TZ=UTC /usr/local/bin/sanoid --cron
 ```
+
+`Note`: Using UTC as timezone is recommend to prevent problems with daylight saving times
 
 And its /etc/sanoid/sanoid.conf might look something like this:
 
@@ -61,6 +63,10 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 + --monitor-health
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of the zpool your filesystems are on. It only monitors filesystems that are configured in the sanoid.conf file.
+
++ --monitor-capacity
+
+	This option is designed to be run by a Nagios monitoring system. It reports on the capacity of the zpool your filesystems are on. It only monitors pools that are configured in the sanoid.conf file.
 
 + --force-update
 
@@ -153,6 +159,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --no-sync-snap
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+
++ --exclude=REGEX
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
 
 + --no-resume
 
