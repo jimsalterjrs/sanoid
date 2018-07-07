@@ -73,7 +73,7 @@ my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref req
 
 my $identifier = "";
 if (length $args{'identifier'}) {
-	if ($args{'identifier'} !~ /^[a-zA-Z0-9-]+$/) {
+	if ($args{'identifier'} !~ /^[a-zA-Z0-9-_:.]+$/) {
 		# invalid extra identifier
 		print("CRITICAL: extra identifier contains invalid chars!\n");
 		pod2usage(2);
