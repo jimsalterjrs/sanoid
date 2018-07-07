@@ -130,7 +130,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --identifier=
 
-	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9 and -.
+	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
 
 + -r --recursive
 
