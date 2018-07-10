@@ -132,9 +132,17 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This is the destination dataset. It can be either local or remote.
 
++ --identifier=
+
+	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
+
 + -r --recursive
 
 	This will also transfer child datasets.
+
++ --skip-parent
+
+	This will skip the syncing of the parent dataset. Does nothing without '--recursive' option.
 
 + --compress <compression type>
 
