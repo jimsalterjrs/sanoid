@@ -614,7 +614,7 @@ sub checkcommands {
 
 	# check for ZFS resume feature support
 	if ($resume) {
-		my $resumechkcmd = "$zfscmd get receive_resume_token -d 0";
+		my $resumechkcmd = "$zfscmd get -d 0 receive_resume_token";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
 		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
