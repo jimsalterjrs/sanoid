@@ -757,7 +757,7 @@ sub buildsynccmd {
 		$synccmd = "$sendcmd |";
 		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
 		my $bwlimit = '';
-		if (length $args{'bwlimit'}) {
+		if (length $args{'source-bwlimit'}) {
 			$bwlimit = $args{'source-bwlimit'};
 		} elsif (length $args{'target-bwlimit'}) {
 			$bwlimit = $args{'target-bwlimit'};
