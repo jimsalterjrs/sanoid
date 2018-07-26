@@ -879,7 +879,7 @@ sub pruneoldsyncsnaps {
 				$prunecmd = escapeshellparam($prunecmd);
 			}
 			system("$rhost $prunecmd") == 0
-				or warn "CRITICAL ERROR: $rhost $prunecmd failed: $?";
+				or warn "WARNING: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
 			$counter = 0;
 		}
