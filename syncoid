@@ -391,8 +391,20 @@ sub syncdataset {
 
 			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0
-				or die "CRITICAL ERROR: $synccmd failed: $?";
+
+			my $output = `$synccmd 2>&1`;
+			my $exitcode = $?;
+
+			if ($exitcode != 0) {
+				if (!$resume && $output =~ /\Qcontains partially-complete state\E/) {
+					if (!$quiet) { print "Resetting partially receive state\n"; }
+					resetreceivestate($targethost,$targetfs,$targetisroot);
+					system($synccmd) == 0
+						or die "CRITICAL ERROR: $synccmd failed: $?";
+				} else {
+					die "CRITICAL ERROR: $synccmd failed: $exitcode";
+				}
+			}
 
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -1141,6 +1153,26 @@ sub getreceivetoken() {
     }
 
 	return
+}
+
+sub resetreceivestate {
+	my ($rhost,$fs,$isroot) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	if ($debug) { print "DEBUG: reset partial receive state of $fs...\n"; }
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	my $resetcmd = "$rhost $mysudocmd $zfscmd receive -A $fsescaped";
+	if ($debug) { print "$resetcmd\n"; }
+	system("$resetcmd") == 0
+		or die "CRITICAL ERROR: $resetcmd failed: $?";
 }
 
 __END__
