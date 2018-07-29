@@ -19,7 +19,8 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "force-delete") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -176,7 +177,7 @@ sub getchilddatasets {
 
 sub syncdataset {
 
-	my ($sourcehost, $sourcefs, $targethost, $targetfs) = @_;
+	my ($sourcehost, $sourcefs, $targethost, $targetfs, $skipsnapshot) = @_;
 
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
@@ -228,7 +229,7 @@ sub syncdataset {
 		    print "\n\n\n";
 		}
 
-		if (!defined $args{'no-sync-snap'}) {
+		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
 		} else {
@@ -392,6 +393,30 @@ sub syncdataset {
 			}
 
 			if (! $bookmark) {
+				if ($args{'force-delete'}) {
+					if (!$quiet) { print "Removing $targetfs because no matching snapshots were found\n"; }
+
+					my $rcommand = '';
+					my $mysudocmd = '';
+					my $targetfsescaped = escapeshellparam($targetfs);
+
+					if ($targethost ne '') { $rcommand = "$sshcmd $targethost"; }
+					if (!$targetisroot) { $mysudocmd = $sudocmd; }
+
+					my $prunecmd = "$mysudocmd $zfscmd destroy -r $targetfsescaped; ";
+					if ($targethost ne '') {
+						$prunecmd = escapeshellparam($prunecmd);
+					}
+
+					my $ret = system("$rcommand $prunecmd");
+					if ($ret != 0) {
+						warn "WARNING: $rcommand $prunecmd failed: $?";
+					} else {
+						# redo sync and skip snapshot creation (already taken)
+						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, 1);
+					}
+				}
+
 				# if we got this far, we failed to find a matching snapshot/bookmark.
 
 				print "\n";
