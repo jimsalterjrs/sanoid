@@ -97,6 +97,7 @@ my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 my %avail = checkcommands();
 
 my %snaps;
+my $exitcode = 0;
 
 ## break here to call replication individually so that we ##
 ## can loop across children separately, for recursive     ##
@@ -127,7 +128,7 @@ if ($targethost ne '') {
 	close FH;
 }
 
-exit 0;
+exit $exitcode;
 
 ##############################################################################
 ##############################################################################
@@ -186,6 +187,7 @@ sub syncdataset {
 	# make sure target is not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 		warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+		if ($exitcode < 1) { $exitcode = 1; }
 		return 0;
 	}
 
@@ -236,6 +238,7 @@ sub syncdataset {
 			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 			if ($newsyncsnap eq 0) {
 				warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
+				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
 			}
 		}
@@ -292,6 +295,7 @@ sub syncdataset {
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
 		system($synccmd) == 0
@@ -318,6 +322,7 @@ sub syncdataset {
 			# make sure target is (still) not currently in receive.
 			if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 				warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
 			}
 
@@ -325,9 +330,12 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
 			if ($oldestsnap ne $newsyncsnap) {
-				system($synccmd) == 0
-					or warn "CRITICAL ERROR: $synccmd failed: $?";
+				my $ret = system($synccmd);
+				if ($ret != 0) {
+					warn "CRITICAL ERROR: $synccmd failed: $?";
+					if ($exitcode < 1) { $exitcode = 1; }
 					return 0;
+				}
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
 			}
@@ -380,6 +388,7 @@ sub syncdataset {
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
 
@@ -910,6 +919,7 @@ sub getmatchingsnapshot {
 	}
 
 	# if we got this far, we failed to find a matching snapshot.
+	if ($exitcode < 2) { $exitcode = 2; }
 
 	print "\n";
 	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
