@@ -1114,7 +1114,7 @@ sub getsnaps() {
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH;
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1158,11 +1158,21 @@ sub getbookmarks() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped |";
+	my $error = 0;
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
 	if ($debug) { print "DEBUG: getting list of bookmarks on $fs using $getbookmarkcmd...\n"; }
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
-	close FH;
+	close FH or $error = 1;
+
+	if ($error == 1) {
+		if ($rawbookmarks[0] =~ /invalid type/) {
+			# no support for zfs bookmarks, return empty hash
+			return %bookmarks;
+		}
+
+		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
+	}
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
