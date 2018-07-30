@@ -1341,3 +1341,4 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
+  --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks
