@@ -452,13 +452,13 @@ sub checkcommands {
 
 	if ($avail{'sourcecompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on source $s- sync will continue without compression.\n"; }
+			print "WARN: $compressargs{'rawcmd'} not available on source $s- sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
 	if ($avail{'targetcompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on target $t - sync will continue without compression.\n"; }
+			print "WARN: $compressargs{'rawcmd'} not available on target $t - sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
@@ -471,7 +471,7 @@ sub checkcommands {
 	# corner case - if source AND target are BOTH remote, we have to check for local compress too
 	if ($sourcehost ne '' && $targethost ne '' && $avail{'localcompress'} eq '') {
 		if ($compressargs{'rawcmd'} ne '') {
-			if (!$quiet) { print "WARN: $compressargs{'rawcmd'} not available on local machine - sync will continue without compression.\n"; }
+			print "WARN: $compressargs{'rawcmd'} not available on local machine - sync will continue without compression.\n";
 		}
 		$avail{'compress'} = 0;
 	}
