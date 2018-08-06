@@ -134,7 +134,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
   + `host1,host2,...`
 
-    A comma seperated list of hosts. This dataset will only be synchronised by hosts listed in the property.
+    A comma separated list of hosts. This dataset will only be synchronised by hosts listed in the property.
 
     _Note_: this check is performed by the host running `syncoid`, thus the local hostname must be present for inclusion during a push operation // the remote hostname must be present for a pull.
 
