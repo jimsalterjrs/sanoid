@@ -140,7 +140,9 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
   _Note_: this will also prevent syncoid from handling the dataset if given explicitly on the command line.
 
-  _Note_: syncing a child of a no-sync dataset will currently result in a critical error
+  _Note_: syncing a child of a no-sync dataset will currently result in a critical error.
+
+  _Note_: empty properties will be handled as if they were unset.
 
 ##### Syncoid Command Line Options
 

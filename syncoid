@@ -185,7 +185,8 @@ sub syncdataset {
 
 	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
 
-	if ($sync eq 'true' || $sync eq '-') {
+	if ($sync eq 'true' || $sync eq '-' || $sync eq '') {
+		# empty is handled the same as unset (aka: '-')
 		# definitely sync this dataset - if a host is called 'true' or '-', then you're special
 	} elsif ($sync eq 'false') {
 		if (!$quiet) { print "INFO: Skipping dataset (syncoid:sync=false): $sourcefs...\n"; }
