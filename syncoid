@@ -233,6 +233,10 @@ sub syncdataset {
 		if (!defined $args{'no-sync-snap'}) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
+			if (!$newsyncsnap) {
+				# we already whined about the error
+				return 0;
+			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
 			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
@@ -267,6 +271,11 @@ sub syncdataset {
 		}
 		my $oldestsnap = getoldestsnapshot(\%snaps);
 		if (! $oldestsnap) {
+			if (defined ($args{'no-sync-snap'}) ) {
+				# we already whined about the missing snapshots
+				return 0;
+			}
+
 			# getoldestsnapshot() returned false, so use new sync snapshot
 			if ($debug) { print "DEBUG: getoldestsnapshot() returned false, so using $newsyncsnap.\n"; }
 			$oldestsnap = $newsyncsnap;
@@ -298,8 +307,11 @@ sub syncdataset {
 			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
-		system($synccmd) == 0
-			or die "CRITICAL ERROR: $synccmd failed: $?";
+		system($synccmd) == 0 or do {
+			warn "CRITICAL ERROR: $synccmd failed: $?";
+			if ($exitcode < 2) { $exitcode = 2; }
+			return 0;
+		};
 
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course - and that we
@@ -359,8 +371,11 @@ sub syncdataset {
 
 		    if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
 		    if ($debug) { print "DEBUG: $synccmd\n"; }
-		    system("$synccmd") == 0
-		        or die "CRITICAL ERROR: $synccmd failed: $?";
+		    system("$synccmd") == 0 or do {
+		        warn "CRITICAL ERROR: $synccmd failed: $?";
+		        if ($exitcode < 2) { $exitcode = 2; }
+		        return 0;
+		    };
 
 		    # a resumed transfer will only be done to the next snapshot,
 		    # so do an normal sync cycle
@@ -416,8 +431,11 @@ sub syncdataset {
 
 			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0
-				or die "CRITICAL ERROR: $synccmd failed: $?";
+			system("$synccmd") == 0 or do {
+				warn "CRITICAL ERROR: $synccmd failed: $?";
+				if ($exitcode < 2) { $exitcode = 2; }
+				return 0;
+			};
 
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -743,7 +761,7 @@ sub getoldestsnapshot {
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
 	if (defined ($args{'no-sync-snap'}) ) {
 		# well, actually we set --no-sync-snap, so no we *didn't* already make one. Whoops.
-		die "CRIT: --no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!\n";
+		warn "CRIT: --no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!\n";
 	}
 	return 0;
 }
@@ -765,6 +783,7 @@ sub getnewestsnapshot {
 		#        we also probably need an argument to mute this WARN, for people who deliberately exclude
 		#        datasets from recursive replication this way.
 		warn "WARN: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source for current dataset. Continuing.\n";
+		if ($exitcode < 2) { $exitcode = 2; }
 	}
 	return 0;
 }
@@ -952,8 +971,12 @@ sub newsyncsnap {
 	my %date = getdate();
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
-	system($snapcmd) == 0
-		or die "CRITICAL ERROR: $snapcmd failed: $?";
+	system($snapcmd) == 0 or do {
+		warn "CRITICAL ERROR: $snapcmd failed: $?";
+		if ($exitcode < 2) { $exitcode = 2; }
+		return 0;
+	};
+
 	return $snapname;
 }
 
