@@ -19,7 +19,7 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -71,6 +71,17 @@ if (length $args{'sshkey'}) {
 }
 my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
 
+my $identifier = "";
+if (length $args{'identifier'}) {
+	if ($args{'identifier'} !~ /^[a-zA-Z0-9-_:.]+$/) {
+		# invalid extra identifier
+		print("CRITICAL: extra identifier contains invalid chars!\n");
+		pod2usage(2);
+		exit 127;
+	}
+	$identifier = "$args{'identifier'}_";
+}
+
 # figure out if source and/or target are remote.
 $sshcmd = "$sshcmd $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
 if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
@@ -86,6 +97,7 @@ my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 my %avail = checkcommands();
 
 my %snaps;
+my $exitcode = 0;
 
 ## break here to call replication individually so that we ##
 ## can loop across children separately, for recursive     ##
@@ -116,7 +128,7 @@ if ($targethost ne '') {
 	close FH;
 }
 
-exit 0;
+exit $exitcode;
 
 ##############################################################################
 ##############################################################################
@@ -140,6 +152,11 @@ sub getchilddatasets {
 	open FH, $getchildrencmd;
 	my @children = <FH>;
 	close FH;
+
+	if (defined $args{'skip-parent'}) {
+		# parent dataset is the first element
+		shift @children;
+	}
 
 	if (defined $args{'exclude'}) {
 		my $excludes = $args{'exclude'};
@@ -167,9 +184,27 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
+	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+
+	if ($sync eq 'true' || $sync eq '-' || $sync eq '') {
+		# empty is handled the same as unset (aka: '-')
+		# definitely sync this dataset - if a host is called 'true' or '-', then you're special
+	} elsif ($sync eq 'false') {
+		if (!$quiet) { print "INFO: Skipping dataset (syncoid:sync=false): $sourcefs...\n"; }
+		return 0;
+	} else {
+		my $hostid = hostname();
+		my @hosts = split(/,/,$sync);
+		if (!(grep $hostid eq $_, @hosts)) {
+			if (!$quiet) { print "INFO: Skipping dataset (syncoid:sync doesn't include $hostid): $sourcefs...\n"; }
+			return 0;
+		}
+	}
+
 	# make sure target is not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 		warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+		if ($exitcode < 1) { $exitcode = 1; }
 		return 0;
 	}
 
@@ -215,11 +250,16 @@ sub syncdataset {
 		if (!defined $args{'no-sync-snap'}) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
+			if (!$newsyncsnap) {
+				# we already whined about the error
+				return 0;
+			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
 			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 			if ($newsyncsnap eq 0) {
 				warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
+				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
 			}
 		}
@@ -248,6 +288,11 @@ sub syncdataset {
 		}
 		my $oldestsnap = getoldestsnapshot(\%snaps);
 		if (! $oldestsnap) {
+			if (defined ($args{'no-sync-snap'}) ) {
+				# we already whined about the missing snapshots
+				return 0;
+			}
+
 			# getoldestsnapshot() returned false, so use new sync snapshot
 			if ($debug) { print "DEBUG: getoldestsnapshot() returned false, so using $newsyncsnap.\n"; }
 			$oldestsnap = $newsyncsnap;
@@ -276,10 +321,14 @@ sub syncdataset {
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
-		system($synccmd) == 0
-			or die "CRITICAL ERROR: $synccmd failed: $?";
+		system($synccmd) == 0 or do {
+			warn "CRITICAL ERROR: $synccmd failed: $?";
+			if ($exitcode < 2) { $exitcode = 2; }
+			return 0;
+		};
 
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course - and that we
@@ -302,6 +351,7 @@ sub syncdataset {
 			# make sure target is (still) not currently in receive.
 			if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 				warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
 			}
 
@@ -309,9 +359,12 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
 			if ($oldestsnap ne $newsyncsnap) {
-				system($synccmd) == 0
-					or warn "CRITICAL ERROR: $synccmd failed: $?";
+				my $ret = system($synccmd);
+				if ($ret != 0) {
+					warn "CRITICAL ERROR: $synccmd failed: $?";
+					if ($exitcode < 1) { $exitcode = 1; }
 					return 0;
+				}
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
 			}
@@ -335,8 +388,11 @@ sub syncdataset {
 
 		    if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
 		    if ($debug) { print "DEBUG: $synccmd\n"; }
-		    system("$synccmd") == 0
-		        or die "CRITICAL ERROR: $synccmd failed: $?";
+		    system("$synccmd") == 0 or do {
+		        warn "CRITICAL ERROR: $synccmd failed: $?";
+		        if ($exitcode < 2) { $exitcode = 2; }
+		        return 0;
+		    };
 
 		    # a resumed transfer will only be done to the next snapshot,
 		    # so do an normal sync cycle
@@ -364,6 +420,7 @@ sub syncdataset {
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
 			warn "Cannot sync now: $targetfs is already target of a zfs receive process.\n";
+			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
 
@@ -391,8 +448,11 @@ sub syncdataset {
 
 			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0
-				or die "CRITICAL ERROR: $synccmd failed: $?";
+			system("$synccmd") == 0 or do {
+				warn "CRITICAL ERROR: $synccmd failed: $?";
+				if ($exitcode < 2) { $exitcode = 2; }
+				return 0;
+			};
 
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -562,7 +622,7 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
 	$avail{'sourcembuffer'} = `$sourcessh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
-		print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n";
+		if (!$quiet) { print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n"; }
 		$avail{'sourcembuffer'} = 0;
 	} else {
 		$avail{'sourcembuffer'} = 1;
@@ -571,7 +631,7 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
 	$avail{'targetmbuffer'} = `$targetssh $lscmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
-		print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n";
+		if (!$quiet) { print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n"; }
 		$avail{'targetmbuffer'} = 0;
 	} else {
 		$avail{'targetmbuffer'} = 1;
@@ -583,14 +643,14 @@ sub checkcommands {
 		$avail{'localmbuffer'} = `$lscmd $mbuffercmd 2>/dev/null`;
 		if ($avail{'localmbuffer'} eq '') {
 			$avail{'localmbuffer'} = 0;
-			print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n";
+			if (!$quiet) { print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n"; }
 		}
 	}
 
 	if ($debug) { print "DEBUG: checking availability of $pvcmd on local machine...\n"; }
 	$avail{'localpv'} = `$lscmd $pvcmd 2>/dev/null`;
 	if ($avail{'localpv'} eq '') {
-		print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n";
+		if (!$quiet) { print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n"; }
 		$avail{'localpv'} = 0;
 	} else {
 		$avail{'localpv'} = 1;
@@ -598,7 +658,7 @@ sub checkcommands {
 
 	# check for ZFS resume feature support
 	if ($resume) {
-		my $resumechkcmd = "$zfscmd get receive_resume_token -d 0";
+		my $resumechkcmd = "$zfscmd get -d 0 receive_resume_token";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
 		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
@@ -718,7 +778,7 @@ sub getoldestsnapshot {
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
 	if (defined ($args{'no-sync-snap'}) ) {
 		# well, actually we set --no-sync-snap, so no we *didn't* already make one. Whoops.
-		die "CRIT: --no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!\n";
+		warn "CRIT: --no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!\n";
 	}
 	return 0;
 }
@@ -727,7 +787,7 @@ sub getnewestsnapshot {
 	my $snaps = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
-		print "NEWEST SNAPSHOT: $snap\n";
+		if (!$quiet) { print "NEWEST SNAPSHOT: $snap\n"; }
 		return $snap;
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
@@ -740,6 +800,7 @@ sub getnewestsnapshot {
 		#        we also probably need an argument to mute this WARN, for people who deliberately exclude
 		#        datasets from recursive replication this way.
 		warn "WARN: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source for current dataset. Continuing.\n";
+		if ($exitcode < 2) { $exitcode = 2; }
 	}
 	return 0;
 }
@@ -757,7 +818,7 @@ sub buildsynccmd {
 		$synccmd = "$sendcmd |";
 		# avoid confusion - accept either source-bwlimit or target-bwlimit as the bandwidth limiting option here
 		my $bwlimit = '';
-		if (length $args{'bwlimit'}) {
+		if (length $args{'source-bwlimit'}) {
 			$bwlimit = $args{'source-bwlimit'};
 		} elsif (length $args{'target-bwlimit'}) {
 			$bwlimit = $args{'target-bwlimit'};
@@ -838,7 +899,7 @@ sub pruneoldsyncsnaps {
 
 	# only prune snaps beginning with syncoid and our own hostname
 	foreach my $snap(@snaps) {
-		if ($snap =~ /^syncoid_\Q$hostid\E/) {
+		if ($snap =~ /^syncoid_\Q$identifier$hostid\E/) {
 			# no matter what, we categorically refuse to
 			# prune the new sync snap we created for this run
 			if ($snap ne $newsyncsnap) {
@@ -863,7 +924,7 @@ sub pruneoldsyncsnaps {
 				$prunecmd = escapeshellparam($prunecmd);
 			}
 			system("$rhost $prunecmd") == 0
-				or warn "CRITICAL ERROR: $rhost $prunecmd failed: $?";
+				or warn "WARNING: $rhost $prunecmd failed: $?";
 			$prunecmd = '';
 			$counter = 0;
 		}
@@ -894,6 +955,7 @@ sub getmatchingsnapshot {
 	}
 
 	# if we got this far, we failed to find a matching snapshot.
+	if ($exitcode < 2) { $exitcode = 2; }
 
 	print "\n";
 	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
@@ -924,10 +986,14 @@ sub newsyncsnap {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
 	my %date = getdate();
-	my $snapname = "syncoid\_$hostid\_$date{'stamp'}";
+	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
-	system($snapcmd) == 0
-		or die "CRITICAL ERROR: $snapcmd failed: $?";
+	system($snapcmd) == 0 or do {
+		warn "CRITICAL ERROR: $snapcmd failed: $?";
+		if ($exitcode < 2) { $exitcode = 2; }
+		return 0;
+	};
+
 	return $snapname;
 }
 
@@ -1162,7 +1228,9 @@ syncoid - ZFS snapshot replication tool
 Options:
 
   --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
+  --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates

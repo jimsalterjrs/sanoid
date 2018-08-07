@@ -8,7 +8,7 @@ default for SSH transport since v1.4.6. Syncoid runs will fail if one of them
 is not available on either end of the transport.
 
 On Ubuntu: apt install pv lzop mbuffer
-On CentOS: yum install lzo pv mbuffer lzop
+On CentOS: yum install lzo pv mbuffer lzop perl-Data-Dumper
 On FreeBSD: pkg install pv mbuffer lzop
 
 FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than

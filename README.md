@@ -119,6 +119,32 @@ If ZFS supports resumeable send/receive streams on both the source and target th
 
 As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
 
+##### Syncoid Dataset Properties
+
++ syncoid:sync
+
+  Available values:
+
+  + `true` (default if unset)
+
+    This dataset will be synchronised to all hosts.
+
+  + `false`
+
+    This dataset will not be synchronised to any hosts - it will be skipped. This can be useful for preventing certain datasets from being transferred when recursively handling a tree.
+
+  + `host1,host2,...`
+
+    A comma separated list of hosts. This dataset will only be synchronised by hosts listed in the property.
+
+    _Note_: this check is performed by the host running `syncoid`, thus the local hostname must be present for inclusion during a push operation // the remote hostname must be present for a pull.
+
+  _Note_: this will also prevent syncoid from handling the dataset if given explicitly on the command line.
+
+  _Note_: syncing a child of a no-sync dataset will currently result in a critical error.
+
+  _Note_: empty properties will be handled as if they were unset.
+
 ##### Syncoid Command Line Options
 
 + [source]
@@ -129,9 +155,17 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This is the destination dataset. It can be either local or remote.
 
++ --identifier=
+
+	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
+
 + -r --recursive
 
 	This will also transfer child datasets.
+
++ --skip-parent
+
+	This will skip the syncing of the parent dataset. Does nothing without '--recursive' option.
 
 + --compress <compression type>
 

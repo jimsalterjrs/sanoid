@@ -1001,6 +1001,11 @@ sub check_zpool() {
 			## other cases
 			my ($dev, $sta) = /^\s+(\S+)\s+(\S+)/;
 
+			if (!defined($sta)) {
+				# cache and logs are special and don't have a status
+				next;
+			}
+
 			## pool online, not degraded thanks to dead/corrupted disk
 			if ($state eq "OK" && $sta eq "UNAVAIL") {
 				$state="WARNING";
