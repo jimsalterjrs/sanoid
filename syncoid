@@ -18,8 +18,11 @@ use Sys::Hostname;
 # TODO: Merge into a single "sshflags" option?
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
-                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
+                   "source-bwlimit=s", "target-bwlimit=s",
+                   "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
+                   "debug", "quiet",
+                   "no-stream", "no-sync-snap", "no-resume", "no-mount",
+                   "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -211,11 +214,11 @@ sub syncdataset {
 	# does the target filesystem exist yet?
 	my $targetexists = targetexists($targethost,$targetfs,$targetisroot);
 
-	my $receiveextraargs = "";
+	my @receiveextraargs = ("-F");
 	my $receivetoken;
 	if ($resume) {
 		# save state of interrupted receive stream
-		$receiveextraargs = "-s";
+		push @receiveextraargs, "-s";
 
 		if ($targetexists) {
 			# check remote dataset for receive resume token (interrupted receive)
@@ -225,6 +228,10 @@ sub syncdataset {
 				print "DEBUG: got receive resume token: $receivetoken: \n";
 			}
 		}
+	}
+
+	if ($args{'no-mount'}) {
+		push @receiveextraargs, "-u";
 	}
 
 	my $newsyncsnap;
@@ -303,7 +310,7 @@ sub syncdataset {
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
-		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+		my $recvcmd = "$targetsudocmd $zfscmd receive @receiveextraargs $targetfsescaped";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
 		my $disp_pvsize = readablebytes($pvsize);
@@ -380,7 +387,7 @@ sub syncdataset {
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
 		    my $sendcmd = "$sourcesudocmd $zfscmd send -t $receivetoken";
-		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+		    my $recvcmd = "$targetsudocmd $zfscmd receive @receiveextraargs $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 		    my $disp_pvsize = readablebytes($pvsize);
 		    if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -440,7 +447,7 @@ sub syncdataset {
 			}
 
 			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+			my $recvcmd = "$targetsudocmd $zfscmd receive @receiveextraargs $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -1250,3 +1257,4 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
+  --no-mount            Don't automatically mount receiving datasets.

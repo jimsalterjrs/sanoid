@@ -190,6 +190,9 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
 
++ --no-mount
+	This argument tells syncoid to use -u with zfs receive, meaning that receiving datasets are not automatically mounted.
+
 + --exclude=REGEX
 
 	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
