@@ -974,7 +974,7 @@ sub check_zpool() {
 			}
 
 			## other cases
-			my ($dev, $sta) = /^\s+(\S+)\s+(\S+)/;
+			my ($dev, $sta, $read, $write, $cksum) = /^\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/;
 
 			if (!defined($sta)) {
 				# cache and logs are special and don't have a status
@@ -994,8 +994,21 @@ sub check_zpool() {
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
-			next if ($verbose==2 && $state eq "OK");
-			next if ($verbose==2 && ($sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE"));
+			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE")) {
+				# check for io/checksum errors
+
+				my @vdeverr = ();
+				if ($read != 0) { push @vdeverr, "read" };
+				if ($write != 0) { push @vdeverr, "write" };
+				if ($cksum != 0) { push @vdeverr, "cksum" };
+
+				if (scalar @vdeverr) {
+					$dmge=$dmge . "(" . $dev . ":" . join(", ", @vdeverr) . " errors) ";
+					if ($state eq "OK") { $state = "WARNING" };
+				}
+
+				next;
+			}
 
 			## show everything else
 			if (/^\s{3}(\S+)/) {
