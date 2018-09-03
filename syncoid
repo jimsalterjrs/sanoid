@@ -1218,9 +1218,9 @@ syncoid - ZFS snapshot replication tool
 =head1 SYNOPSIS
 
  syncoid [options]... SOURCE TARGET
- or   syncoid [options]... SOURCE [USER@]HOST:TARGET
- or   syncoid [options]... [USER@]HOST:SOURCE [TARGET]
- or   syncoid [options]... [USER@]HOST:SOURCE [USER@]HOST:TARGET
+ or   syncoid [options]... SOURCE USER@HOST:TARGET
+ or   syncoid [options]... USER@HOST:SOURCE TARGET
+ or   syncoid [options]... USER@HOST:SOURCE USER@HOST:TARGET
 
  SOURCE                Source ZFS dataset. Can be either local or remote
  TARGET                Target ZFS dataset. Can be either local or remote
