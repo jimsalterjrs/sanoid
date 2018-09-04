@@ -691,10 +691,12 @@ sub init {
 			# override with values from user-defined default template, if any
 
 			foreach my $key (keys %{$ini{'template_default'}}) {
-				if (! ($key =~ /template|recursive/)) {
-				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined default template.\n"; }
-					$config{$section}{$key} = $ini{'template_default'}{$key};
+				if ($key =~ /template|recursive/) {
+					warn "ignored key '$key' from user-defined default template.\n";
+					next;
 				}
+				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined default template.\n"; }
+				$config{$section}{$key} = $ini{'template_default'}{$key};
 			}
 		}
 
@@ -708,10 +710,12 @@ sub init {
 
 				my $template = 'template_'.$rawtemplate;
 				foreach my $key (keys %{$ini{$template}}) {
-					if (! ($key =~ /template|recursive/)) {
-						if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
-						$config{$section}{$key} = $ini{$template}{$key};
+					if ($key =~ /template|recursive/) {
+						warn "ignored key '$key' from '$rawtemplate' template.\n";
+						next;
 					}
+					if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
+					$config{$section}{$key} = $ini{$template}{$key};
 				}
 			}
 		}
