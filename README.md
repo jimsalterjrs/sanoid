@@ -88,6 +88,13 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
 
++ --readonly
+
+	Skip creation/deletion of snapshots (Simulate).
+
++ --help
+
+	Show help message.
 
 ----------
 
@@ -206,6 +213,14 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	Allow sync to/from boxes running SSH on non-standard ports.
 
++ --sshcipher
+
+	Instruct ssh to use a particular cipher set.
+
++ --sshoption
+
+	Passes option to ssh. This argument can be specified multiple times.
+
 + --sshkey
 
 	Use specified identity file as per ssh -i.
@@ -217,6 +232,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --debug
 
 	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+
++ --help
+
+	Show help message.
 
 + --version
 
