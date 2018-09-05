@@ -438,6 +438,9 @@ sub take_snapshots {
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24*31*365.25; } # preferred time is later this year - so look at last year
+				} else {
+					# unknown type
+					next;
 				}
 
 				# reconstruct our human-formatted most recent preferred snapshot time into an epoch time, to compare with the epoch of our most recent snapshot
