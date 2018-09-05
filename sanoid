@@ -743,7 +743,7 @@ sub init {
 
 		# how 'bout some recursion? =)
 		my @datasets;
-		if ($ini{$section}{'recursive'}) {
+		if (grep( /^$ini{$section}{'recursive'}$/, @istrue )) {
 			@datasets = getchilddatasets($config{$section}{'path'});
 			foreach my $dataset(@datasets) {
 				chomp $dataset;
