@@ -127,6 +127,7 @@ sub monitor_snapshots {
 
 		my @types = ('yearly','monthly','daily','hourly');
 		foreach my $type (@types) {
+			if ($config{$section}{$type} == 0) { next; }
 
 			my $smallerperiod = 0;
 			# we need to set the period length in seconds first
