@@ -1238,7 +1238,8 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are zfs, gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --compress=zfs        Uses zfs efficient built in compressed send option "zfs send -c" to directly send compressed blocks from source to target
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
