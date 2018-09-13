@@ -18,14 +18,14 @@ use Sys::Hostname;
 # TODO: Merge into a single "sshflags" option?
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
-                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
+                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@", "sendoptions=s",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
-my $zfscompress = '';
-if (length $args{'compress'}) {
-  $zfscompress = $args{'compress'} eq 'zfs' ? '-c' : '';
+my $sendoptions = '';
+if (length $args{'sendoptions'}) {
+  $sendoptions = $args{'sendoptions'}
 }
 
 # TODO Expand to accept multiple sources?
@@ -307,7 +307,7 @@ sub syncdataset {
 		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
-		my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $sourcefsescaped\@$oldestsnapescaped";
+		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
 		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
@@ -347,7 +347,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+			$sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -384,7 +384,7 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
-		    my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress -t $receivetoken";
+		    my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
 		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 		    my $disp_pvsize = readablebytes($pvsize);
@@ -444,7 +444,7 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+			my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
@@ -520,17 +520,11 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/lzop',
 			decomargs   => '-dfc',
 		},
-		'zfs' => {
-			rawcmd      => '',
-			args        => '',
-			decomrawcmd => '',
-			decomargs   => '',
-		},
 	);
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'zfs', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -1144,7 +1138,7 @@ sub getsendsize {
 		$snaps = "-t $receivetoken";
 	}
 
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $zfscompress -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
@@ -1238,8 +1232,7 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are zfs, gzip, pigz-fast, pigz-slow, lzo (default) & none
-  --compress=zfs        Uses zfs efficient built in compressed send option "zfs send -c" to directly send compressed blocks from source to target
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
@@ -1248,6 +1241,7 @@ Options:
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
+  --sendoptions=FLAGS   Add FLAGS to zfs send, e.g. syncoid --sendoptions="-Lce" sets zfs send -Lce ...
 
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
