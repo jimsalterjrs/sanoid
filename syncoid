@@ -23,6 +23,11 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
+my $zfscompress = '';
+if (length $args{'compress'}) {
+  $zfscompress = $args{'compress'} eq 'zfs' ? '-c' : '';
+}
+
 # TODO Expand to accept multiple sources?
 if (scalar(@ARGV) != 2) {
 	print("Source or target not found!\n");
@@ -302,7 +307,7 @@ sub syncdataset {
 		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
-		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
+		my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $sourcefsescaped\@$oldestsnapescaped";
 		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 
 		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
@@ -342,7 +347,7 @@ sub syncdataset {
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+			$sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -379,7 +384,7 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
-		    my $sendcmd = "$sourcesudocmd $zfscmd send -t $receivetoken";
+		    my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress -t $receivetoken";
 		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 		    my $disp_pvsize = readablebytes($pvsize);
@@ -439,7 +444,7 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+			my $sendcmd = "$sourcesudocmd $zfscmd send $zfscompress $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			my $disp_pvsize = readablebytes($pvsize);
@@ -514,6 +519,12 @@ sub compressargset {
 			args        => '',
 			decomrawcmd => '/usr/bin/lzop',
 			decomargs   => '-dfc',
+		},
+		'zfs' => {
+			rawcmd      => '',
+			args        => '',
+			decomrawcmd => '',
+			decomargs   => '',
 		},
 	);
 
@@ -1133,7 +1144,7 @@ sub getsendsize {
 		$snaps = "-t $receivetoken";
 	}
 
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $zfscompress -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
