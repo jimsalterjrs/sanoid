@@ -530,7 +530,7 @@ sub compressargset {
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'zfs', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
