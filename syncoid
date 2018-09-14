@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # this software is licensed for use under the Free Software Foundation's GPL v3.0 license, as retrieved
-# from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.	A copy should also be available in this
+# from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
 $::VERSION = '1.4.18';
@@ -292,9 +292,9 @@ sub syncdataset {
 		# THEN do an -I to the newest
 		if ($debug) {
 			if (!defined ($args{'no-stream'}) ) {
-				print "DEBUG: target $targetfs does not exist.	Finding oldest available snapshot on source $sourcefs ...\n";
+				print "DEBUG: target $targetfs does not exist.  Finding oldest available snapshot on source $sourcefs ...\n";
 			} else {
-				print "DEBUG: target $targetfs does not exist, and --no-stream selected.	Finding newest available snapshot on source $sourcefs ...\n";
+				print "DEBUG: target $targetfs does not exist, and --no-stream selected.  Finding newest available snapshot on source $sourcefs ...\n";
 			}
 		}
 		my $oldestsnap = getoldestsnapshot(\%snaps);
@@ -485,46 +485,46 @@ sub compressargset {
 	my $DEFAULT_COMPRESSION = 'lzo';
 	my %COMPRESS_ARGS = (
 		'none' => {
-			rawcmd		=> '',
-			args		=> '',
+			rawcmd      => '',
+			args        => '',
 			decomrawcmd => '',
-			decomargs	=> '',
+			decomargs   => '',
 		},
 		'gzip' => {
-			rawcmd		=> '/bin/gzip',
-			args		=> '-3',
+			rawcmd      => '/bin/gzip',
+			args        => '-3',
 			decomrawcmd => '/bin/zcat',
-			decomargs	=> '',
+			decomargs   => '',
 		},
 		'pigz-fast' => {
-			rawcmd		=> '/usr/bin/pigz',
-			args		=> '-3',
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-3',
 			decomrawcmd => '/usr/bin/pigz',
-			decomargs	=> '-dc',
+			decomargs   => '-dc',
 		},
 		'pigz-slow' => {
-			rawcmd		=> '/usr/bin/pigz',
-			args		=> '-9',
+			rawcmd      => '/usr/bin/pigz',
+			args        => '-9',
 			decomrawcmd => '/usr/bin/pigz',
-			decomargs	=> '-dc',
+			decomargs   => '-dc',
 		},
 		'zstd-fast' => {
-			rawcmd		=> '/usr/bin/zstd',
-			args		=> '-3',
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-3',
 			decomrawcmd => '/usr/bin/zstd',
-			decomargs	=> '-dc',
+			decomargs   => '-dc',
 		},
 		'zstd-slow' => {
-			rawcmd		=> '/usr/bin/zstd',
-			args		=> '-19',
+			rawcmd      => '/usr/bin/zstd',
+			args        => '-19',
 			decomrawcmd => '/usr/bin/zstd',
-			decomargs	=> '-dc',
+			decomargs   => '-dc',
 		},
 		'lzo' => {
-			rawcmd		=> '/usr/bin/lzop',
-			args		=> '',
+			rawcmd      => '/usr/bin/lzop',
+			args        => '',
 			decomrawcmd => '/usr/bin/lzop',
-			decomargs	=> '-dfc',
+			decomargs   => '-dfc',
 		},
 	);
 
@@ -537,7 +537,7 @@ sub compressargset {
 
 	my %comargs = %{$COMPRESS_ARGS{$value}}; # copy
 	$comargs{'compress'} = $value;
-	$comargs{'cmd'}		 = "$comargs{'rawcmd'} $comargs{'args'}";
+	$comargs{'cmd'}      = "$comargs{'rawcmd'} $comargs{'args'}";
 	$comargs{'decomcmd'} = "$comargs{'decomrawcmd'} $comargs{'decomargs'}";
 	return \%comargs;
 }
@@ -808,8 +808,8 @@ sub getnewestsnapshot {
 			die "CRIT: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source!\n";
 		}
 		# fixme: we need to output WHAT the current dataset IS if we encounter this WARN condition.
-		#		 we also probably need an argument to mute this WARN, for people who deliberately exclude
-		#		 datasets from recursive replication this way.
+		#        we also probably need an argument to mute this WARN, for people who deliberately exclude
+		#        datasets from recursive replication this way.
 		warn "WARN: --no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source for current dataset. Continuing.\n";
 		if ($exitcode < 2) { $exitcode = 2; }
 	}
@@ -970,17 +970,17 @@ sub getmatchingsnapshot {
 
 	print "\n";
 	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
-	print "					 Replication to target would require destroying existing\n";
-	print "					 target. Cowardly refusing to destroy your existing target.\n\n";
+	print "                Replication to target would require destroying existing\n";
+	print "                target. Cowardly refusing to destroy your existing target.\n\n";
 
 	# experience tells me we need a mollyguard for people who try to
 	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
 
 	if ( $targetsize < (64*1024*1024) ) {
-		print "			 NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
-		print "					 \`zfs create $args{'target'}\` on the target? ZFS initial\n";
-		print "					 replication must be to a NON EXISTENT DATASET, which will\n";
-		print "					 then be CREATED BY the initial replication process.\n\n";
+		print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
+		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
+		print "                replication must be to a NON EXISTENT DATASET, which will\n";
+		print "                then be CREATED BY the initial replication process.\n\n";
 	}
 	return 0;
 }
