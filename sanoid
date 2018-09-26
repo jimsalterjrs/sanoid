@@ -293,7 +293,7 @@ sub prune_snapshots {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-							if (iszfsbusy($path) && !$args{'force-prune'}) {
+							if (!$args{'force-prune'} && iszfsbusy($path)) {
 								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
 							} else {
 								if (! $args{'readonly'}) {
