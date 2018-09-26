@@ -1323,7 +1323,7 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
-  --force-prune		Purges expired snapshots even if a send/recv is in progress
+  --force-prune         Purges expired snapshots even if a send/recv is in progress
 
   --help                Prints this helptext
   --version             Prints the version number

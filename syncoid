@@ -1246,7 +1246,7 @@ Options:
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
-  --no-clone-rollback	Does not rollback clones on target
+  --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sshkey=FILE         Specifies a ssh public key to use to connect
