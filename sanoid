@@ -456,9 +456,11 @@ sub take_snapshots {
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
 			my $dataset = (split '@', $snap)[0];
+			my $snapname = (split '@', $snap)[1];
 			my $presnapshotfailure = 0;
 			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
+				$ENV{'SANOID_SNAPNAME'} = $snapname;
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
 				if (system($config{$dataset}{'pre_snapshot_script'}) != 0) {
 					warn "WARN: pre_snapshot_script failed, $?";
@@ -466,6 +468,7 @@ sub take_snapshots {
 					$presnapshotfailure = 1;
 				}
 				delete $ENV{'SANOID_TARGET'};
+				delete $ENV{'SANOID_SNAPNAME'};
 			}
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) {
@@ -477,12 +480,14 @@ sub take_snapshots {
 			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
+					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
 					if (system($config{$dataset}{'post_snapshot_script'}) != 0) {
 						warn "WARN: post_snapshot_script failed, $?";
 						$config{$dataset}{'no_inconsistent_snapshot'} and next;
 					}
 					delete $ENV{'SANOID_TARGET'};
+					delete $ENV{'SANOID_SNAPNAME'};
 				}
 			}
 		}
