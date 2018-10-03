@@ -180,7 +180,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-command-checks
 
-	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used.
+	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used outside of Sanoid development.
 
 + --no-stream
 
