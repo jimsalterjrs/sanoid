@@ -299,6 +299,17 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
+										my $dataset = (split '@', $snap)[0];
+										my $snapname = (split '@', $snap)[1];
+										if ($config{$dataset}{'pruning_script'}) {
+											$ENV{'SANOID_TARGET'} = $dataset;
+											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
+											system($config{$dataset}{'pruning_script'}) == 0
+												or warn "WARN: pruning_script failed, $?";
+											delete $ENV{'SANOID_TARGET'};
+											delete $ENV{'SANOID_SNAPNAME'};
+										}
 									} else {
 										warn "could not remove $snap : $?";
 									}
