@@ -302,11 +302,10 @@ sub prune_snapshots {
 										my $dataset = (split '@', $snap)[0];
 										my $snapname = (split '@', $snap)[1];
 										if ($config{$dataset}{'pruning_script'}) {
-											my $timeout = 5;
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
 											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
-											my $ret = runscript('pruning_script',$dataset,$timeout);
+											my $ret = runscript('pruning_script',$dataset);
 
 											delete $ENV{'SANOID_TARGET'};
 											delete $ENV{'SANOID_SNAPNAME'};
@@ -475,7 +474,7 @@ sub take_snapshots {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_SNAPNAME'} = $snapname;
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
-				my $ret = runscript('pre_snapshot_script',$dataset,$timeout);
+				my $ret = runscript('pre_snapshot_script',$dataset);
 
 				delete $ENV{'SANOID_TARGET'};
 				delete $ENV{'SANOID_SNAPNAME'};
@@ -498,7 +497,7 @@ sub take_snapshots {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
-					runscript('post_snapshot_script',$dataset,$timeout);
+					runscript('post_snapshot_script',$dataset);
 
 					delete $ENV{'SANOID_TARGET'};
 					delete $ENV{'SANOID_SNAPNAME'};
@@ -1358,12 +1357,15 @@ sub removecachedsnapshots {
 sub runscript {
 	my $key=shift;
 	my $dataset=shift;
-	my $timeout=shift;
+
+	my $timeout=$config{$dataset}{'script_timeout'};
 
 	my $ret;
 	eval {
-		local $SIG{ALRM} = sub { die "alarm\n" };
-		alarm $timeout;
+		if ($timeout gt 0) {
+			local $SIG{ALRM} = sub { die "alarm\n" };
+			alarm $timeout;
+		}
 		$ret = system($config{$dataset}{$key});
 		alarm 0;
 	};
