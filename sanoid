@@ -469,7 +469,6 @@ sub take_snapshots {
 			my $dataset = (split '@', $snap)[0];
 			my $snapname = (split '@', $snap)[1];
 			my $presnapshotfailure = 0;
-			my $timeout = 5;
 			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_SNAPNAME'} = $snapname;
