@@ -302,11 +302,12 @@ sub prune_snapshots {
 										my $dataset = (split '@', $snap)[0];
 										my $snapname = (split '@', $snap)[1];
 										if ($config{$dataset}{'pruning_script'}) {
+											my $timeout = 5;
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
 											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
-											system($config{$dataset}{'pruning_script'}) == 0
-												or warn "WARN: pruning_script failed, $?";
+											my $ret = runscript('pruning_script',$dataset,$timeout);
+
 											delete $ENV{'SANOID_TARGET'};
 											delete $ENV{'SANOID_SNAPNAME'};
 										}
