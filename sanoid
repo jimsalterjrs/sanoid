@@ -31,6 +31,7 @@ if (keys %args < 2) {
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
+my $zpool = '/sbin/zpool';
 
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
@@ -44,6 +45,7 @@ my $cache = '/var/cache/sanoidsnapshots.txt';
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
+my %capacitycache;
 
 my %snapsbytype = getsnapsbytype( \%config, \%snaps );
 
@@ -254,6 +256,10 @@ sub prune_snapshots {
 		my $path = $config{$section}{'path'};
 
 		my $period = 0;
+		if (check_prune_defer($config, $section)) {
+			if ($args{'verbose'}) { print "INFO: deferring snapshot pruning ($section)...\n"; }
+			next;
+		}
 
 		foreach my $type (keys %{ $config{$section} }){
 			unless ($type =~ /ly$/) { next; }
@@ -872,7 +878,7 @@ sub check_zpool() {
 		exit $ERRORS{$state};
 	}
 
-	my $statcommand="/sbin/zpool list -o name,size,cap,health,free $pool";
+	my $statcommand="$zpool list -o name,size,cap,health,free $pool";
 
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
@@ -920,7 +926,7 @@ sub check_zpool() {
 	## flag to detect section of zpool status involving our zpool
 	my $poolfind=0;
 
-	$statcommand="/sbin/zpool status $pool";
+	$statcommand="$zpool status $pool";
 	if (! open STAT, "$statcommand|") {
 		$state = 'CRITICAL';
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
@@ -1028,7 +1034,7 @@ sub check_zpool() {
 	return ($ERRORS{$state},$msg);
 } # end check_zpool()
 
-sub check_capacity_limit() {
+sub check_capacity_limit {
 	my $value = shift;
 
 	if (!defined($value) || $value !~ /^\d+\z/) {
@@ -1051,7 +1057,7 @@ sub check_zpool_capacity() {
 	my $capacitylimitsref=shift;
 	my %capacitylimits=%$capacitylimitsref;
 
-	my $statcommand="/sbin/zpool list -H -o cap $pool";
+	my $statcommand="$zpool list -H -o cap $pool";
 
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result!\n");
@@ -1095,6 +1101,60 @@ sub check_zpool_capacity() {
 	$msg = "$state $msg";
 	return ($ERRORS{$state},$msg);
 } # end check_zpool_capacity()
+
+sub check_prune_defer {
+	my ($config, $section) = @_;
+
+	my $limit = $config{$section}{"prune_defer"};
+
+	if (!check_capacity_limit($limit)) {
+		die "ERROR: invalid prune_defer limit!\n";
+	}
+
+	if ($limit eq 0) {
+		return 0;
+	}
+
+	my @parts = split /\//, $section, 2;
+	my $pool = $parts[0];
+
+	if (exists $capacitycache{$pool}) {
+	} else {
+		$capacitycache{$pool} = get_zpool_capacity($pool);
+	}
+
+	if ($limit < $capacitycache{$pool}) {
+		return 0;
+	}
+
+	return 1;
+}
+
+sub get_zpool_capacity {
+	my $pool = shift;
+
+	my $statcommand="$zpool list -H -o cap $pool";
+
+	if (! open STAT, "$statcommand|") {
+		die "ERROR: '$statcommand' command returns no result!\n";
+	}
+
+	my $line = <STAT>;
+	close(STAT);
+
+	chomp $line;
+	my @row = split(/ +/, $line);
+	my $cap=$row[0];
+
+	## check for valid capacity value
+	if ($cap !~ m/^[0-9]{1,3}%$/ ) {
+		die "ERROR: '$statcommand' command returned invalid capacity value ($cap)!\n";
+	}
+
+	$cap =~ s/\D//g;
+
+	return $cap;
+}
 
 ######################################################################################################
 ######################################################################################################
