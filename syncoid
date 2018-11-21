@@ -19,7 +19,8 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "no-clone-handling") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -114,7 +115,7 @@ if (!defined $args{'recursive'}) {
 	foreach my $datasetProperties(@datasets) {
 		my $dataset = $datasetProperties->{'name'};
 		my $origin = $datasetProperties->{'origin'};
-		if ($origin eq "-") {
+		if ($origin eq "-" || defined $args{'no-clone-handling'}) {
 			$origin = undef;
 		} else {
 			# check if clone source is replicated too
@@ -1320,3 +1321,4 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
+  --no-clone-handling   Don't try to recreate clones on target
