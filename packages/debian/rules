@@ -16,4 +16,14 @@ override_dh_auto_install:
 	@mkdir -p $(DESTDIR)/usr/share/doc/sanoid; \
 		cp sanoid.conf $(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example;
 	@mkdir -p $(DESTDIR)/lib/systemd/system; \
-		cp debian/sanoid.timer $(DESTDIR)/lib/systemd/system;
+		cp debian/sanoid-prune.service $(DESTDIR)/lib/systemd/system;
+
+override_dh_installinit:
+	dh_installinit --noscripts
+
+override_dh_systemd_enable:
+	dh_systemd_enable sanoid.timer
+	dh_systemd_enable sanoid-prune.service
+
+override_dh_systemd_start:
+	dh_systemd_start sanoid.timer

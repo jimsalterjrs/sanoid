@@ -10,7 +10,7 @@ set -x
 POOL_NAME="sanoid-test-1"
 POOL_TARGET=""  # root
 RESULT="/tmp/sanoid_test_result"
-RESULT_CHECKSUM="aa15e5595b0ed959313289ecb70323dad9903328ac46e881da5c4b0f871dd7cf"
+RESULT_CHECKSUM="68c67161a59d0e248094a66061972f53613067c9db52ad981030f36bc081fed7"
 
 # UTC timestamp of start and end
 START="1483225200"
@@ -46,10 +46,4 @@ done
 saveSnapshotList "${POOL_NAME}" "${RESULT}"
 
 # hourly daily monthly
-verifySnapshotList "${RESULT}" 8759 366 12 "${RESULT_CHECKSUM}"
-
-# hourly count should be 8760 but one hour get's lost because of DST
-
-# daily count should be 365 but one additional daily is taken
-# because the DST change leads to a day with 25 hours
-# which will trigger an additional daily snapshot
+verifySnapshotList "${RESULT}" 8760 365 12 "${RESULT_CHECKSUM}"

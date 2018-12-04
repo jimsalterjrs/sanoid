@@ -28,6 +28,7 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 #############################
 
 [template_production]
+        frequently = 0
         hourly = 36
         daily = 30
         monthly = 3
@@ -36,7 +37,7 @@ And its /etc/sanoid/sanoid.conf might look something like this:
         autoprune = yes
 ```
 
-Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7-spice, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
+Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
 
 ##### Sanoid Command Line Options
 
@@ -88,6 +89,13 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
 
++ --readonly
+
+	Skip creation/deletion of snapshots (Simulate).
+
++ --help
+
+	Show help message.
 
 ----------
 
@@ -168,7 +176,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --compress <compression type>
 
-	Currently accepted options: gzip, pigz-fast, pigz-slow, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -198,6 +206,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to not use resumeable zfs send/receive streams.
 
++ --no-clone-handling
+
+	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+
+
 + --dumpsnaps
 
 	This prints a list of snapshots during the run.
@@ -205,6 +218,14 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --sshport
 
 	Allow sync to/from boxes running SSH on non-standard ports.
+
++ --sshcipher
+
+	Instruct ssh to use a particular cipher set.
+
++ --sshoption
+
+	Passes option to ssh. This argument can be specified multiple times.
 
 + --sshkey
 
@@ -217,6 +238,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --debug
 
 	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+
++ --help
+
+	Show help message.
 
 + --version
 
