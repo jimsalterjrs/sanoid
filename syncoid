@@ -481,11 +481,49 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, $targetsize, \%snaps);
+		my $bookmark = 0;
+		my $bookmarkcreation = 0;
+
+		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
-			# no matching snapshot; we whined piteously already, but let's go ahead and return false
-			# now in case more child datasets need replication.
-			return 0;
+			# no matching snapshots, check for bookmarks as fallback
+			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+
+			# check for matching guid of source bookmark and target snapshot (oldest first)
+			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
+				my $guid = $snaps{'target'}{$snap}{'guid'};
+
+				if (defined $bookmarks{$guid}) {
+					# found a match
+					$bookmark = $bookmarks{$guid}{'name'};
+					$bookmarkcreation = $bookmarks{$guid}{'creation'};
+					$matchingsnap = $snap;
+					last;
+				}
+			}
+
+			if (! $bookmark) {
+				# if we got this far, we failed to find a matching snapshot/bookmark.
+				if ($exitcode < 2) { $exitcode = 2; }
+
+				print "\n";
+				print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
+				print "                Replication to target would require destroying existing\n";
+				print "                target. Cowardly refusing to destroy your existing target.\n\n";
+
+				# experience tells me we need a mollyguard for people who try to
+				# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
+
+				if ( $targetsize < (64*1024*1024) ) {
+					print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
+					print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
+					print "                replication must be to a NON EXISTENT DATASET, which will\n";
+					print "                then be CREATED BY the initial replication process.\n\n";
+				}
+
+				# return false now in case more child datasets need replication.
+				return 0;
+			}
 		}
 
 		# make sure target is (still) not currently in receive.
@@ -510,20 +548,77 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
-			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
-			my $disp_pvsize = readablebytes($pvsize);
-			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-			my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+			my $nextsnapshot = 0;
 
-			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
-			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0 or do {
-				warn "CRITICAL ERROR: $synccmd failed: $?";
-				if ($exitcode < 2) { $exitcode = 2; }
-				return 0;
-			};
+			if ($bookmark) {
+				my $bookmarkescaped = escapeshellparam($bookmark);
+
+				if (!defined $args{'no-stream'}) {
+					# if intermediate snapshots are needed we need to find the next oldest snapshot,
+					# do an replication to it and replicate as always from oldest to newest
+					# because bookmark sends doesn't support intermediates directly
+					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+							$nextsnapshot = $snap;
+							last;
+						}
+					}
+				}
+
+				# bookmark stream size can't be determined
+				my $pvsize = 0;
+				my $disp_pvsize = "UNKNOWN";
+
+				if ($nextsnapshot) {
+					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
+
+					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
+					if ($debug) { print "DEBUG: $synccmd\n"; }
+					system("$synccmd") == 0 or do {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					};
+
+					$matchingsnap = $nextsnapshot;
+					$matchingsnapescaped = escapeshellparam($matchingsnap);
+				} else {
+					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
+					if ($debug) { print "DEBUG: $synccmd\n"; }
+					system("$synccmd") == 0 or do {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					};
+				}
+			}
+
+			# do a normal replication if bookmarks aren't used or if previous
+			# bookmark replication was only done to the next oldest snapshot
+			if (!$bookmark || $nextsnapshot) {
+				my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+				my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
+				my $disp_pvsize = readablebytes($pvsize);
+				if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+				my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
+				if ($debug) { print "DEBUG: $synccmd\n"; }
+				system("$synccmd") == 0 or do {
+					warn "CRITICAL ERROR: $synccmd failed: $?";
+					if ($exitcode < 2) { $exitcode = 2; }
+					return 0;
+				};
+			}
 
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -1022,32 +1117,15 @@ sub pruneoldsyncsnaps {
 }
 
 sub getmatchingsnapshot {
-	my ($sourcefs, $targetfs, $targetsize, $snaps) = @_;
+	my ($sourcefs, $targetfs, $snaps) = @_;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
-		if (defined $snaps{'target'}{$snap}{'guid'}) {
+		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
 			}
 		}
 	}
 
-	# if we got this far, we failed to find a matching snapshot.
-	if ($exitcode < 2) { $exitcode = 2; }
-
-	print "\n";
-	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
-	print "                Replication to target would require destroying existing\n";
-	print "                target. Cowardly refusing to destroy your existing target.\n\n";
-
-	# experience tells me we need a mollyguard for people who try to
-	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
-
-	if ( $targetsize < (64*1024*1024) ) {
-		print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
-		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
-		print "                replication must be to a NON EXISTENT DATASET, which will\n";
-		print "                then be CREATED BY the initial replication process.\n\n";
-	}
 	return 0;
 }
 
@@ -1176,6 +1254,50 @@ sub getsnaps() {
 	return %snaps;
 }
 
+sub getbookmarks() {
+	my ($rhost,$fs,$isroot,%bookmarks) = @_;
+	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped |";
+	if ($debug) { print "DEBUG: getting list of bookmarks on $fs using $getbookmarkcmd...\n"; }
+	open FH, $getbookmarkcmd;
+	my @rawbookmarks = <FH>;
+	close FH;
+
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
+
+	my $lastguid;
+
+	foreach my $line (@rawbookmarks) {
+		# only import bookmark guids, creation from the specified filesystem
+		if ($line =~ /\Q$fs\E\#.*guid/) {
+			chomp $line;
+			$lastguid = $line;
+			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
+			$bookmarks{$lastguid}{'name'}=$bookmark;
+		} elsif ($line =~ /\Q$fs\E\#.*creation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
+			$bookmarks{$lastguid}{'creation'}=$creation;
+		}
+	}
+
+	return %bookmarks;
+}
 
 sub getsendsize {
 	my ($sourcehost,$snap1,$snap2,$isroot,$receivetoken) = @_;
