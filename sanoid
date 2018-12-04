@@ -661,7 +661,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 
@@ -718,7 +718,7 @@ sub init {
 
 		# override with any locally set values in the module itself
 		foreach my $key (keys %{$ini{$section}} ) {
-			if (! ($key =~ /template|recursive/)) {
+			if (! ($key =~ /template|recursive|skip_children/)) {
 				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value directly set in module.\n"; }
 				$config{$section}{$key} = $ini{$section}{$key};
 			}
@@ -743,10 +743,17 @@ sub init {
 
 		# how 'bout some recursion? =)
 		my @datasets;
-		if ($ini{$section}{'recursive'}) {
+		if ($ini{$section}{'recursive'} || $ini{$section}{'skip_children'}) {
 			@datasets = getchilddatasets($config{$section}{'path'});
-			foreach my $dataset(@datasets) {
+			DATASETS: foreach my $dataset(@datasets) {
 				chomp $dataset;
+
+				if ($ini{$section}{'skip_children'}) {
+					if ($args{'debug'}) { print "DEBUG: ignoring $dataset.\n"; }
+					delete $config{$dataset};
+					next DATASETS;
+				}
+
 				foreach my $key (keys %{$config{$section}} ) {
 					if (! ($key =~ /template|recursive|children_only/)) {
 						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
@@ -1256,6 +1263,9 @@ sub getchilddatasets {
 	open FH, $getchildrencmd;
 	my @children = <FH>;
 	close FH;
+
+	# parent dataset is the first element
+	shift @children;
 
 	return @children;
 }
