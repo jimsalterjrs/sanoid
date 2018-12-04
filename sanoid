@@ -128,7 +128,7 @@ sub monitor_snapshots {
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
 
-		my @types = ('yearly','monthly','daily','hourly','frequently');
+		my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 		foreach my $type (@types) {
 			if ($config{$section}{$type} == 0) { next; }
 
@@ -137,8 +137,9 @@ sub monitor_snapshots {
 			if ($type eq 'frequently') { $smallerperiod = 1; }
 			elsif ($type eq 'hourly') { $smallerperiod = 60; }
 			elsif ($type eq 'daily') { $smallerperiod = 60*60; }
-			elsif ($type eq 'monthly') { $smallerperiod = 60*60*24; }
-			elsif ($type eq 'yearly') { $smallerperiod = 60*60*24; }
+			elsif ($type eq 'weekly') { $smallerperiod = 60*60*24; }
+			elsif ($type eq 'monthly') { $smallerperiod = 60*60*24*7; }
+			elsif ($type eq 'yearly') { $smallerperiod = 60*60*24*31; }
 
 			my $typewarn = $type . '_warn';
 			my $typecrit = $type . '_crit';
@@ -271,6 +272,7 @@ sub prune_snapshots {
 			if ($type eq 'frequently') { $period = 60 * $config{$section}{'frequent_period'}; }
 			elsif ($type eq 'hourly') { $period = 60*60; }
 			elsif ($type eq 'daily') { $period = 60*60*24; }
+			elsif ($type eq 'weekly') { $period = 60*60*24*7; }
 			elsif ($type eq 'monthly') { $period = 60*60*24*31; }
 			elsif ($type eq 'yearly') { $period = 60*60*24*365.25; }
 
@@ -452,6 +454,24 @@ sub take_snapshots {
 							$lastpreferred -= 2*$dstOffset;
 						}
 					} # preferred time is later today - so look at yesterday's
+				} elsif ($type eq 'weekly')   {
+					# calculate offset in seconds for the desired weekday
+					my $offset = 0;
+					if ($config{$section}{'weekly_wday'} < $datestamp{'wday'}) {
+						$offset += 7;
+					}
+					$offset += $config{$section}{'weekly_wday'} - $datestamp{'wday'};
+					$offset *= 60*60*24; # full day
+
+					push @preferredtime,0; # try to hit 0 seconds
+					push @preferredtime,$config{$section}{'weekly_min'};
+					push @preferredtime,$config{$section}{'weekly_hour'};
+					push @preferredtime,$datestamp{'mday'};
+					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
+					push @preferredtime,$datestamp{'year'};
+					$lastpreferred = timelocal(@preferredtime);
+					$lastpreferred += $offset;
+					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24*7; } # preferred time is later this week - so look at last week's
 				} elsif ($type eq 'monthly') {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'monthly_min'};
