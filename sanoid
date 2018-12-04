@@ -309,6 +309,17 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
+										my $dataset = (split '@', $snap)[0];
+										my $snapname = (split '@', $snap)[1];
+										if ($config{$dataset}{'pruning_script'}) {
+											$ENV{'SANOID_TARGET'} = $dataset;
+											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
+											my $ret = runscript('pruning_script',$dataset);
+
+											delete $ENV{'SANOID_TARGET'};
+											delete $ENV{'SANOID_SNAPNAME'};
+										}
 									} else {
 										warn "could not remove $snap : $?";
 									}
@@ -476,12 +487,41 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
+			my $dataset = (split '@', $snap)[0];
+			my $snapname = (split '@', $snap)[1];
+			my $presnapshotfailure = 0;
+			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
+				$ENV{'SANOID_TARGET'} = $dataset;
+				$ENV{'SANOID_SNAPNAME'} = $snapname;
+				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
+				my $ret = runscript('pre_snapshot_script',$dataset);
+
+				delete $ENV{'SANOID_TARGET'};
+				delete $ENV{'SANOID_SNAPNAME'};
+
+				if ($ret != 0) {
+					# warning was already thrown by runscript function
+					$config{$dataset}{'no_inconsistent_snapshot'} and next;
+					$presnapshotfailure = 1;
+				}
+			}
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
 				sleep 1;
+			}
+			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
+				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
+					$ENV{'SANOID_TARGET'} = $dataset;
+					$ENV{'SANOID_SNAPNAME'} = $snapname;
+					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
+					runscript('post_snapshot_script',$dataset);
+
+					delete $ENV{'SANOID_TARGET'};
+					delete $ENV{'SANOID_SNAPNAME'};
+				}
 			}
 		}
 		$forcecacheupdate = 1;
@@ -682,7 +722,7 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children','no_inconsistent_snapshot','force_post_snapshot_script');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 
@@ -1403,6 +1443,41 @@ sub removecachedsnapshots {
 
 	# clear hash
 	undef %pruned;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub runscript {
+	my $key=shift;
+	my $dataset=shift;
+
+	my $timeout=$config{$dataset}{'script_timeout'};
+
+	my $ret;
+	eval {
+		if ($timeout gt 0) {
+			local $SIG{ALRM} = sub { die "alarm\n" };
+			alarm $timeout;
+		}
+		$ret = system($config{$dataset}{$key});
+		alarm 0;
+	};
+	if ($@) {
+		if ($@ eq "alarm\n") {
+			warn "WARN: $key didn't finish in the allowed time!";
+		} else {
+			warn "CRITICAL ERROR: $@";
+		}
+		return -1;
+	} else {
+		if ($ret != 0) {
+			warn "WARN: $key failed, $?";
+		}
+	}
+
+	return $ret;
 }
 
 __END__
