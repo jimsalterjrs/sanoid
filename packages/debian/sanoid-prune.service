@@ -1,0 +1,13 @@
+[Unit]
+Description=Cleanup ZFS Pool
+Requires=zfs.target
+After=zfs.target sanoid.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+ExecStart=/usr/sbin/sanoid --prune-snapshots
+
+[Install]
+WantedBy=sanoid.service

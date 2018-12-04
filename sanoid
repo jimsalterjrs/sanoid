@@ -5,6 +5,7 @@
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
 $::VERSION = '1.4.18';
+my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
 use warnings;
@@ -31,6 +32,7 @@ if (keys %args < 2) {
 my $pscmd = '/bin/ps';
 
 my $zfs = '/sbin/zfs';
+my $zpool = '/sbin/zpool';
 
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
@@ -44,6 +46,7 @@ my $cache = '/var/cache/sanoidsnapshots.txt';
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
+my %capacitycache;
 
 my %snapsbytype = getsnapsbytype( \%config, \%snaps );
 
@@ -125,12 +128,14 @@ sub monitor_snapshots {
 		my $path = $config{$section}{'path'};
 		push @paths, $path;
 
-		my @types = ('yearly','monthly','daily','hourly');
+		my @types = ('yearly','monthly','daily','hourly','frequently');
 		foreach my $type (@types) {
+			if ($config{$section}{$type} == 0) { next; }
 
 			my $smallerperiod = 0;
 			# we need to set the period length in seconds first
-			if ($type eq 'hourly') { $smallerperiod = 60; }
+			if ($type eq 'frequently') { $smallerperiod = 1; }
+			elsif ($type eq 'hourly') { $smallerperiod = 60; }
 			elsif ($type eq 'daily') { $smallerperiod = 60*60; }
 			elsif ($type eq 'monthly') { $smallerperiod = 60*60*24; }
 			elsif ($type eq 'yearly') { $smallerperiod = 60*60*24; }
@@ -254,12 +259,17 @@ sub prune_snapshots {
 		my $path = $config{$section}{'path'};
 
 		my $period = 0;
+		if (check_prune_defer($config, $section)) {
+			if ($args{'verbose'}) { print "INFO: deferring snapshot pruning ($section)...\n"; }
+			next;
+		}
 
 		foreach my $type (keys %{ $config{$section} }){
 			unless ($type =~ /ly$/) { next; }
 
 			# we need to set the period length in seconds first
-			if ($type eq 'hourly') { $period = 60*60; }
+			if ($type eq 'frequently') { $period = 60 * $config{$section}{'frequent_period'}; }
+			elsif ($type eq 'hourly') { $period = 60*60; }
 			elsif ($type eq 'daily') { $period = 60*60*24; }
 			elsif ($type eq 'monthly') { $period = 60*60*24*31; }
 			elsif ($type eq 'yearly') { $period = 60*60*24*365.25; }
@@ -299,6 +309,17 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
+										my $dataset = (split '@', $snap)[0];
+										my $snapname = (split '@', $snap)[1];
+										if ($config{$dataset}{'pruning_script'}) {
+											$ENV{'SANOID_TARGET'} = $dataset;
+											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
+											my $ret = runscript('pruning_script',$dataset);
+
+											delete $ENV{'SANOID_TARGET'};
+											delete $ENV{'SANOID_SNAPNAME'};
+										}
 									} else {
 										warn "could not remove $snap : $?";
 									}
@@ -373,7 +394,18 @@ sub take_snapshots {
 				# to avoid duplicates with DST
 				my $dateSuffix = "";
 
-				if ($type eq 'hourly')     {
+				if ($type eq 'frequently')     {
+					my $frequentslice = int($datestamp{'min'} / $config{$section}{'frequent_period'});
+
+					push @preferredtime,0; # try to hit 0 seconds
+					push @preferredtime,$frequentslice * $config{$section}{'frequent_period'};
+					push @preferredtime,$datestamp{'hour'};
+					push @preferredtime,$datestamp{'mday'};
+					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
+					push @preferredtime,$datestamp{'year'};
+					$lastpreferred = timelocal(@preferredtime);
+					if ($lastpreferred > time()) { $lastpreferred -= 60 * $config{$section}{'frequent_period'}; } # preferred time is later this frequent period - so look at last frequent period
+				} elsif ($type eq 'hourly')     {
 					push @preferredtime,0; # try to hit 0 seconds
 					push @preferredtime,$config{$section}{'hourly_min'};
 					push @preferredtime,$datestamp{'hour'};
@@ -458,12 +490,41 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
+			my $dataset = (split '@', $snap)[0];
+			my $snapname = (split '@', $snap)[1];
+			my $presnapshotfailure = 0;
+			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
+				$ENV{'SANOID_TARGET'} = $dataset;
+				$ENV{'SANOID_SNAPNAME'} = $snapname;
+				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
+				my $ret = runscript('pre_snapshot_script',$dataset);
+
+				delete $ENV{'SANOID_TARGET'};
+				delete $ENV{'SANOID_SNAPNAME'};
+
+				if ($ret != 0) {
+					# warning was already thrown by runscript function
+					$config{$dataset}{'no_inconsistent_snapshot'} and next;
+					$presnapshotfailure = 1;
+				}
+			}
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 				# make sure we don't end up with multiple snapshots with the same ctime
 				sleep 1;
+			}
+			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
+				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
+					$ENV{'SANOID_TARGET'} = $dataset;
+					$ENV{'SANOID_SNAPNAME'} = $snapname;
+					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
+					runscript('post_snapshot_script',$dataset);
+
+					delete $ENV{'SANOID_TARGET'};
+					delete $ENV{'SANOID_SNAPNAME'};
+				}
 			}
 		}
 		$forcecacheupdate = 1;
@@ -495,16 +556,20 @@ sub blabber {
 		my $path = $config{$section}{'path'};
 		print "Filesystem $path has:\n";
 		print "     $snapsbypath{$path}{'numsnaps'} total snapshots ";
-		print "(newest: ";
-		my $newest = sprintf("%.1f",$snapsbypath{$path}{'newest'} / 60 / 60);
-		print "$newest hours old)\n";
+		if ($snapsbypath{$path}{'numsnaps'} == 0) {
+			print "(no current snapshots)"
+		} else {
+			print "(newest: ";
+			my $newest = sprintf("%.1f",$snapsbypath{$path}{'newest'} / 60 / 60);
+			print "$newest hours old)\n";
 
-		foreach my $type (keys %{ $snapsbytype{$path} }){
-			print "          $snapsbytype{$path}{$type}{'numsnaps'} $type\n";
-			print "              desired: $config{$section}{$type}\n";
-			print "              newest: ";
-			my $newest = sprintf("%.1f",($snapsbytype{$path}{$type}{'newest'} / 60 / 60));
-			print "$newest hours old, named $snapsbytype{$path}{$type}{'newestname'}\n";
+			foreach my $type (keys %{ $snapsbytype{$path} }){
+				print "          $snapsbytype{$path}{$type}{'numsnaps'} $type\n";
+				print "              desired: $config{$section}{$type}\n";
+				print "              newest: ";
+				my $newest = sprintf("%.1f",($snapsbytype{$path}{$type}{'newest'} / 60 / 60));
+				print "$newest hours old, named $snapsbytype{$path}{$type}{'newestname'}\n";
+			}
 		}
 		print "\n\n";
 	}
@@ -664,9 +729,20 @@ sub init {
 	tie my %ini, 'Config::IniFiles', ( -file => $conf_file ) or die "FATAL: cannot load $conf_file - please create a valid local config file before running sanoid!";
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
-	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only');
+	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children','no_inconsistent_snapshot','force_post_snapshot_script');
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
+
+	# check if default configuration file is up to date
+	my $defaults_version = 1;
+	if (defined $defaults{'version'}{'version'}) {
+		$defaults_version = $defaults{'version'}{'version'};
+		delete $defaults{'version'};
+	}
+
+	if ($defaults_version < $MINIMUM_DEFAULTS_VERSION) {
+		die "FATAL: you're using sanoid.defaults.conf v$defaults_version, this version of sanoid requires a minimum sanoid.defaults.conf v$MINIMUM_DEFAULTS_VERSION";
+	}
 
 	foreach my $section (keys %ini) {
 
@@ -721,7 +797,7 @@ sub init {
 
 		# override with any locally set values in the module itself
 		foreach my $key (keys %{$ini{$section}} ) {
-			if (! ($key =~ /template|recursive/)) {
+			if (! ($key =~ /template|recursive|skip_children/)) {
 				if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value directly set in module.\n"; }
 				$config{$section}{$key} = $ini{$section}{$key};
 			}
@@ -746,10 +822,17 @@ sub init {
 
 		# how 'bout some recursion? =)
 		my @datasets;
-		if ($ini{$section}{'recursive'}) {
+		if ($ini{$section}{'recursive'} || $ini{$section}{'skip_children'}) {
 			@datasets = getchilddatasets($config{$section}{'path'});
-			foreach my $dataset(@datasets) {
+			DATASETS: foreach my $dataset(@datasets) {
 				chomp $dataset;
+
+				if ($ini{$section}{'skip_children'}) {
+					if ($args{'debug'}) { print "DEBUG: ignoring $dataset.\n"; }
+					delete $config{$dataset};
+					next DATASETS;
+				}
+
 				foreach my $key (keys %{$config{$section}} ) {
 					if (! ($key =~ /template|recursive|children_only/)) {
 						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
@@ -875,7 +958,7 @@ sub check_zpool() {
 		exit $ERRORS{$state};
 	}
 
-	my $statcommand="/sbin/zpool list -o name,size,cap,health,free $pool";
+	my $statcommand="$zpool list -o name,size,cap,health,free $pool";
 
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
@@ -923,7 +1006,7 @@ sub check_zpool() {
 	## flag to detect section of zpool status involving our zpool
 	my $poolfind=0;
 
-	$statcommand="/sbin/zpool status $pool";
+	$statcommand="$zpool status $pool";
 	if (! open STAT, "$statcommand|") {
 		$state = 'CRITICAL';
 		print ("$state '$statcommand' command returns no result! NOTE: This plugin needs OS support for ZFS, and execution with root privileges.\n");
@@ -1031,7 +1114,7 @@ sub check_zpool() {
 	return ($ERRORS{$state},$msg);
 } # end check_zpool()
 
-sub check_capacity_limit() {
+sub check_capacity_limit {
 	my $value = shift;
 
 	if (!defined($value) || $value !~ /^\d+\z/) {
@@ -1054,7 +1137,7 @@ sub check_zpool_capacity() {
 	my $capacitylimitsref=shift;
 	my %capacitylimits=%$capacitylimitsref;
 
-	my $statcommand="/sbin/zpool list -H -o cap $pool";
+	my $statcommand="$zpool list -H -o cap $pool";
 
 	if (! open STAT, "$statcommand|") {
 		print ("$state '$statcommand' command returns no result!\n");
@@ -1098,6 +1181,60 @@ sub check_zpool_capacity() {
 	$msg = "$state $msg";
 	return ($ERRORS{$state},$msg);
 } # end check_zpool_capacity()
+
+sub check_prune_defer {
+	my ($config, $section) = @_;
+
+	my $limit = $config{$section}{"prune_defer"};
+
+	if (!check_capacity_limit($limit)) {
+		die "ERROR: invalid prune_defer limit!\n";
+	}
+
+	if ($limit eq 0) {
+		return 0;
+	}
+
+	my @parts = split /\//, $section, 2;
+	my $pool = $parts[0];
+
+	if (exists $capacitycache{$pool}) {
+	} else {
+		$capacitycache{$pool} = get_zpool_capacity($pool);
+	}
+
+	if ($limit < $capacitycache{$pool}) {
+		return 0;
+	}
+
+	return 1;
+}
+
+sub get_zpool_capacity {
+	my $pool = shift;
+
+	my $statcommand="$zpool list -H -o cap $pool";
+
+	if (! open STAT, "$statcommand|") {
+		die "ERROR: '$statcommand' command returns no result!\n";
+	}
+
+	my $line = <STAT>;
+	close(STAT);
+
+	chomp $line;
+	my @row = split(/ +/, $line);
+	my $cap=$row[0];
+
+	## check for valid capacity value
+	if ($cap !~ m/^[0-9]{1,3}%$/ ) {
+		die "ERROR: '$statcommand' command returned invalid capacity value ($cap)!\n";
+	}
+
+	$cap =~ s/\D//g;
+
+	return $cap;
+}
 
 ######################################################################################################
 ######################################################################################################
@@ -1260,6 +1397,9 @@ sub getchilddatasets {
 	my @children = <FH>;
 	close FH;
 
+	# parent dataset is the first element
+	shift @children;
+
 	return @children;
 }
 
@@ -1310,6 +1450,41 @@ sub removecachedsnapshots {
 
 	# clear hash
 	undef %pruned;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub runscript {
+	my $key=shift;
+	my $dataset=shift;
+
+	my $timeout=$config{$dataset}{'script_timeout'};
+
+	my $ret;
+	eval {
+		if ($timeout gt 0) {
+			local $SIG{ALRM} = sub { die "alarm\n" };
+			alarm $timeout;
+		}
+		$ret = system($config{$dataset}{$key});
+		alarm 0;
+	};
+	if ($@) {
+		if ($@ eq "alarm\n") {
+			warn "WARN: $key didn't finish in the allowed time!";
+		} else {
+			warn "CRITICAL ERROR: $@";
+		}
+		return -1;
+	} else {
+		if ($ret != 0) {
+			warn "WARN: $key failed, $?";
+		}
+	}
+
+	return $ret;
 }
 
 __END__
