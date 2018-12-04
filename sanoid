@@ -532,8 +532,6 @@ sub take_snapshots {
 			if (!$args{'readonly'}) {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
-				# make sure we don't end up with multiple snapshots with the same ctime
-				sleep 1;
 			}
 			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
