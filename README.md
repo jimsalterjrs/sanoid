@@ -37,7 +37,7 @@ And its /etc/sanoid/sanoid.conf might look something like this:
         autoprune = yes
 ```
 
-Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7-spice, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
+Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
 
 ##### Sanoid Command Line Options
 
