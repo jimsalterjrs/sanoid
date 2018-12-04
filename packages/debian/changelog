@@ -1,10 +1,10 @@
-sanoid (1.4.19) unstable; urgency=medium
+sanoid (2.0.0) unstable; urgency=medium
 
   [overall]   documentation updates, small fixes, more warnings (@sparky3387, @ljwobker, @phreaker0)
   [syncoid]   added force delete flag (@phreaker0)
-  [sanoid]	  removed sleeping between snapshot taking (@phreaker0)
+  [sanoid]    removed sleeping between snapshot taking (@phreaker0)
   [syncoid]   added '--no-privilege-elevation' option to bypass root check (@lopsided98)
-  [sanoid]	  implemented weekly period (@phreaker0)
+  [sanoid]    implemented weekly period (@phreaker0)
   [syncoid]   implemented support for zfs bookmarks as fallback (@phreaker0)
   [sanoid]    support for pre, post and prune snapshot scripts (@jouir, @darkbasic, @phreaker0)
   [sanoid]    ignore snapshots types that are set to 0 (@muff1nman)

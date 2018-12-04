@@ -1,4 +1,4 @@
-%global version 1.4.19
+%global version 2.0.0
 %global git_tag v%{version}
 
 # Enable with systemctl "enable sanoid.timer"
@@ -111,8 +111,8 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
-* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 1.4.19
-- Bump to 1.4.19
+* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
+- Bump to 2.0.0
 * Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1
 - Bump to 1.4.18
 * Thu Aug 31 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-2
