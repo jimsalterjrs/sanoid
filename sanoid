@@ -846,12 +846,12 @@ sub init {
 
 		# how 'bout some recursion? =)
 		my @datasets;
-		if ($ini{$section}{'recursive'} || $ini{$section}{'skip_children'}) {
+		if (grep( /^$ini{$section}{'recursive'}$/, @istrue ) || grep( /^$ini{$section}{'skip_children'}$/, @istrue )) {
 			@datasets = getchilddatasets($config{$section}{'path'});
 			DATASETS: foreach my $dataset(@datasets) {
 				chomp $dataset;
 
-				if ($ini{$section}{'skip_children'}) {
+				if (grep( /^$ini{$section}{'skip_children'}$/, @istrue )) {
 					if ($args{'debug'}) { print "DEBUG: ignoring $dataset.\n"; }
 					delete $config{$dataset};
 					next DATASETS;
