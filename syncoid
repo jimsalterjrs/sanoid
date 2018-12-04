@@ -20,7 +20,7 @@ my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation") or pod2usage(2);
+                   "no-clone-handling", "no-privilege-elevation", "force-delete") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -234,7 +234,7 @@ sub getchilddatasets {
 
 sub syncdataset {
 
-	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin) = @_;
+	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
 
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
@@ -304,7 +304,7 @@ sub syncdataset {
 		    print "\n\n\n";
 		}
 
-		if (!defined $args{'no-sync-snap'}) {
+		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
 			if (!$newsyncsnap) {
@@ -503,6 +503,30 @@ sub syncdataset {
 			}
 
 			if (! $bookmark) {
+				if ($args{'force-delete'}) {
+					if (!$quiet) { print "Removing $targetfs because no matching snapshots were found\n"; }
+
+					my $rcommand = '';
+					my $mysudocmd = '';
+					my $targetfsescaped = escapeshellparam($targetfs);
+
+					if ($targethost ne '') { $rcommand = "$sshcmd $targethost"; }
+					if (!$targetisroot) { $mysudocmd = $sudocmd; }
+
+					my $prunecmd = "$mysudocmd $zfscmd destroy -r $targetfsescaped; ";
+					if ($targethost ne '') {
+						$prunecmd = escapeshellparam($prunecmd);
+					}
+
+					my $ret = system("$rcommand $prunecmd");
+					if ($ret != 0) {
+						warn "WARNING: $rcommand $prunecmd failed: $?";
+					} else {
+						# redo sync and skip snapshot creation (already taken)
+						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+					}
+				}
+
 				# if we got this far, we failed to find a matching snapshot/bookmark.
 				if ($exitcode < 2) { $exitcode = 2; }
 
@@ -1228,7 +1252,7 @@ sub getsnaps() {
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH;
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1272,11 +1296,21 @@ sub getbookmarks() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped |";
+	my $error = 0;
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
 	if ($debug) { print "DEBUG: getting list of bookmarks on $fs using $getbookmarkcmd...\n"; }
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
-	close FH;
+	close FH or $error = 1;
+
+	if ($error == 1) {
+		if ($rawbookmarks[0] =~ /invalid type/) {
+			# no support for zfs bookmarks, return empty hash
+			return %bookmarks;
+		}
+
+		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
+	}
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1462,3 +1496,5 @@ Options:
   --no-resume           Don't use the ZFS resume feature if available
   --no-clone-handling   Don't try to recreate clones on target
   --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation
+
+  --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks
