@@ -30,4 +30,4 @@ strongly recommends using your distribution's repositories instead.
 
 On Ubuntu: apt install libconfig-inifiles-perl
 On CentOS: yum install perl-Config-IniFiles
-On FreeBSD: pkg install p5-Config-Inifiles
+On FreeBSD: pkg install p5-Config-IniFiles
