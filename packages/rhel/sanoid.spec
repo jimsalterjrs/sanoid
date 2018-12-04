@@ -111,7 +111,7 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
-* Wed Sep 05 2018 Christoph Klaffl <christoph@phreaker.eu> - 1.4.19
+* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 1.4.19
 - Bump to 1.4.19
 * Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1
 - Bump to 1.4.18
