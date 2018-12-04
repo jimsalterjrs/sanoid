@@ -176,7 +176,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --compress <compression type>
 
-	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
