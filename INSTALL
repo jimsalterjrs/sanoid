@@ -8,8 +8,8 @@ default for SSH transport since v1.4.6. Syncoid runs will fail if one of them
 is not available on either end of the transport.
 
 On Ubuntu: apt install pv lzop mbuffer
-On CentOS: yum install lzo pv mbuffer lzop
-On FreeBSD: pkg install pv lzop
+On CentOS: yum install lzo pv mbuffer lzop perl-Data-Dumper
+On FreeBSD: pkg install pv mbuffer lzop
 
 FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than
                /usr/bin ; syncoid currently does not check path.
@@ -18,6 +18,8 @@ FreeBSD notes: FreeBSD may place pv and lzop in somewhere other than
                root@bsd:~# ln -s /usr/local/bin/lzop /usr/bin/lzop
                or similar, as appropriate, to create links in /usr/bin
                to wherever the utilities actually are on your system.
+
+               See note about mbuffer in FREEBSD.readme
 
 
 SANOID
@@ -28,4 +30,4 @@ strongly recommends using your distribution's repositories instead.
 
 On Ubuntu: apt install libconfig-inifiles-perl
 On CentOS: yum install perl-Config-IniFiles
-On FreeBSD: pkg install p5-Config-Inifiles
+On FreeBSD: pkg install p5-Config-IniFiles
