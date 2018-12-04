@@ -1154,6 +1154,11 @@ sub getsendsize {
 	}
 	chomp $sendsize;
 
+	# check for valid value
+	if ($sendsize !~ /^\d+$/) {
+		$sendsize = '';
+	}
+
 	# to avoid confusion with a zero size pv, give sendsize
 	# a minimum 4K value - or if empty, make sure it reads UNKNOWN
 	if ($debug) { print "DEBUG: sendsize = $sendsize\n"; }
