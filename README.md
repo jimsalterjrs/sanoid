@@ -28,6 +28,7 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 #############################
 
 [template_production]
+        frequently = 0
         hourly = 36
         daily = 30
         monthly = 3
@@ -168,7 +169,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --compress <compression type>
 
-	Currently accepted options: gzip, pigz-fast, pigz-slow, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -197,6 +198,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --no-resume
 
 	This argument tells syncoid to not use resumeable zfs send/receive streams.
+
++ --no-clone-handling
+
+	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+
 
 + --dumpsnaps
 
