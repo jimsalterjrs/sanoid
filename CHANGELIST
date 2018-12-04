@@ -1,3 +1,29 @@
+current PRERELEASE:
+       #140 - --no-privilege-elevation option to bypass root checks entirely
+       #157 - configurable frequent snapshot period
+       #163 - weekly snapshot period
+       #247 - implement support for zfs bookmarks in syncoid
+       #248 - allow forced target snapshot deletion in syncoid with --force-delete, for those who like to live dangerously
+       #254 - add xz compression option to syncoid
+       #261 - add WARNings for unsupported parameters in templates
+       #262 - documentation typo fix
+       #264 - add clean WARN error for unknown snapshot type values
+       #265 - add support for lz4 compression to syncoid
+       #266 - squash uninitialized value perl warning on first sanoid run (no snapshots)
+       #267 - improve boolean handling for recursive parameter
+       #268 - update README
+       #269 - don't alarm for lack of hourly/daily/etc if hourly/daily/etc=0
+       #277 - update automated test script for DST 
+       #279 - FreeBSD pkg typo fix
+       #280 - add pre,post,prune snapshot script hooks
+       #286 - remove 1s sleep interval between snapshots
+       #287 - run snapshot prune, snapshot take as separate systemd services in Debian package
+       #289 - optional defer pruning until low %FREE reached
+       #290 - replicate clone structure from source to target
+       #292 - fix sendsize estimation to prevent perl warnings on some systems
+       #294 - add dependency for Perl::Config::Ini
+       #298 - exclude recursion for children of a dataset with skip-children = yes
+
 1.4.18 implemented special character handling and support of ZFS resume/receive tokens by default in syncoid,
        thank you @phreaker0!
 
