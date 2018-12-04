@@ -471,7 +471,7 @@ sub take_snapshots {
 					$lastpreferred = timelocal(@preferredtime);
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60*24*31*365.25; } # preferred time is later this year - so look at last year
 				} else {
-					# unknown type
+					warn "WARN: unknown interval type $type in config!";
 					next;
 				}
 
