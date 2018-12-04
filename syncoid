@@ -515,11 +515,17 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/lzop',
 			decomargs   => '-dfc',
 		},
+		'lz4' => {
+			rawcmd      => '/usr/bin/lz4',
+			args        => '',
+			decomrawcmd => '/usr/bin/lz4',
+			decomargs   => '-dc',
+		},
 	);
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lz4', 'lzo', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -1232,7 +1238,7 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, lzo (default) & none
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
