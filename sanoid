@@ -553,16 +553,20 @@ sub blabber {
 		my $path = $config{$section}{'path'};
 		print "Filesystem $path has:\n";
 		print "     $snapsbypath{$path}{'numsnaps'} total snapshots ";
-		print "(newest: ";
-		my $newest = sprintf("%.1f",$snapsbypath{$path}{'newest'} / 60 / 60);
-		print "$newest hours old)\n";
+		if ($snapsbypath{$path}{'numsnaps'} == 0) {
+			print "(no current snapshots)"
+		} else {
+			print "(newest: ";
+			my $newest = sprintf("%.1f",$snapsbypath{$path}{'newest'} / 60 / 60);
+			print "$newest hours old)\n";
 
-		foreach my $type (keys %{ $snapsbytype{$path} }){
-			print "          $snapsbytype{$path}{$type}{'numsnaps'} $type\n";
-			print "              desired: $config{$section}{$type}\n";
-			print "              newest: ";
-			my $newest = sprintf("%.1f",($snapsbytype{$path}{$type}{'newest'} / 60 / 60));
-			print "$newest hours old, named $snapsbytype{$path}{$type}{'newestname'}\n";
+			foreach my $type (keys %{ $snapsbytype{$path} }){
+				print "          $snapsbytype{$path}{$type}{'numsnaps'} $type\n";
+				print "              desired: $config{$section}{$type}\n";
+				print "              newest: ";
+				my $newest = sprintf("%.1f",($snapsbytype{$path}{$type}{'newest'} / 60 / 60));
+				print "$newest hours old, named $snapsbytype{$path}{$type}{'newestname'}\n";
+			}
 		}
 		print "\n\n";
 	}
