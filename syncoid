@@ -20,7 +20,7 @@ my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling") or pod2usage(2);
+                   "no-clone-handling", "no-privilege-elevation") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -1186,7 +1186,7 @@ sub getssh {
 		$rhost =~ s/:\Q$fs\E$//;
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
-		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
+		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
@@ -1194,7 +1194,7 @@ sub getssh {
 		$rhost = "-S $socket $rhost";
 	} else {
 		my $localuid = $<;
-		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
+		if ($localuid == 0 || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 	}
 	# if ($isroot) { print "this user is root.\n"; } else { print "this user is not root.\n"; }
 	return ($rhost,$fs,$isroot);
@@ -1455,3 +1455,4 @@ Options:
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
   --no-clone-handling   Don't try to recreate clones on target
+  --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation

@@ -215,6 +215,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This prints a list of snapshots during the run.
 
++ --no-privilege-elevation
+
+	Bypass the root check and assume syncoid has the necessary permissions (for use with ZFS permission delegation).
+
 + --sshport
 
 	Allow sync to/from boxes running SSH on non-standard ports.
