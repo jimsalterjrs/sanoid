@@ -19,7 +19,8 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "no-clone-handling") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -104,17 +105,59 @@ my $exitcode = 0;
 ## replication                                            ##
 
 if (!defined $args{'recursive'}) {
-	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
-	foreach my $dataset(@datasets) {
+
+	my @deferred;
+
+	foreach my $datasetProperties(@datasets) {
+		my $dataset = $datasetProperties->{'name'};
+		my $origin = $datasetProperties->{'origin'};
+		if ($origin eq "-" || defined $args{'no-clone-handling'}) {
+			$origin = undef;
+		} else {
+			# check if clone source is replicated too
+			my @values = split(/@/, $origin, 2);
+			my $srcdataset = $values[0];
+
+			my $found = 0;
+			foreach my $datasetProperties(@datasets) {
+				if ($datasetProperties->{'name'} eq $srcdataset) {
+					$found = 1;
+					last;
+				}
+			}
+
+			if ($found == 0) {
+				# clone source is not replicated, do a full replication
+				$origin = undef;
+			} else {
+				# clone source is replicated, defer until all non clones are replicated
+				push @deferred, $datasetProperties;
+				next;
+			}
+		}
+
 		$dataset =~ s/\Q$sourcefs\E//;
 		chomp $dataset;
 		my $childsourcefs = $sourcefs . $dataset;
 		my $childtargetfs = $targetfs . $dataset;
 		# print "syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); \n";
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs);
+		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+	}
+
+	# replicate cloned datasets and if this is the initial run, recreate them on the target
+	foreach my $datasetProperties(@deferred) {
+		my $dataset = $datasetProperties->{'name'};
+		my $origin = $datasetProperties->{'origin'};
+
+		$dataset =~ s/\Q$sourcefs\E//;
+		chomp $dataset;
+		my $childsourcefs = $sourcefs . $dataset;
+		my $childtargetfs = $targetfs . $dataset;
+		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
 	}
 }
 
@@ -147,37 +190,51 @@ sub getchilddatasets {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem,volume -Hr $fsescaped |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name,origin -t filesystem,volume -Hr $fsescaped |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
-	open FH, $getchildrencmd;
-	my @children = <FH>;
-	close FH;
-
-	if (defined $args{'skip-parent'}) {
-		# parent dataset is the first element
-		shift @children;
+	if (! open FH, $getchildrencmd) {
+		die "ERROR: list command failed!\n";
 	}
 
-	if (defined $args{'exclude'}) {
-		my $excludes = $args{'exclude'};
-		foreach (@$excludes) {
-			for my $i ( 0 .. $#children ) {
-				if ($children[$i] =~ /$_/) {
-					if ($debug) { print "DEBUG: excluded $children[$i] because of $_\n"; }
-					undef $children[$i]
+	my @children;
+	my $first = 1;
+
+	DATASETS: while(<FH>) {
+		chomp;
+
+		if (defined $args{'skip-parent'} && $first eq 1) {
+			# parent dataset is the first element
+			$first = 0;
+			next;
+		}
+
+		my ($dataset, $origin) = /^([^\t]+)\t([^\t]+)/;
+
+		if (defined $args{'exclude'}) {
+			my $excludes = $args{'exclude'};
+			foreach (@$excludes) {
+				print("$dataset\n");
+				if ($dataset =~ /$_/) {
+					if ($debug) { print "DEBUG: excluded $dataset because of $_\n"; }
+					next DATASETS;
 				}
 			}
-
-			@children = grep{ defined }@children;
 		}
+
+		my %properties;
+		$properties{'name'} = $dataset;
+		$properties{'origin'} = $origin;
+
+		push @children, \%properties;
 	}
+	close FH;
 
 	return @children;
 }
 
 sub syncdataset {
 
-	my ($sourcehost, $sourcefs, $targethost, $targetfs) = @_;
+	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin) = @_;
 
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
@@ -305,11 +362,25 @@ sub syncdataset {
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
 		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 
-		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
+		my $pvsize;
+		if (defined $origin) {
+			my $originescaped = escapeshellparam($origin);
+			$sendcmd = "$sourcesudocmd $zfscmd send -i $originescaped $sourcefsescaped\@$oldestsnapescaped";
+			my $streamargBackup = $args{'streamarg'};
+			$args{'streamarg'} = "-i";
+			$pvsize = getsendsize($sourcehost,$origin,"$sourcefs\@$oldestsnap",$sourceisroot);
+			$args{'streamarg'} = $streamargBackup;
+		} else {
+			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
+		}
+
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 		if (!$quiet) {
+			if (defined $origin) {
+				print "INFO: Clone is recreated on target $targetfs based on $origin\n";
+			}
 			if (!defined ($args{'no-stream'}) ) {
 				print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
 			} else {
@@ -396,7 +467,7 @@ sub syncdataset {
 
 		    # a resumed transfer will only be done to the next snapshot,
 		    # so do an normal sync cycle
-		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 		}
 
 		# find most recent matching snapshot and do an -I
@@ -1261,3 +1332,4 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
+  --no-clone-handling   Don't try to recreate clones on target

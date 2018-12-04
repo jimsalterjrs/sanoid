@@ -199,6 +199,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to not use resumeable zfs send/receive streams.
 
++ --no-clone-handling
+
+	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+
+
 + --dumpsnaps
 
 	This prints a list of snapshots during the run.
