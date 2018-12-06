@@ -583,14 +583,6 @@ sub syncdataset {
 					system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
 				}
 			}
-<<<<<<< HEAD
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
-			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
-			my $disp_pvsize = readablebytes($pvsize);
-			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-			my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-=======
 
 			my $nextsnapshot = 0;
 
@@ -608,7 +600,6 @@ sub syncdataset {
 						}
 					}
 				}
->>>>>>> e186f3c66e9c757fa62c4eaa8a1c05bc49dbcff1
 
 				# bookmark stream size can't be determined
 				my $pvsize = 0;
