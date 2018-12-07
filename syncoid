@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '1.4.18';
+$::VERSION = '2.0.0';
 
 use strict;
 use warnings;
@@ -19,7 +19,8 @@ use Sys::Hostname;
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s") or pod2usage(2);
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -107,17 +108,59 @@ my $exitcode = 0;
 ## replication                                            ##
 
 if (!defined $args{'recursive'}) {
-	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
-	foreach my $dataset(@datasets) {
+
+	my @deferred;
+
+	foreach my $datasetProperties(@datasets) {
+		my $dataset = $datasetProperties->{'name'};
+		my $origin = $datasetProperties->{'origin'};
+		if ($origin eq "-" || defined $args{'no-clone-handling'}) {
+			$origin = undef;
+		} else {
+			# check if clone source is replicated too
+			my @values = split(/@/, $origin, 2);
+			my $srcdataset = $values[0];
+
+			my $found = 0;
+			foreach my $datasetProperties(@datasets) {
+				if ($datasetProperties->{'name'} eq $srcdataset) {
+					$found = 1;
+					last;
+				}
+			}
+
+			if ($found == 0) {
+				# clone source is not replicated, do a full replication
+				$origin = undef;
+			} else {
+				# clone source is replicated, defer until all non clones are replicated
+				push @deferred, $datasetProperties;
+				next;
+			}
+		}
+
 		$dataset =~ s/\Q$sourcefs\E//;
 		chomp $dataset;
 		my $childsourcefs = $sourcefs . $dataset;
 		my $childtargetfs = $targetfs . $dataset;
 		# print "syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); \n";
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs);
+		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+	}
+
+	# replicate cloned datasets and if this is the initial run, recreate them on the target
+	foreach my $datasetProperties(@deferred) {
+		my $dataset = $datasetProperties->{'name'};
+		my $origin = $datasetProperties->{'origin'};
+
+		$dataset =~ s/\Q$sourcefs\E//;
+		chomp $dataset;
+		my $childsourcefs = $sourcefs . $dataset;
+		my $childtargetfs = $targetfs . $dataset;
+		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
 	}
 }
 
@@ -150,37 +193,51 @@ sub getchilddatasets {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name -t filesystem,volume -Hr $fsescaped |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name,origin -t filesystem,volume -Hr $fsescaped |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
-	open FH, $getchildrencmd;
-	my @children = <FH>;
-	close FH;
-
-	if (defined $args{'skip-parent'}) {
-		# parent dataset is the first element
-		shift @children;
+	if (! open FH, $getchildrencmd) {
+		die "ERROR: list command failed!\n";
 	}
 
-	if (defined $args{'exclude'}) {
-		my $excludes = $args{'exclude'};
-		foreach (@$excludes) {
-			for my $i ( 0 .. $#children ) {
-				if ($children[$i] =~ /$_/) {
-					if ($debug) { print "DEBUG: excluded $children[$i] because of $_\n"; }
-					undef $children[$i]
+	my @children;
+	my $first = 1;
+
+	DATASETS: while(<FH>) {
+		chomp;
+
+		if (defined $args{'skip-parent'} && $first eq 1) {
+			# parent dataset is the first element
+			$first = 0;
+			next;
+		}
+
+		my ($dataset, $origin) = /^([^\t]+)\t([^\t]+)/;
+
+		if (defined $args{'exclude'}) {
+			my $excludes = $args{'exclude'};
+			foreach (@$excludes) {
+				print("$dataset\n");
+				if ($dataset =~ /$_/) {
+					if ($debug) { print "DEBUG: excluded $dataset because of $_\n"; }
+					next DATASETS;
 				}
 			}
-
-			@children = grep{ defined }@children;
 		}
+
+		my %properties;
+		$properties{'name'} = $dataset;
+		$properties{'origin'} = $origin;
+
+		push @children, \%properties;
 	}
+	close FH;
 
 	return @children;
 }
 
 sub syncdataset {
 
-	my ($sourcehost, $sourcefs, $targethost, $targetfs) = @_;
+	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
 
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
@@ -250,7 +307,7 @@ sub syncdataset {
 		    print "\n\n\n";
 		}
 
-		if (!defined $args{'no-sync-snap'}) {
+		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
 			if (!$newsyncsnap) {
@@ -308,11 +365,25 @@ sub syncdataset {
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
 		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
 
-		my $pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
+		my $pvsize;
+		if (defined $origin) {
+			my $originescaped = escapeshellparam($origin);
+			$sendcmd = "$sourcesudocmd $zfscmd send -i $originescaped $sourcefsescaped\@$oldestsnapescaped";
+			my $streamargBackup = $args{'streamarg'};
+			$args{'streamarg'} = "-i";
+			$pvsize = getsendsize($sourcehost,$origin,"$sourcefs\@$oldestsnap",$sourceisroot);
+			$args{'streamarg'} = $streamargBackup;
+		} else {
+			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap",0,$sourceisroot);
+		}
+
 		my $disp_pvsize = readablebytes($pvsize);
 		if ($pvsize == 0) { $disp_pvsize = 'UNKNOWN'; }
 		my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 		if (!$quiet) {
+			if (defined $origin) {
+				print "INFO: Clone is recreated on target $targetfs based on $origin\n";
+			}
 			if (!defined ($args{'no-stream'}) ) {
 				print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
 			} else {
@@ -399,7 +470,7 @@ sub syncdataset {
 
 		    # a resumed transfer will only be done to the next snapshot,
 		    # so do an normal sync cycle
-		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs);
+		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 		}
 
 		# find most recent matching snapshot and do an -I
@@ -413,11 +484,73 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, $targetsize, \%snaps);
+		my $bookmark = 0;
+		my $bookmarkcreation = 0;
+
+		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
-			# no matching snapshot; we whined piteously already, but let's go ahead and return false
-			# now in case more child datasets need replication.
-			return 0;
+			# no matching snapshots, check for bookmarks as fallback
+			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+
+			# check for matching guid of source bookmark and target snapshot (oldest first)
+			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
+				my $guid = $snaps{'target'}{$snap}{'guid'};
+
+				if (defined $bookmarks{$guid}) {
+					# found a match
+					$bookmark = $bookmarks{$guid}{'name'};
+					$bookmarkcreation = $bookmarks{$guid}{'creation'};
+					$matchingsnap = $snap;
+					last;
+				}
+			}
+
+			if (! $bookmark) {
+				if ($args{'force-delete'}) {
+					if (!$quiet) { print "Removing $targetfs because no matching snapshots were found\n"; }
+
+					my $rcommand = '';
+					my $mysudocmd = '';
+					my $targetfsescaped = escapeshellparam($targetfs);
+
+					if ($targethost ne '') { $rcommand = "$sshcmd $targethost"; }
+					if (!$targetisroot) { $mysudocmd = $sudocmd; }
+
+					my $prunecmd = "$mysudocmd $zfscmd destroy -r $targetfsescaped; ";
+					if ($targethost ne '') {
+						$prunecmd = escapeshellparam($prunecmd);
+					}
+
+					my $ret = system("$rcommand $prunecmd");
+					if ($ret != 0) {
+						warn "WARNING: $rcommand $prunecmd failed: $?";
+					} else {
+						# redo sync and skip snapshot creation (already taken)
+						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+					}
+				}
+
+				# if we got this far, we failed to find a matching snapshot/bookmark.
+				if ($exitcode < 2) { $exitcode = 2; }
+
+				print "\n";
+				print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
+				print "                Replication to target would require destroying existing\n";
+				print "                target. Cowardly refusing to destroy your existing target.\n\n";
+
+				# experience tells me we need a mollyguard for people who try to
+				# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
+
+				if ( $targetsize < (64*1024*1024) ) {
+					print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
+					print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
+					print "                replication must be to a NON EXISTENT DATASET, which will\n";
+					print "                then be CREATED BY the initial replication process.\n\n";
+				}
+
+				# return false now in case more child datasets need replication.
+				return 0;
+			}
 		}
 
 		# make sure target is (still) not currently in receive.
@@ -442,20 +575,77 @@ sub syncdataset {
 				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
 			}
 
-			my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
-			my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
-			my $disp_pvsize = readablebytes($pvsize);
-			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-			my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+			my $nextsnapshot = 0;
 
-			if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
-			if ($debug) { print "DEBUG: $synccmd\n"; }
-			system("$synccmd") == 0 or do {
-				warn "CRITICAL ERROR: $synccmd failed: $?";
-				if ($exitcode < 2) { $exitcode = 2; }
-				return 0;
-			};
+			if ($bookmark) {
+				my $bookmarkescaped = escapeshellparam($bookmark);
+
+				if (!defined $args{'no-stream'}) {
+					# if intermediate snapshots are needed we need to find the next oldest snapshot,
+					# do an replication to it and replicate as always from oldest to newest
+					# because bookmark sends doesn't support intermediates directly
+					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+							$nextsnapshot = $snap;
+							last;
+						}
+					}
+				}
+
+				# bookmark stream size can't be determined
+				my $pvsize = 0;
+				my $disp_pvsize = "UNKNOWN";
+
+				if ($nextsnapshot) {
+					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
+
+					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
+					if ($debug) { print "DEBUG: $synccmd\n"; }
+					system("$synccmd") == 0 or do {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					};
+
+					$matchingsnap = $nextsnapshot;
+					$matchingsnapescaped = escapeshellparam($matchingsnap);
+				} else {
+					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
+					if ($debug) { print "DEBUG: $synccmd\n"; }
+					system("$synccmd") == 0 or do {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					};
+				}
+			}
+
+			# do a normal replication if bookmarks aren't used or if previous
+			# bookmark replication was only done to the next oldest snapshot
+			if (!$bookmark || $nextsnapshot) {
+				my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+				my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
+				my $disp_pvsize = readablebytes($pvsize);
+				if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+				my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+
+				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
+				if ($debug) { print "DEBUG: $synccmd\n"; }
+				system("$synccmd") == 0 or do {
+					warn "CRITICAL ERROR: $synccmd failed: $?";
+					if ($exitcode < 2) { $exitcode = 2; }
+					return 0;
+				};
+			}
 
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
@@ -512,17 +702,29 @@ sub compressargset {
 			decomrawcmd => '/usr/bin/zstd',
 			decomargs   => '-dc',
 		},
+		'xz' => {
+			rawcmd      => '/usr/bin/xz',
+			args        => '',
+			decomrawcmd => '/usr/bin/xz',
+			decomargs   => '-d',
+		},
 		'lzo' => {
 			rawcmd      => '/usr/bin/lzop',
 			args        => '',
 			decomrawcmd => '/usr/bin/lzop',
 			decomargs   => '-dfc',
 		},
+		'lz4' => {
+			rawcmd      => '/usr/bin/lz4',
+			args        => '',
+			decomrawcmd => '/usr/bin/lz4',
+			decomargs   => '-dc',
+		},
 	);
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lz4', 'xz', 'lzo', 'default', 'none'))) {
 		warn "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION";
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -948,32 +1150,15 @@ sub pruneoldsyncsnaps {
 }
 
 sub getmatchingsnapshot {
-	my ($sourcefs, $targetfs, $targetsize, $snaps) = @_;
+	my ($sourcefs, $targetfs, $snaps) = @_;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
-		if (defined $snaps{'target'}{$snap}{'guid'}) {
+		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
 			}
 		}
 	}
 
-	# if we got this far, we failed to find a matching snapshot.
-	if ($exitcode < 2) { $exitcode = 2; }
-
-	print "\n";
-	print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
-	print "                Replication to target would require destroying existing\n";
-	print "                target. Cowardly refusing to destroy your existing target.\n\n";
-
-	# experience tells me we need a mollyguard for people who try to
-	# zfs create targetpool/targetsnap ; syncoid sourcepool/sourcesnap targetpool/targetsnap ...
-
-	if ( $targetsize < (64*1024*1024) ) {
-		print "          NOTE: Target $targetfs dataset is < 64MB used - did you mistakenly run\n";
-		print "                \`zfs create $args{'target'}\` on the target? ZFS initial\n";
-		print "                replication must be to a NON EXISTENT DATASET, which will\n";
-		print "                then be CREATED BY the initial replication process.\n\n";
-	}
 	return 0;
 }
 
@@ -1034,7 +1219,7 @@ sub getssh {
 		$rhost =~ s/:\Q$fs\E$//;
 		my $remoteuser = $rhost;
 		 $remoteuser =~ s/\@.*$//;
-		if ($remoteuser eq 'root') { $isroot = 1; } else { $isroot = 0; }
+		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
@@ -1042,7 +1227,7 @@ sub getssh {
 		$rhost = "-S $socket $rhost";
 	} else {
 		my $localuid = $<;
-		if ($localuid == 0) { $isroot = 1; } else { $isroot = 0; }
+		if ($localuid == 0 || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 	}
 	# if ($isroot) { print "this user is root.\n"; } else { print "this user is not root.\n"; }
 	return ($rhost,$fs,$isroot);
@@ -1070,7 +1255,7 @@ sub getsnaps() {
 	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH;
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1102,6 +1287,60 @@ sub getsnaps() {
 	return %snaps;
 }
 
+sub getbookmarks() {
+	my ($rhost,$fs,$isroot,%bookmarks) = @_;
+	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	my $error = 0;
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
+	if ($debug) { print "DEBUG: getting list of bookmarks on $fs using $getbookmarkcmd...\n"; }
+	open FH, $getbookmarkcmd;
+	my @rawbookmarks = <FH>;
+	close FH or $error = 1;
+
+	if ($error == 1) {
+		if ($rawbookmarks[0] =~ /invalid type/) {
+			# no support for zfs bookmarks, return empty hash
+			return %bookmarks;
+		}
+
+		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
+	}
+
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
+
+	my $lastguid;
+
+	foreach my $line (@rawbookmarks) {
+		# only import bookmark guids, creation from the specified filesystem
+		if ($line =~ /\Q$fs\E\#.*guid/) {
+			chomp $line;
+			$lastguid = $line;
+			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
+			$bookmarks{$lastguid}{'name'}=$bookmark;
+		} elsif ($line =~ /\Q$fs\E\#.*creation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
+			$bookmarks{$lastguid}{'creation'}=$creation;
+		}
+	}
+
+	return %bookmarks;
+}
 
 sub getsendsize {
 	my ($sourcehost,$snap1,$snap2,$isroot,$receivetoken) = @_;
@@ -1156,6 +1395,11 @@ sub getsendsize {
 		$sendsize =~ s/^size\t*//;
 	}
 	chomp $sendsize;
+
+	# check for valid value
+	if ($sendsize !~ /^\d+$/) {
+		$sendsize = '';
+	}
 
 	# to avoid confusion with a zero size pv, give sendsize
 	# a minimum 4K value - or if empty, make sure it reads UNKNOWN
@@ -1230,7 +1474,7 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, lzo (default) & none
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
@@ -1253,3 +1497,7 @@ Options:
   --dumpsnaps           Dumps a list of snapshots during the run
   --no-command-checks   Do not check command existence before attempting transfer. Not recommended
   --no-resume           Don't use the ZFS resume feature if available
+  --no-clone-handling   Don't try to recreate clones on target
+  --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation
+
+  --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks

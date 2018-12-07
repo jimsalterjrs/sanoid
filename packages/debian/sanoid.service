@@ -7,4 +7,4 @@ ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 [Service]
 Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/sbin/sanoid --cron
+ExecStart=/usr/sbin/sanoid --take-snapshots
