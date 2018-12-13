@@ -20,7 +20,7 @@ my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete") or pod2usage(2);
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -239,6 +239,12 @@ sub syncdataset {
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
+	# if no rollbacks are allowed, disable forced receive
+	my $forcedrecv = "-F";
+	if (defined $args{'no-rollback'}) {
+		$forcedrecv = "";
+	}
+
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
 	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
@@ -360,7 +366,7 @@ sub syncdataset {
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sourcefsescaped\@$oldestsnapescaped";
-		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+		my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
 
 		my $pvsize;
 		if (defined $origin) {
@@ -451,7 +457,7 @@ sub syncdataset {
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
 		    my $sendcmd = "$sourcesudocmd $zfscmd send -t $receivetoken";
-		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+		    my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 		    my $disp_pvsize = readablebytes($pvsize);
 		    if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -563,13 +569,19 @@ sub syncdataset {
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
-			if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
-			if ($targethost ne '') {
-				if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped\n"; }
-				system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped"));
-			} else {
-				if ($debug) { print "$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped\n"; }
-				system ("$targetsudocmd $zfscmd rollback -R $targetfsescaped\@$matchingsnapescaped");
+			if (!defined $args{'no-rollback'}) {
+				my $rollbacktype = "-R";
+				if (defined $args{'no-clone-rollback'}) {
+					$rollbacktype = "-r";
+				}
+				if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
+				if ($targethost ne '') {
+					if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
+					system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
+				} else {
+					if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
+					system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
+				}
 			}
 
 			my $nextsnapshot = 0;
@@ -597,7 +609,7 @@ sub syncdataset {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
 
 					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
@@ -612,7 +624,7 @@ sub syncdataset {
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
 					my $sendcmd = "$sourcesudocmd $zfscmd send -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
@@ -629,7 +641,7 @@ sub syncdataset {
 			# bookmark replication was only done to the next oldest snapshot
 			if (!$bookmark || $nextsnapshot) {
 				my $sendcmd = "$sourcesudocmd $zfscmd send $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-				my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs -F $targetfsescaped";
+				my $recvcmd = "$targetsudocmd $zfscmd receive $receiveextraargs $forcedrecv $targetfsescaped";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 				my $disp_pvsize = readablebytes($pvsize);
 				if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -1479,8 +1491,9 @@ Options:
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --no-clone-rollback   Does not rollback clones on target
+  --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
-
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
