@@ -143,8 +143,8 @@ sub monitor_snapshots {
 
 			my $typewarn = $type . '_warn';
 			my $typecrit = $type . '_crit';
-			my $warn = $config{$section}{$typewarn} * $smallerperiod;
-			my $crit = $config{$section}{$typecrit} * $smallerperiod;
+			my $warn = convertTimePeriod($config{$section}{$typewarn}, $smallerperiod);
+			my $crit = convertTimePeriod($config{$section}{$typecrit}, $smallerperiod);
 			my $elapsed = -1;
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
 				$elapsed = $snapsbytype{$path}{$type}{'newest'};
@@ -153,7 +153,7 @@ sub monitor_snapshots {
 			my $dispwarn = displaytime($warn);
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) {
-				if ($config{$section}{$typecrit} > 0) {
+				if ($crit > 0) {
 					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
@@ -162,7 +162,7 @@ sub monitor_snapshots {
 					}
 				}
 			 } elsif ($elapsed > $warn) {
-				if ($config{$section}{$typewarn} > 0) {
+				if ($warn > 0) {
 					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
 					push @msgs, "WARN: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
@@ -1509,6 +1509,46 @@ sub runscript {
 	}
 
 	return $ret;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub convertTimePeriod {
+	my $value=shift;
+	my $period=shift;
+
+	if ($value =~ /^\d+Y$/) {
+		$period = 60*60*24*31*365;
+		chop $value;
+	} elsif ($value =~ /^\d+M$/) {
+		$period = 60*60*24*31;
+		chop $value;
+	} elsif ($value =~ /^\d+W$/) {
+		$period = 60*60*24*7;
+		chop $value;
+	} elsif ($value =~ /^\d+D$/) {
+		$period = 60*60*24;
+		chop $value;
+	} elsif ($value =~ /^\d+h$/) {
+		$period = 60*60;
+		chop $value;
+	} elsif ($value =~ /^\d+m$/) {
+		$period = 60;
+		chop $value;
+	} elsif ($value =~ /^\d+s$/) {
+		$period = 1;
+		chop $value;
+	} elsif ($value =~ /^\d+$/) {
+		# no unit, provided fallback period is used
+	} else {
+		# invalid value, return smallest valid value as fallback
+		# (will trigger a warning message for monitoring for sure)
+		return 1;
+	}
+
+	return $value * $period;
 }
 
 __END__
