@@ -1519,25 +1519,22 @@ sub convertTimePeriod {
 	my $value=shift;
 	my $period=shift;
 
-	if ($value =~ /^\d+Y$/) {
+	if ($value =~ /^\d+[yY]$/) {
 		$period = 60*60*24*31*365;
 		chop $value;
-	} elsif ($value =~ /^\d+M$/) {
-		$period = 60*60*24*31;
-		chop $value;
-	} elsif ($value =~ /^\d+W$/) {
+	} elsif ($value =~ /^\d+[wW]$/) {
 		$period = 60*60*24*7;
 		chop $value;
-	} elsif ($value =~ /^\d+D$/) {
+	} elsif ($value =~ /^\d+[dD]$/) {
 		$period = 60*60*24;
 		chop $value;
-	} elsif ($value =~ /^\d+h$/) {
+	} elsif ($value =~ /^\d+[hH]$/) {
 		$period = 60*60;
 		chop $value;
-	} elsif ($value =~ /^\d+m$/) {
+	} elsif ($value =~ /^\d+[mM]$/) {
 		$period = 60;
 		chop $value;
-	} elsif ($value =~ /^\d+s$/) {
+	} elsif ($value =~ /^\d+[sS]$/) {
 		$period = 1;
 		chop $value;
 	} elsif ($value =~ /^\d+$/) {
