@@ -1,4 +1,4 @@
-%global version 1.4.18
+%global version 2.0.0
 %global git_tag v%{version}
 
 # Enable with systemctl "enable sanoid.timer"
@@ -12,9 +12,9 @@ Summary:	   A policy-driven snapshot management tool for ZFS file systems
 Group:		   Applications/System
 License:	   GPLv3
 URL:		   https://github.com/jimsalterjrs/sanoid
-Source0:           https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
+Source0:	   https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
 
-Requires:	   perl, mbuffer, lzop, pv
+Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles
 %if 0%{?_with_systemd}
 Requires:      systemd >= 212
 
@@ -111,6 +111,8 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
+* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
+- Bump to 2.0.0
 * Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1
 - Bump to 1.4.18
 * Thu Aug 31 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-2
