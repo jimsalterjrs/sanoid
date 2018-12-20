@@ -377,9 +377,12 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
+                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 
-		foreach my $type (keys %{ $config{$section} }){
-			unless ($type =~ /ly$/) { next; }
+                foreach my $type (@types) {
+
+		foreach my $_type (keys %{ $config{$section} }){
+			unless ($type eq $_type) { next; }
 			if ($config{$section}{$type} > 0) {
 
 				my $newestage; # in seconds
@@ -505,6 +508,7 @@ sub take_snapshots {
 					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}${dateSuffix}_$type");
 				}
 			}
+		}
 		}
 	}
 
