@@ -14,13 +14,16 @@ use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
 
+my $mbuffer_size = "16M";
+
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback") or pod2usage(2);
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
+                   "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -56,7 +59,7 @@ my $pscmd = '/bin/ps';
 my $pvcmd = '/usr/bin/pv';
 my $mbuffercmd = '/usr/bin/mbuffer';
 my $sudocmd = '/usr/bin/sudo';
-my $mbufferoptions = '-q -s 128k -m 16M 2>/dev/null';
+my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
 # currently using ls to check for file existence because we aren't depending on perl
 # being present on remote machines.
 my $lscmd = '/bin/ls';
@@ -1489,6 +1492,7 @@ Options:
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
+  --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --no-clone-rollback   Does not rollback clones on target
