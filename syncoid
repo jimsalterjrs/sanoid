@@ -1316,7 +1316,7 @@ sub getbookmarks() {
 	close FH or $error = 1;
 
 	if ($error == 1) {
-		if ($rawbookmarks[0] =~ /invalid type/) {
+		if ($rawbookmarks[0] =~ /invalid type/ or $rawbookmarks[0] =~ /operation not applicable to datasets of this type/) {
 			# no support for zfs bookmarks, return empty hash
 			return %bookmarks;
 		}
