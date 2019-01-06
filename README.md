@@ -192,7 +192,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-command-checks
 
-	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used.
+	Does not check the existence of commands before attempting the transfer, providing administrators a way to run the tool with minimal overhead and maximum speed, at risk of potentially failed replication, or other possible edge cases. It assumes all programs are available, and should not be used in most situations. This is an not an officially supported run mode.
 
 + --no-stream
 
