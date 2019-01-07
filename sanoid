@@ -765,6 +765,8 @@ sub init {
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children','no_inconsistent_snapshot','force_post_snapshot_script');
+	# recursive is defined as toggle but can also have the special value "zfs", it is kept to be backward compatible
+
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 
@@ -861,9 +863,10 @@ sub init {
 
 		# how 'bout some recursion? =)
 		my $recursive = $ini{$section}{'recursive'} && grep( /^$ini{$section}{'recursive'}$/, @istrue );
+		my $zfsRecursive = $ini{$section}{'recursive'} && $ini{$section}{'recursive'} =~ /zfs/i;
 		my $skipChildren = $ini{$section}{'skip_children'} && grep( /^$ini{$section}{'skip_children'}$/, @istrue );
 		my @datasets;
-		if ($ini{$section}{'recursive'} =~ /zfs/i) {
+		if ($zfsRecursive) {
 			$config{$section}{'zfs_recursion'} = 1;
 		} elsif ($recursive || $skipChildren) {
 			@datasets = getchilddatasets($config{$section}{'path'});
