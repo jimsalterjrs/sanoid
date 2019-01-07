@@ -213,7 +213,6 @@ sub getchilddatasets {
 		if (defined $args{'exclude'}) {
 			my $excludes = $args{'exclude'};
 			foreach (@$excludes) {
-				print("$dataset\n");
 				if ($dataset =~ /$_/) {
 					if ($debug) { print "DEBUG: excluded $dataset because of $_\n"; }
 					next DATASETS;
