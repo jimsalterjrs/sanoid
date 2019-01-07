@@ -502,7 +502,13 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}${dateSuffix}_$type");
+
+					# use zfs (atomic) recursion if specified in config
+					if ($config{$section}{'zfs_recursion'}) {
+						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}${dateSuffix}_$type\@");
+					} else {
+						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}${dateSuffix}_$type");
+					}
 				}
 			}
 		}
@@ -510,8 +516,14 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
-			my $dataset = (split '@', $snap)[0];
-			my $snapname = (split '@', $snap)[1];
+			my @split = split '@', $snap, -1;
+			my $recursiveFlag = 0;
+			if (scalar(@split) == 3) {
+				$recursiveFlag = 1;
+				chop $snap;
+			}
+			my $dataset = $split[0];
+			my $snapname = $split[1];
 			my $presnapshotfailure = 0;
 			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
@@ -530,8 +542,13 @@ sub take_snapshots {
 			}
 			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
 			if (!$args{'readonly'}) {
-				system($zfs, "snapshot", "$snap") == 0
-					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+				if ($recursiveFlag) {
+					system($zfs, "snapshot", "-r", "$snap") == 0
+						or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+				} else {
+					system($zfs, "snapshot", "$snap") == 0
+						or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+				}
 			}
 			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
@@ -846,7 +863,9 @@ sub init {
 		my $recursive = $ini{$section}{'recursive'} && grep( /^$ini{$section}{'recursive'}$/, @istrue );
 		my $skipChildren = $ini{$section}{'skip_children'} && grep( /^$ini{$section}{'skip_children'}$/, @istrue );
 		my @datasets;
-		if ($recursive || $skipChildren) {
+		if ($ini{$section}{'recursive'} =~ /zfs/i) {
+			$config{$section}{'zfs_recursion'} = 1;
+		} elsif ($recursive || $skipChildren) {
 			@datasets = getchilddatasets($config{$section}{'path'});
 			DATASETS: foreach my $dataset(@datasets) {
 				chomp $dataset;
