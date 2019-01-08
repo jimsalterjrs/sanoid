@@ -1,5 +1,7 @@
 #!/bin/bash
 
+unamestr="$(uname)"
+
 function setup {
     export LANG=C
     export LANGUAGE=C
@@ -90,7 +92,7 @@ function verifySnapshotList {
         message="${message}monthly snapshot count is wrong: ${monthly_count}\n"
     fi
 
-    checksum=$(sha256sum "${RESULT}" | cut -d' ' -f1)
+    checksum=$(shasum -a 256 "${RESULT}" | cut -d' ' -f1)
     if [ "${checksum}" != "${CHECKSUM}" ]; then
         failed=1
         message="${message}result checksum mismatch\n"
@@ -104,4 +106,14 @@ function verifySnapshotList {
     echo -n -e "${message}" >&2
 
     exit 1
+}
+
+function setdate {
+	TIMESTAMP="$1"
+
+	if [ "$unamestr" == 'FreeBSD' ]; then
+		date -u -f '%s' "${TIMESTAMP}"
+	else
+		date --utc --set "@${TIMESTAMP}"
+	fi
 }
