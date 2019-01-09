@@ -60,7 +60,11 @@ function saveSnapshotList {
     zfs list -t snapshot -o name -Hr "${POOL_NAME}" | sort > "${RESULT}"
 
     # clear the seconds for comparing
-    sed -i 's/\(autosnap_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]:[0-9][0-9]:\)[0-9][0-9]_/\100_/g' "${RESULT}"
+    if [ "$unamestr" == 'FreeBSD' ]; then
+        sed -i '' 's/\(autosnap_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]:[0-9][0-9]:\)[0-9][0-9]_/\100_/g' "${RESULT}"
+    else
+        sed -i 's/\(autosnap_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]:[0-9][0-9]:\)[0-9][0-9]_/\100_/g' "${RESULT}"
+    fi
 }
 
 function verifySnapshotList {
@@ -109,11 +113,11 @@ function verifySnapshotList {
 }
 
 function setdate {
-	TIMESTAMP="$1"
+    TIMESTAMP="$1"
 
-	if [ "$unamestr" == 'FreeBSD' ]; then
-		date -u -f '%s' "${TIMESTAMP}"
-	else
-		date --utc --set "@${TIMESTAMP}"
-	fi
+    if [ "$unamestr" == 'FreeBSD' ]; then
+        date -u -f '%s' "${TIMESTAMP}"
+    else
+        date --utc --set "@${TIMESTAMP}"
+    fi
 }
