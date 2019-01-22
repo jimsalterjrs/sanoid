@@ -377,9 +377,9 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
+                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 
-		foreach my $type (keys %{ $config{$section} }){
-			unless ($type =~ /ly$/) { next; }
+                foreach my $type (@types) {
 			if ($config{$section}{$type} > 0) {
 
 				my $newestage; # in seconds
@@ -513,11 +513,15 @@ sub take_snapshots {
 			my $dataset = (split '@', $snap)[0];
 			my $snapname = (split '@', $snap)[1];
 			my $presnapshotfailure = 0;
-			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
+			my $ret = 0;
+			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_SNAPNAME'} = $snapname;
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
-				my $ret = runscript('pre_snapshot_script',$dataset);
+
+				if (!$args{'readonly'}) {
+					$ret = runscript('pre_snapshot_script',$dataset);
+				}
 
 				delete $ENV{'SANOID_TARGET'};
 				delete $ENV{'SANOID_SNAPNAME'};
@@ -533,12 +537,15 @@ sub take_snapshots {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 			}
-			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
+			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
-					runscript('post_snapshot_script',$dataset);
+	
+					if (!$args{'readonly'}) {
+						runscript('post_snapshot_script',$dataset);
+					}
 
 					delete $ENV{'SANOID_TARGET'};
 					delete $ENV{'SANOID_SNAPNAME'};
