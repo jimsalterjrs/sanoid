@@ -64,6 +64,7 @@ my $quiet = $args{'quiet'};
 my $resume = !$args{'no-resume'};
 
 my $zfscmd = '/sbin/zfs';
+my $zpoolcmd = '/sbin/zpool';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
 
@@ -886,14 +887,32 @@ sub checkcommands {
 
 	# check for ZFS resume feature support
 	if ($resume) {
-		my $resumechkcmd = "$zfscmd get -d 0 receive_resume_token";
+		my @parts = split ('/', $args{'source'});
+		my $srcpool = $parts[0];
+		@parts = split ('/', $args{'target'});
+		my $dstpool = $parts[0];
+
+		$srcpool = escapeshellparam($srcpool);
+		$dstpool = escapeshellparam($dstpool);
+
+		if ($sourcehost ne '') {
+			# double escaping needed
+			$srcpool = escapeshellparam($srcpool);
+		}
+
+		if ($targethost ne '') {
+			# double escaping needed
+			$dstpool = escapeshellparam($dstpool);
+		}
+
+		my $resumechkcmd = "$zpoolcmd get -o value -H feature\@extensible_dataset";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
-		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
+		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
-		$avail{'targetresume'} = system("$targetssh $resumechkcmd >/dev/null 2>&1");
+		$avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
 
 		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
