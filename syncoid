@@ -124,6 +124,12 @@ if (!defined $args{'recursive'}) {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
 
+	if (!@datasets) {
+		warn "CRITICAL ERROR: no datasets found";
+		@datasets = ();
+		$exitcode = 2;
+	}
+
 	my @deferred;
 
 	foreach my $datasetProperties(@datasets) {
