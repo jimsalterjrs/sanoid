@@ -263,6 +263,12 @@ sub syncdataset {
 
 	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
 
+	if (!defined $sync) {
+		# zfs already printed the corresponding error
+		if ($exitcode < 2) { $exitcode = 2; }
+		return 0;
+	}
+
 	if ($sync eq 'true' || $sync eq '-' || $sync eq '') {
 		# empty is handled the same as unset (aka: '-')
 		# definitely sync this dataset - if a host is called 'true' or '-', then you're special
@@ -978,6 +984,11 @@ sub getzfsvalue {
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
+
+	if (!defined $value) {
+		return undef;
+	}
+
 	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
@@ -1468,7 +1479,7 @@ sub getreceivetoken() {
 	my ($rhost,$fs,$isroot) = @_;
 	my $token = getzfsvalue($rhost,$fs,$isroot,"receive_resume_token");
 
-	if ($token ne '-' && $token ne '') {
+	if (defined $token && $token ne '-' && $token ne '') {
 		return $token;
 	}
 
