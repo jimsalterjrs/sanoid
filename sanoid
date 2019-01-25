@@ -19,7 +19,7 @@ use Time::Local;      # to parse dates in reverse
 my %args = ("configdir" => "/etc/sanoid");
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "monitor-health", "force-update", "configdir=s",
-                   "monitor-snapshots", "take-snapshots", "prune-snapshots",
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
           ) or pod2usage(2);
 
@@ -143,8 +143,8 @@ sub monitor_snapshots {
 
 			my $typewarn = $type . '_warn';
 			my $typecrit = $type . '_crit';
-			my $warn = $config{$section}{$typewarn} * $smallerperiod;
-			my $crit = $config{$section}{$typecrit} * $smallerperiod;
+			my $warn = convertTimePeriod($config{$section}{$typewarn}, $smallerperiod);
+			my $crit = convertTimePeriod($config{$section}{$typecrit}, $smallerperiod);
 			my $elapsed = -1;
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
 				$elapsed = $snapsbytype{$path}{$type}{'newest'};
@@ -153,7 +153,7 @@ sub monitor_snapshots {
 			my $dispwarn = displaytime($warn);
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) {
-				if ($config{$section}{$typecrit} > 0) {
+				if ($crit > 0) {
 					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
@@ -162,7 +162,7 @@ sub monitor_snapshots {
 					}
 				}
 			 } elsif ($elapsed > $warn) {
-				if ($config{$section}{$typewarn} > 0) {
+				if ($warn > 0) {
 					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
 					push @msgs, "WARN: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
@@ -305,7 +305,7 @@ sub prune_snapshots {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-							if (iszfsbusy($path)) {
+							if (!$args{'force-prune'} && iszfsbusy($path)) {
 								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
 							} else {
 								if (! $args{'readonly'}) {
@@ -377,9 +377,9 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
+                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 
-		foreach my $type (keys %{ $config{$section} }){
-			unless ($type =~ /ly$/) { next; }
+                foreach my $type (@types) {
 			if ($config{$section}{$type} > 0) {
 
 				my $newestage; # in seconds
@@ -513,11 +513,15 @@ sub take_snapshots {
 			my $dataset = (split '@', $snap)[0];
 			my $snapname = (split '@', $snap)[1];
 			my $presnapshotfailure = 0;
-			if ($config{$dataset}{'pre_snapshot_script'} and !$args{'readonly'}) {
+			my $ret = 0;
+			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_SNAPNAME'} = $snapname;
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
-				my $ret = runscript('pre_snapshot_script',$dataset);
+
+				if (!$args{'readonly'}) {
+					$ret = runscript('pre_snapshot_script',$dataset);
+				}
 
 				delete $ENV{'SANOID_TARGET'};
 				delete $ENV{'SANOID_SNAPNAME'};
@@ -533,12 +537,15 @@ sub take_snapshots {
 				system($zfs, "snapshot", "$snap") == 0
 					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
 			}
-			if ($config{$dataset}{'post_snapshot_script'} and !$args{'readonly'}) {
+			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
-					runscript('post_snapshot_script',$dataset);
+	
+					if (!$args{'readonly'}) {
+						runscript('post_snapshot_script',$dataset);
+					}
 
 					delete $ENV{'SANOID_TARGET'};
 					delete $ENV{'SANOID_SNAPNAME'};
@@ -1511,6 +1518,43 @@ sub runscript {
 	return $ret;
 }
 
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub convertTimePeriod {
+	my $value=shift;
+	my $period=shift;
+
+	if ($value =~ /^\d+[yY]$/) {
+		$period = 60*60*24*31*365;
+		chop $value;
+	} elsif ($value =~ /^\d+[wW]$/) {
+		$period = 60*60*24*7;
+		chop $value;
+	} elsif ($value =~ /^\d+[dD]$/) {
+		$period = 60*60*24;
+		chop $value;
+	} elsif ($value =~ /^\d+[hH]$/) {
+		$period = 60*60;
+		chop $value;
+	} elsif ($value =~ /^\d+[mM]$/) {
+		$period = 60;
+		chop $value;
+	} elsif ($value =~ /^\d+[sS]$/) {
+		$period = 1;
+		chop $value;
+	} elsif ($value =~ /^\d+$/) {
+		# no unit, provided fallback period is used
+	} else {
+		# invalid value, return smallest valid value as fallback
+		# (will trigger a warning message for monitoring for sure)
+		return 1;
+	}
+
+	return $value * $period;
+}
+
 __END__
 
 =head1 NAME
@@ -1538,6 +1582,7 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
+  --force-prune         Purges expired snapshots even if a send/recv is in progress
 
   --help                Prints this helptext
   --version             Prints the version number

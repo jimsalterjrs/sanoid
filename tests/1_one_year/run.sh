@@ -39,7 +39,7 @@ function cleanUp {
 trap cleanUp EXIT
 
 while [ $timestamp -le $END ]; do
-    date --utc --set @$timestamp; date; "${SANOID}" --cron --verbose
+    setdate $timestamp; date; "${SANOID}" --cron --verbose
     timestamp=$((timestamp+3600))
 done
 

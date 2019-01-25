@@ -57,6 +57,10 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	This will process your sanoid.conf file, it will NOT create snapshots, but it will purge expired ones.
 
++ --force-prune
+
+	Purges expired snapshots even if a send/recv is in progress
+
 + --monitor-snapshots
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of your snapshots.
@@ -188,7 +192,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-command-checks
 
-	Do not check the existance of commands before attempting the transfer. It assumes all programs are available. This should never be used.
+	Does not check the existence of commands before attempting the transfer, providing administrators a way to run the tool with minimal overhead and maximum speed, at risk of potentially failed replication, or other possible edge cases. It assumes all programs are available, and should not be used in most situations. This is an not an officially supported run mode.
 
 + --no-stream
 
@@ -197,6 +201,14 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --no-sync-snap
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+
++ --no-clone-rollback
+
+	Do not rollback clones on target
+
++ --no-rollback
+
+	Do not rollback anything (clones or snapshots) on target host
 
 + --exclude=REGEX
 

@@ -46,8 +46,8 @@ zfs snapshot "${POOL_NAME}"/src@snap5
 ../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst || exit 1
 
 # verify
-output=$(zfs list -t snapshot -r "${POOL_NAME}" -H -o name)
-checksum=$(echo "${output}" | grep -v syncoid_ | sha256sum)
+output=$(zfs list -t snapshot -r -H -o name "${POOL_NAME}")
+checksum=$(echo "${output}" | grep -v syncoid_ | shasum -a 256)
 
 if [ "${checksum}" != "${TARGET_CHECKSUM}" ]; then
 	exit 1
