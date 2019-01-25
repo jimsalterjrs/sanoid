@@ -37,8 +37,8 @@ sleep 1
 ../../../syncoid -r --force-delete --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst || exit 1
 
 # verify
-output=$(zfs list -t snapshot -r "${POOL_NAME}" -H -o name | sed 's/@syncoid_.*$'/@syncoid_/)
-checksum=$(echo "${output}" | sha256sum)
+output=$(zfs list -t snapshot -r -H -o name "${POOL_NAME}" | sed 's/@syncoid_.*$'/@syncoid_/)
+checksum=$(echo "${output}" | shasum -a 256)
 
 if [ "${checksum}" != "${TARGET_CHECKSUM}" ]; then
 	exit 1
