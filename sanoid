@@ -542,7 +542,7 @@ sub take_snapshots {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
-	
+
 					if (!$args{'readonly'}) {
 						runscript('post_snapshot_script',$dataset);
 					}
@@ -1422,7 +1422,7 @@ sub getchilddatasets {
 	my $fs = shift;
 	my $mysudocmd = '';
 
-	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
+	my $getchildrencmd = "$mysudocmd $zfs list -o name -t filesystem,volume -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;
