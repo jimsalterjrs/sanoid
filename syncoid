@@ -23,6 +23,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
+                   "create-bookmark",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -677,7 +678,22 @@ sub syncdataset {
 		}
 	}
 
-	if (!defined $args{'no-sync-snap'}) {
+	if (defined $args{'no-sync-snap'}) {
+		if (defined $args{'create-bookmark'}) {
+			my $bookmarkcmd;
+			if ($sourcehost ne '') {
+				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
+			} else {
+				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
+			}
+			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
+			system($bookmarkcmd) == 0 or do {
+				warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+				if ($exitcode < 2) { $exitcode = 2; }
+				return 0;
+			};
+		}
+	} else {
 		# prune obsolete sync snaps on source and target (only if this run created ones).
 		pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 		pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
@@ -1506,6 +1522,7 @@ Options:
   --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --create-bookmark		Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
