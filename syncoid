@@ -887,9 +887,9 @@ sub checkcommands {
 
 	# check for ZFS resume feature support
 	if ($resume) {
-		my @parts = split ('/', $args{'source'});
+		my @parts = split ('/', $sourcefs);
 		my $srcpool = $parts[0];
-		@parts = split ('/', $args{'target'});
+		@parts = split ('/', $targetfs);
 		my $dstpool = $parts[0];
 
 		$srcpool = escapeshellparam($srcpool);
