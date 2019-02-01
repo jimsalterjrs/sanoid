@@ -682,7 +682,7 @@ sub syncdataset {
 		if (defined $args{'create-bookmark'}) {
 			my $bookmarkcmd;
 			if ($sourcehost ne '') {
-				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
+				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
 			} else {
 				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
 			}
