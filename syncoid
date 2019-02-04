@@ -817,6 +817,7 @@ sub checkcommands {
 
 	if (!defined $avail{'sourcecompress'}) { $avail{'sourcecompress'} = ''; }
 	if (!defined $avail{'targetcompress'}) { $avail{'targetcompress'} = ''; }
+	if (!defined $avail{'localcompress'}) { $avail{'localcompress'} = ''; }
 	if (!defined $avail{'sourcembuffer'}) { $avail{'sourcembuffer'} = ''; }
 	if (!defined $avail{'targetmbuffer'}) { $avail{'targetmbuffer'} = ''; }
 
