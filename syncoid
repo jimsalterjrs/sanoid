@@ -581,6 +581,7 @@ sub syncdataset {
 		if ($matchingsnap eq $newsyncsnap) {
 			# barf some text but don't touch the filesystem
 			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
+			return 0;
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
