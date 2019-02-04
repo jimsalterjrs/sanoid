@@ -1493,8 +1493,6 @@ sub getreceivetoken() {
 sub parsespecialoptions {
 	my ($line) = @_;
 
-	print("$line\n");
-
 	my @options = ();
 
 	my @values = split(/ /, $line);
