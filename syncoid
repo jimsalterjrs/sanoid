@@ -362,8 +362,8 @@ sub syncdataset {
 		# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 	#my $originaltargetreadonly;
 
-	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','p','v','w'));
-	my $recvoptions = getoptionsline(\@recvoptions, ('o','x','u','v'));
+	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
 
 	# sync 'em up.
 	if (! $targetexists) {
@@ -668,7 +668,7 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			if (!$bookmark || $nextsnapshot) {
-				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','p','v','w'));
+				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
@@ -1415,9 +1415,9 @@ sub getsendsize {
 
 	my $sendoptions;
 	if (defined($receivetoken)) {
-		$sendoptions = getoptionsline(\@sendoptions, ('e', 'w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('e'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','p','v','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','v','w'));
 	}
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
