@@ -416,6 +416,12 @@ sub syncdataset {
 			return 0;
 		}
 		system($synccmd) == 0 or do {
+			if (defined $origin) {
+				print "INFO: clone creation failed, trying ordinary replication as fallback\n";
+				syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+				return 0;
+			}
+
 			warn "CRITICAL ERROR: $synccmd failed: $?";
 			if ($exitcode < 2) { $exitcode = 2; }
 			return 0;
