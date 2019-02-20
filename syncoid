@@ -1247,6 +1247,13 @@ sub getssh {
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
+
+		system("$sshcmd -S $socket $rhost echo -n") == 0 or do {
+			my $code = $? >> 8;
+			warn "CRITICAL ERROR: ssh connection echo test failed for $rhost with exit code $code";
+			exit(2);
+		};
+
 		$rhost = "-S $socket $rhost";
 	} else {
 		my $localuid = $<;
