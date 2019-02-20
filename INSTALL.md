@@ -5,7 +5,7 @@
 <!-- TOC depthFrom:1 depthTo:6 withLinks:1 updateOnSave:0 orderedList:0 -->
 
 - [Installation](#installation)
-	- [Ubuntu](#ubuntu)
+	- [Debian/Ubuntu](#debianubuntu)
 	- [CentOS](#centos)
 	- [FreeBSD](#freebsd)
 	- [Other OSes](#other-oses)
@@ -15,12 +15,30 @@
 <!-- /TOC -->
 
 
-## Ubuntu
+## Debian/Ubuntu
 
 Install prerequisite software:
 
 ```bash
 apt install libconfig-inifiles-perl pv lzop mbuffer
+```
+
+Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
+
+```bash
+# Download the repo as root to avoid changing permissions later
+sudo git clone https://github.com/jimsalterjrs/sanoid.git
+cd sanoid
+ln -s packages/debian .
+dpkg-buildpackage -uc -us
+apt install ../sanoid_*_all.deb
+```
+
+Enable sanoid timer:
+```bash
+# enable and start the sanoid timer
+sudo systemctl enable sanoid.timer
+sudo systemctl start sanoid.timer
 ```
 
 ## CentOS
@@ -60,23 +78,42 @@ cat << "EOF" | sudo tee /etc/systemd/system/sanoid.service
 Description=Snapshot ZFS Pool
 Requires=zfs.target
 After=zfs.target
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 
 [Service]
+Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/sbin/sanoid --cron
+ExecStart=/usr/sbin/sanoid --take-snapshots
+EOF
+
+cat << "EOF" | sudo tee /etc/systemd/system/sanoid-prune.service
+[Unit]
+Description=Cleanup ZFS Pool
+Requires=zfs.target
+After=zfs.target sanoid.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+ExecStart=/usr/sbin/sanoid --prune-snapshots
+
+[Install]
+WantedBy=sanoid.service
 EOF
 ```
 
-And a systemd timer that will execute **Sanoid** once per minute:
+And a systemd timer that will execute **Sanoid** once per quarter hour
+(Decrease the interval as suitable for configuration):
 
 ```bash
 cat << "EOF" | sudo tee /etc/systemd/system/sanoid.timer
 [Unit]
-Description=Run Sanoid Every Minute
+Description=Run Sanoid Every 15 Minutes
 Requires=sanoid.service
 
 [Timer]
-OnCalendar=*:0/1
+OnCalendar=*:0/15
 Persistent=true
 
 [Install]
@@ -100,7 +137,7 @@ Now, proceed to configure [**Sanoid**](#configuration)
 Install prerequisite software:
 
 ```bash
-pkg install p5-Config-Inifiles pv lzop
+pkg install p5-Config-Inifiles pv mbuffer lzop
 ```
 
 **Additional notes:**
@@ -108,6 +145,8 @@ pkg install p5-Config-Inifiles pv lzop
 *   FreeBSD may place pv and lzop in somewhere other than /usr/bin — syncoid currently does not check path.
 
 *   Simplest path workaround is symlinks, eg `ln -s /usr/local/bin/lzop /usr/bin/lzop` or similar, as appropriate to create links in **/usr/bin** to wherever the utilities actually are on your system.
+
+*   See note about mbuffer and other things in FREEBSD.readme
 
 ## Other OSes
 
@@ -130,4 +169,4 @@ pkg install p5-Config-Inifiles pv lzop
 
 ## Sanoid
 
-Instructions on how to set up `sanoid.conf`.  Maybe just copy/paste the example `sanoid.conf` file in here but clean it up a little bit.
+Take a look at the files `sanoid.defaults.conf` and` sanoid.conf.example` for all possible configuration options. Also have a look at the README.md

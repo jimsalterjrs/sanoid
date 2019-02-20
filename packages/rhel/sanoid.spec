@@ -1,4 +1,4 @@
-%global version 1.4.14
+%global version 2.0.0
 %global git_tag v%{version}
 
 # Enable with systemctl "enable sanoid.timer"
@@ -6,15 +6,15 @@
 
 Name:		   sanoid
 Version:	   %{version}
-Release:	   2%{?dist}
+Release:	   1%{?dist}
 BuildArch:	   noarch
 Summary:	   A policy-driven snapshot management tool for ZFS file systems
 Group:		   Applications/System
 License:	   GPLv3
 URL:		   https://github.com/jimsalterjrs/sanoid
-Source0:       https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
+Source0:	   https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
 
-Requires:	   perl, mbuffer, lzop, pv
+Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles
 %if 0%{?_with_systemd}
 Requires:      systemd >= 212
 
@@ -58,6 +58,7 @@ Requires=zfs.target
 After=zfs.target
 
 [Service]
+Environment=TZ=UTC
 Type=oneshot
 ExecStart=%{_sbindir}/sanoid --cron
 EOF
@@ -110,6 +111,10 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
+* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
+- Bump to 2.0.0
+* Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1
+- Bump to 1.4.18
 * Thu Aug 31 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-2
 - Add systemd timers
 * Wed Aug 30 2017 Dominic Robinson <github@dcrdev.com> - 1.4.14-1
@@ -121,6 +126,5 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 - Version bump
 - Clean up variables and macros
 - Compatible with both Fedora and Red Hat
-
 * Sat Feb 13 2016 Thomas M. Lapp <tmlapp@gmail.com> - 1.4.4-1
 - Initial RPM Package
