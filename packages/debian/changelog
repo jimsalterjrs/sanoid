@@ -1,0 +1,67 @@
+sanoid (2.0.0) unstable; urgency=medium
+
+  [overall]   documentation updates, small fixes, more warnings (@sparky3387, @ljwobker, @phreaker0)
+  [syncoid]   added force delete flag (@phreaker0)
+  [sanoid]    removed sleeping between snapshot taking (@phreaker0)
+  [syncoid]   added '--no-privilege-elevation' option to bypass root check (@lopsided98)
+  [sanoid]    implemented weekly period (@phreaker0)
+  [syncoid]   implemented support for zfs bookmarks as fallback (@phreaker0)
+  [sanoid]    support for pre, post and prune snapshot scripts (@jouir, @darkbasic, @phreaker0)
+  [sanoid]    ignore snapshots types that are set to 0 (@muff1nman)
+  [packaging] split snapshot taking/pruning into separate systemd units for debian package (@phreaker0)
+  [syncoid]   replicate clones (@phreaker0)
+  [syncoid]   added compression algorithms: lz4, xz (@spheenik, @phreaker0)
+  [sanoid]    added option to defer pruning based on the available pool capacity (@phreaker0)
+  [sanoid]    implemented frequent snapshots with configurable period (@phreaker0)
+  [syncoid]   prevent a perl warning on systems which doesn't output estimated send size information (@phreaker0)
+  [packaging] dependency fixes (@rodgerd, mabushey)
+  [syncoid]   implemented support for excluding children of a specific dataset (@phreaker0)
+  [sanoid]    monitor-health command additionally checks vdev members for io and checksum errors (@phreaker0)
+  [syncoid]   added ability to skip datasets by a custom dataset property 'syncoid:no-sync' (@attie)
+  [syncoid]   don't die on some critical replication errors, but continue with the remaining datasets (@phreaker0)
+  [syncoid]   return a non zero exit code if there was a problem replicating datasets (@phreaker0)
+  [syncoid]   make local source bwlimit work (@phreaker0)
+  [syncoid]   fix 'resume support' detection on FreeBSD (@pit3k)
+  [sanoid]    updated INSTALL with missing dependency
+  [sanoid]    fixed monitor-health command for pools containing cache and log devices (@phreaker0)
+  [sanoid]    quiet flag suppresses all info output (@martinvw)
+  [sanoid]    check for empty lockfile which lead to sanoid failing on start (@jasonblewis)
+  [sanoid]    added dst handling to prevent multiple invalid snapshots on time shift (@phreaker0)
+  [sanoid]    cache improvements, makes sanoid much faster with a huge amount of datasets/snapshots (@phreaker0)
+  [sanoid]    implemented monitor-capacity flag for checking zpool capacity limits (@phreaker0)
+  [syncoid]   Added support for ZStandard compression.(@danielewood)
+  [syncoid]   implemented support for excluding datasets from replication with regular expressions (@phreaker0)
+  [syncoid]   correctly parse zfs column output, fixes resumeable send with datasets containing spaces (@phreaker0)
+  [syncoid]   added option for using extra identification in the snapshot name for replication to multiple targets (@phreaker0)
+  [syncoid]   added option for skipping the parent dataset in recursive replication (@phreaker0)
+  [syncoid]   typos (@UnlawfulMonad, @jsavikko, @phreaker0)
+  [sanoid]    use UTC by default in unit template and documentation (@phreaker0)
+  [syncoid]   don't prune snapshots if instructed to not create them either (@phreaker0)
+  [syncoid]   documented compatibility issues with (t)csh shells (@ecoutu)
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 04 Dec 2018 18:10:00 -0400
+
+sanoid (1.4.18) unstable; urgency=medium
+
+  implemented special character handling and support of ZFS resume/receive tokens by default in syncoid,
+  thank you @phreaker0!
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 25 Apr 2018 16:24:00 -0400
+
+sanoid (1.4.17) unstable; urgency=medium
+
+  changed die to warn when unexpectedly unable to remove a snapshot - this
+  allows sanoid to continue taking/removing other snapshots not affected by
+  whatever lock prevented the first from being taken or removed
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 8 Nov 2017 15:25:00 -0400
+
+sanoid (1.4.16) unstable; urgency=medium
+
+  * merged @hrast01's extended fix to support -o option1=val,option2=val passthrough to SSH. merged @JakobR's
+  * off-by-one fix to stop unnecessary extra snapshots being taken under certain conditions. merged @stardude900's
+  * update to INSTALL for FreeBSD users re:symlinks. Implemented @LordAro's update to change DIE to WARN when
+  * encountering a dataset with no snapshots and --no-sync-snap set during recursive replication. Implemented
+  * @LordAro's update to sanoid.conf to add an ignore template which does not snap, prune, or monitor.
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 9 Aug 2017 12:28:49 -0400
