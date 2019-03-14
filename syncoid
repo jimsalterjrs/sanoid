@@ -376,7 +376,13 @@ sub syncdataset {
 		}
 
 		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
-		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
+		if (defined $args{'no-stream'}) {
+			if (defined ($args{'no-sync-snap'}) ) {
+				$oldestsnap = getnewestsnapshot(\%snaps);
+			} else {
+				$oldestsnap = $newsyncsnap;
+			}
+		}
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
@@ -1199,6 +1205,7 @@ sub newsyncsnap {
 	my %date = getdate();
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
+	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
 	system($snapcmd) == 0 or do {
 		warn "CRITICAL ERROR: $snapcmd failed: $?";
 		if ($exitcode < 2) { $exitcode = 2; }
