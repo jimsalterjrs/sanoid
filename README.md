@@ -184,11 +184,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --source-bwlimit <limit t|g|m|k>
 
-	This is the bandwidth limit in bytes per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limites are desired. 
+	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limits are desired. 
 
 + --target-bw-limit <limit t|g|m|k>
 
-	This is the bandwidth limit in bytes per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limites are desired.
+	This is the bandwidth limit in bytes (kbytes, mbytesm etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
 
 + --no-command-checks
 
