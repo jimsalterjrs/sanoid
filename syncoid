@@ -124,6 +124,12 @@ if (!defined $args{'recursive'}) {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
 
+	if (!@datasets) {
+		warn "CRITICAL ERROR: no datasets found";
+		@datasets = ();
+		$exitcode = 2;
+	}
+
 	my @deferred;
 
 	foreach my $datasetProperties(@datasets) {
@@ -262,6 +268,12 @@ sub syncdataset {
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
 	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+
+	if (!defined $sync) {
+		# zfs already printed the corresponding error
+		if ($exitcode < 2) { $exitcode = 2; }
+		return 0;
+	}
 
 	if ($sync eq 'true' || $sync eq '-' || $sync eq '') {
 		# empty is handled the same as unset (aka: '-')
@@ -985,6 +997,11 @@ sub getzfsvalue {
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
+
+	if (!defined $value) {
+		return undef;
+	}
+
 	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
@@ -1483,7 +1500,7 @@ sub getreceivetoken() {
 	my ($rhost,$fs,$isroot) = @_;
 	my $token = getzfsvalue($rhost,$fs,$isroot,"receive_resume_token");
 
-	if ($token ne '-' && $token ne '') {
+	if (defined $token && $token ne '-' && $token ne '') {
 		return $token;
 	}
 
