@@ -83,7 +83,7 @@ ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 [Service]
 Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/sbin/sanoid --take-snapshots
+ExecStart=/usr/local/sbin/sanoid --take-snapshots
 EOF
 
 cat << "EOF" | sudo tee /etc/systemd/system/sanoid-prune.service
@@ -96,7 +96,7 @@ ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 [Service]
 Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/sbin/sanoid --prune-snapshots
+ExecStart=/usr/local/sbin/sanoid --prune-snapshots
 
 [Install]
 WantedBy=sanoid.service
