@@ -202,6 +202,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
 
++ --create-bookmark
+
+	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible. 
+
 + --no-clone-rollback
 
 	Do not rollback clones on target
