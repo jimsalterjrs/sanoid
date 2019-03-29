@@ -27,14 +27,24 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
-my $sendoptions = '';
+my @sendoptions = ();
 if (length $args{'sendoptions'}) {
-	$sendoptions = $args{'sendoptions'}
+	@sendoptions = parsespecialoptions($args{'sendoptions'});
+	if (! defined($sendoptions[0])) {
+		warn "invalid send options!";
+		pod2usage(2);
+		exit 127;
+	}
 }
 
-my $recvoptions = '';
+my @recvoptions = ();
 if (length $args{'recvoptions'}) {
-	$recvoptions = $args{'recvoptions'}
+	@recvoptions = parsespecialoptions($args{'recvoptions'});
+	if (! defined($recvoptions[0])) {
+		warn "invalid receive options!";
+		pod2usage(2);
+		exit 127;
+	}
 }
 
 
@@ -364,6 +374,9 @@ sub syncdataset {
 		# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 	#my $originaltargetreadonly;
 
+	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
+
 	# sync 'em up.
 	if (! $targetexists) {
 		# do an initial sync from the oldest source snapshot
@@ -488,6 +501,7 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
+		    $sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
 		    my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
 		    my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
@@ -637,9 +651,9 @@ sub syncdataset {
 				my $pvsize = 0;
 				my $disp_pvsize = "UNKNOWN";
 
+				$sendoptions = getoptionsline(\@sendoptions, ('L','c','e','w'));
 				if ($nextsnapshot) {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
-
 					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
 					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
@@ -672,6 +686,7 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			if (!$bookmark || $nextsnapshot) {
+				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
@@ -1430,6 +1445,12 @@ sub getsendsize {
 		$snaps = "-t $receivetoken";
 	}
 
+	my $sendoptions;
+	if (defined($receivetoken)) {
+		$sendoptions = getoptionsline(\@sendoptions, ('e'));
+	} else {
+		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','v','w'));
+	}
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
@@ -1511,6 +1532,68 @@ sub getreceivetoken() {
 	return
 }
 
+sub parsespecialoptions {
+	my ($line) = @_;
+
+	my @options = ();
+
+	my @values = split(/ /, $line);
+
+	my $optionValue = 0;
+	my $lastOption;
+
+	foreach my $value (@values) {
+		if ($optionValue ne 0) {
+			my %item = (
+				"option"  => $lastOption,
+				"line" => "-$lastOption $value",
+			);
+
+			push @options, \%item;
+			$optionValue = 0;
+			next;
+		}
+
+		for my $char (split //, $value) {
+			if ($optionValue ne 0) {
+				return undef;
+			}
+
+			if ($char eq 'o' || $char eq 'x') {
+				$lastOption = $char;
+				$optionValue = 1;
+			} else {
+				my %item = (
+					"option"  => $char,
+					"line" => "-$char",
+				);
+
+				push @options, \%item;
+			}
+		}
+	}
+
+	return @options;
+}
+
+sub getoptionsline {
+	my ($options_ref, @allowed) = @_;
+
+	my $line = '';
+
+	foreach my $value (@{ $options_ref }) {
+		if (@allowed) {
+			if (!grep( /^$$value{'option'}$/, @allowed) ) {
+				next;
+			}
+		}
+
+		$line = "$line$$value{'line'} ";
+	}
+
+	return $line;
+}
+
 __END__
 
 =head1 NAME
@@ -1541,8 +1624,8 @@ Options:
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
-  --sendoptions=OPTIONS  DANGER: Inject OPTIONS into zfs send, e.g. syncoid --sendoptions="-Lce" sets zfs send -Lce ...
-  --recvoptions=OPTIONS  DANGER: Inject OPTIONS into zfs received, e.g. syncoid --recvoptions="-x property" sets zfs receive -x property ...
+  --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filterd as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
+  --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filterd as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
