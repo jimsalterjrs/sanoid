@@ -23,18 +23,29 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
+                   "create-bookmark",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
-my $sendoptions = '';
+my @sendoptions = ();
 if (length $args{'sendoptions'}) {
-	$sendoptions = $args{'sendoptions'}
+	@sendoptions = parsespecialoptions($args{'sendoptions'});
+	if (! defined($sendoptions[0])) {
+		warn "invalid send options!";
+		pod2usage(2);
+		exit 127;
+	}
 }
 
-my $recvoptions = '';
+my @recvoptions = ();
 if (length $args{'recvoptions'}) {
-	$recvoptions = $args{'recvoptions'}
+	@recvoptions = parsespecialoptions($args{'recvoptions'});
+	if (! defined($recvoptions[0])) {
+		warn "invalid receive options!";
+		pod2usage(2);
+		exit 127;
+	}
 }
 
 
@@ -64,6 +75,7 @@ my $quiet = $args{'quiet'};
 my $resume = !$args{'no-resume'};
 
 my $zfscmd = '/sbin/zfs';
+my $zpoolcmd = '/sbin/zpool';
 my $sshcmd = '/usr/bin/ssh';
 my $pscmd = '/bin/ps';
 
@@ -123,6 +135,12 @@ if (!defined $args{'recursive'}) {
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
+
+	if (!@datasets) {
+		warn "CRITICAL ERROR: no datasets found";
+		@datasets = ();
+		$exitcode = 2;
+	}
 
 	my @deferred;
 
@@ -227,7 +245,6 @@ sub getchilddatasets {
 		if (defined $args{'exclude'}) {
 			my $excludes = $args{'exclude'};
 			foreach (@$excludes) {
-				print("$dataset\n");
 				if ($dataset =~ /$_/) {
 					if ($debug) { print "DEBUG: excluded $dataset because of $_\n"; }
 					next DATASETS;
@@ -262,6 +279,12 @@ sub syncdataset {
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
 	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+
+	if (!defined $sync) {
+		# zfs already printed the corresponding error
+		if ($exitcode < 2) { $exitcode = 2; }
+		return 0;
+	}
 
 	if ($sync eq 'true' || $sync eq '-' || $sync eq '') {
 		# empty is handled the same as unset (aka: '-')
@@ -352,6 +375,9 @@ sub syncdataset {
 		# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 	#my $originaltargetreadonly;
 
+	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
+
 	# sync 'em up.
 	if (! $targetexists) {
 		# do an initial sync from the oldest source snapshot
@@ -376,7 +402,13 @@ sub syncdataset {
 		}
 
 		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
-		if (defined $args{'no-stream'}) { $oldestsnap = getnewestsnapshot(\%snaps); }
+		if (defined $args{'no-stream'}) {
+			if (defined ($args{'no-sync-snap'}) ) {
+				$oldestsnap = getnewestsnapshot(\%snaps);
+			} else {
+				$oldestsnap = $newsyncsnap;
+			}
+		}
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
@@ -416,6 +448,12 @@ sub syncdataset {
 			return 0;
 		}
 		system($synccmd) == 0 or do {
+			if (defined $origin) {
+				print "INFO: clone creation failed, trying ordinary replication as fallback\n";
+				syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+				return 0;
+			}
+
 			warn "CRITICAL ERROR: $synccmd failed: $?";
 			if ($exitcode < 2) { $exitcode = 2; }
 			return 0;
@@ -470,6 +508,7 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
+		    $sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
 		    my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
 		    my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
@@ -580,6 +619,7 @@ sub syncdataset {
 		if ($matchingsnap eq $newsyncsnap) {
 			# barf some text but don't touch the filesystem
 			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
+			return 0;
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
@@ -619,9 +659,9 @@ sub syncdataset {
 				my $pvsize = 0;
 				my $disp_pvsize = "UNKNOWN";
 
+				$sendoptions = getoptionsline(\@sendoptions, ('L','c','e','w'));
 				if ($nextsnapshot) {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
-
 					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
 					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
@@ -659,6 +699,7 @@ sub syncdataset {
 					return 0;
 				}
 
+				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
@@ -682,7 +723,36 @@ sub syncdataset {
 		}
 	}
 
-	if (!defined $args{'no-sync-snap'}) {
+	if (defined $args{'no-sync-snap'}) {
+		if (defined $args{'create-bookmark'}) {
+			my $bookmarkcmd;
+			if ($sourcehost ne '') {
+				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
+			} else {
+				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
+			}
+			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
+			system($bookmarkcmd) == 0 or do {
+				# fallback: assume nameing conflict and try again with guid based suffix
+				my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
+				$guid = substr($guid, 0, 6);
+
+				if (!$quiet) { print "INFO: bookmark creation failed, retrying with guid based suffix ($guid)...\n"; }
+
+				if ($sourcehost ne '') {
+					$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
+				} else {
+					$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
+				}
+				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
+				system($bookmarkcmd) == 0 or do {
+					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+					if ($exitcode < 2) { $exitcode = 2; }
+					return 0;
+				}
+			};
+		}
+	} else {
 		# prune obsolete sync snaps on source and target (only if this run created ones).
 		pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 		pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
@@ -822,6 +892,7 @@ sub checkcommands {
 
 	if (!defined $avail{'sourcecompress'}) { $avail{'sourcecompress'} = ''; }
 	if (!defined $avail{'targetcompress'}) { $avail{'targetcompress'} = ''; }
+	if (!defined $avail{'localcompress'}) { $avail{'localcompress'} = ''; }
 	if (!defined $avail{'sourcembuffer'}) { $avail{'sourcembuffer'} = ''; }
 	if (!defined $avail{'targetmbuffer'}) { $avail{'targetmbuffer'} = ''; }
 
@@ -891,14 +962,32 @@ sub checkcommands {
 
 	# check for ZFS resume feature support
 	if ($resume) {
-		my $resumechkcmd = "$zfscmd get -d 0 receive_resume_token";
+		my @parts = split ('/', $sourcefs);
+		my $srcpool = $parts[0];
+		@parts = split ('/', $targetfs);
+		my $dstpool = $parts[0];
+
+		$srcpool = escapeshellparam($srcpool);
+		$dstpool = escapeshellparam($dstpool);
+
+		if ($sourcehost ne '') {
+			# double escaping needed
+			$srcpool = escapeshellparam($srcpool);
+		}
+
+		if ($targethost ne '') {
+			# double escaping needed
+			$dstpool = escapeshellparam($dstpool);
+		}
+
+		my $resumechkcmd = "$zpoolcmd get -o value -H feature\@extensible_dataset";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
-		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd >/dev/null 2>&1");
+		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
-		$avail{'targetresume'} = system("$targetssh $resumechkcmd >/dev/null 2>&1");
+		$avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
 
 		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
@@ -983,6 +1072,11 @@ sub getzfsvalue {
 	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
 	my $value = <FH>;
 	close FH;
+
+	if (!defined $value) {
+		return undef;
+	}
+
 	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
@@ -1204,6 +1298,7 @@ sub newsyncsnap {
 	my %date = getdate();
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
+	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
 	system($snapcmd) == 0 or do {
 		warn "CRITICAL ERROR: $snapcmd failed: $?";
 		if ($exitcode < 2) { $exitcode = 2; }
@@ -1252,6 +1347,13 @@ sub getssh {
 		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
+
+		system("$sshcmd -S $socket $rhost echo -n") == 0 or do {
+			my $code = $? >> 8;
+			warn "CRITICAL ERROR: ssh connection echo test failed for $rhost with exit code $code";
+			exit(2);
+		};
+
 		$rhost = "-S $socket $rhost";
 	} else {
 		my $localuid = $<;
@@ -1403,6 +1505,12 @@ sub getsendsize {
 		$snaps = "-t $receivetoken";
 	}
 
+	my $sendoptions;
+	if (defined($receivetoken)) {
+		$sendoptions = getoptionsline(\@sendoptions, ('e'));
+	} else {
+		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','v','w'));
+	}
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
@@ -1473,7 +1581,7 @@ sub getreceivetoken() {
 	my ($rhost,$fs,$isroot) = @_;
 	my $token = getzfsvalue($rhost,$fs,$isroot,"receive_resume_token");
 
-	if ($token ne '-' && $token ne '') {
+	if (defined $token && $token ne '-' && $token ne '') {
 		return $token;
 	}
 
@@ -1482,6 +1590,68 @@ sub getreceivetoken() {
     }
 
 	return
+}
+
+sub parsespecialoptions {
+	my ($line) = @_;
+
+	my @options = ();
+
+	my @values = split(/ /, $line);
+
+	my $optionValue = 0;
+	my $lastOption;
+
+	foreach my $value (@values) {
+		if ($optionValue ne 0) {
+			my %item = (
+				"option"  => $lastOption,
+				"line" => "-$lastOption $value",
+			);
+
+			push @options, \%item;
+			$optionValue = 0;
+			next;
+		}
+
+		for my $char (split //, $value) {
+			if ($optionValue ne 0) {
+				return undef;
+			}
+
+			if ($char eq 'o' || $char eq 'x') {
+				$lastOption = $char;
+				$optionValue = 1;
+			} else {
+				my %item = (
+					"option"  => $char,
+					"line" => "-$char",
+				);
+
+				push @options, \%item;
+			}
+		}
+	}
+
+	return @options;
+}
+
+sub getoptionsline {
+	my ($options_ref, @allowed) = @_;
+
+	my $line = '';
+
+	foreach my $value (@{ $options_ref }) {
+		if (@allowed) {
+			if (!grep( /^$$value{'option'}$/, @allowed) ) {
+				next;
+			}
+		}
+
+		$line = "$line$$value{'line'} ";
+	}
+
+	return $line;
 }
 
 __END__
@@ -1506,16 +1676,17 @@ Options:
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
-  --source-bwlimit=<limit k|m|g|t>  Bandwidth limit on the source transfer
-  --target-bwlimit=<limit k|m|g|t>  Bandwidth limit on the target transfer
+  --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
+  --target-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer
   --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
-  --sendoptions=OPTIONS  DANGER: Inject OPTIONS into zfs send, e.g. syncoid --sendoptions="-Lce" sets zfs send -Lce ...
-  --recvoptions=OPTIONS  DANGER: Inject OPTIONS into zfs received, e.g. syncoid --recvoptions="-x property" sets zfs receive -x property ...
+  --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filterd as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
+  --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filterd as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh public key to use to connect
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
