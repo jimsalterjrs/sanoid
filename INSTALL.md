@@ -75,7 +75,7 @@ Create a systemd service:
 ```bash
 cat << "EOF" | sudo tee /etc/systemd/system/sanoid.service
 [Unit]
-Description=Sanoid ZFS Snapshot Manager
+Description=Snapshot ZFS Pool
 Requires=zfs.target
 After=zfs.target
 ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
@@ -83,7 +83,23 @@ ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 [Service]
 Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/local/sbin/sanoid --cron --verbose
+ExecStart=/usr/local/sbin/sanoid --take-snapshots --verbose
+EOF
+
+cat << "EOF" | sudo tee /etc/systemd/system/sanoid-prune.service
+[Unit]
+Description=Cleanup ZFS Pool
+Requires=zfs.target
+After=zfs.target sanoid.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+ExecStart=/usr/local/sbin/sanoid --prune-snapshots --verbose
+
+[Install]
+WantedBy=sanoid.service
 EOF
 ```
 
