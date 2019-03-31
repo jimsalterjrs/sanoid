@@ -694,6 +694,11 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			if (!$bookmark || $nextsnapshot) {
+				if ($matchingsnap eq $newsyncsnap) {
+					# edge case: bookmark replication used the latest snapshot
+					return 0;
+				}
+
 				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
