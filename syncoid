@@ -74,18 +74,21 @@ my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
 my $resume = !$args{'no-resume'};
 
-my $zfscmd = '/sbin/zfs';
-my $zpoolcmd = '/sbin/zpool';
-my $sshcmd = '/usr/bin/ssh';
-my $pscmd = '/bin/ps';
+# for compatibility reasons, older versions used hardcoded command paths
+$ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/usr/bin:/sbin";
 
-my $pvcmd = '/usr/bin/pv';
-my $mbuffercmd = '/usr/bin/mbuffer';
-my $sudocmd = '/usr/bin/sudo';
+my $zfscmd = 'zfs';
+my $zpoolcmd = 'zpool';
+my $sshcmd = 'ssh';
+my $pscmd = 'ps';
+
+my $pvcmd = 'pv';
+my $mbuffercmd = 'mbuffer';
+my $sudocmd = 'sudo';
 my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
-# currently using ls to check for file existence because we aren't depending on perl
+# currently using POSIX compatible command to check for program existence because we aren't depending on perl
 # being present on remote machines.
-my $lscmd = '/bin/ls';
+my $checkcmd = 'command -v';
 
 if (length $args{'sshcipher'}) {
 	$args{'sshcipher'} = "-c $args{'sshcipher'}";
@@ -771,51 +774,51 @@ sub compressargset {
 			decomargs   => '',
 		},
 		'gzip' => {
-			rawcmd      => '/bin/gzip',
+			rawcmd      => 'gzip',
 			args        => '-3',
-			decomrawcmd => '/bin/zcat',
+			decomrawcmd => 'zcat',
 			decomargs   => '',
 		},
 		'pigz-fast' => {
-			rawcmd      => '/usr/bin/pigz',
+			rawcmd      => 'pigz',
 			args        => '-3',
-			decomrawcmd => '/usr/bin/pigz',
+			decomrawcmd => 'pigz',
 			decomargs   => '-dc',
 		},
 		'pigz-slow' => {
-			rawcmd      => '/usr/bin/pigz',
+			rawcmd      => 'pigz',
 			args        => '-9',
-			decomrawcmd => '/usr/bin/pigz',
+			decomrawcmd => 'pigz',
 			decomargs   => '-dc',
 		},
 		'zstd-fast' => {
-			rawcmd      => '/usr/bin/zstd',
+			rawcmd      => 'zstd',
 			args        => '-3',
-			decomrawcmd => '/usr/bin/zstd',
+			decomrawcmd => 'zstd',
 			decomargs   => '-dc',
 		},
 		'zstd-slow' => {
-			rawcmd      => '/usr/bin/zstd',
+			rawcmd      => 'zstd',
 			args        => '-19',
-			decomrawcmd => '/usr/bin/zstd',
+			decomrawcmd => 'zstd',
 			decomargs   => '-dc',
 		},
 		'xz' => {
-			rawcmd      => '/usr/bin/xz',
+			rawcmd      => 'xz',
 			args        => '',
-			decomrawcmd => '/usr/bin/xz',
+			decomrawcmd => 'xz',
 			decomargs   => '-d',
 		},
 		'lzo' => {
-			rawcmd      => '/usr/bin/lzop',
+			rawcmd      => 'lzop',
 			args        => '',
-			decomrawcmd => '/usr/bin/lzop',
+			decomrawcmd => 'lzop',
 			decomargs   => '-dfc',
 		},
 		'lz4' => {
-			rawcmd      => '/usr/bin/lz4',
+			rawcmd      => 'lz4',
 			args        => '',
-			decomrawcmd => '/usr/bin/lz4',
+			decomrawcmd => 'lz4',
 			decomargs   => '-dc',
 		},
 	);
@@ -867,11 +870,11 @@ sub checkcommands {
 		if ($debug) { print "DEBUG: compression forced off from command line arguments.\n"; }
 	} else {
 		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on source...\n"; }
-		$avail{'sourcecompress'} = `$sourcessh $lscmd $compressargs{'rawcmd'} 2>/dev/null`;
+		$avail{'sourcecompress'} = `$sourcessh $checkcmd $compressargs{'rawcmd'} 2>/dev/null`;
 		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on target...\n"; }
-		$avail{'targetcompress'} = `$targetssh $lscmd $compressargs{'rawcmd'} 2>/dev/null`;
+		$avail{'targetcompress'} = `$targetssh $checkcmd $compressargs{'rawcmd'} 2>/dev/null`;
 		if ($debug) { print "DEBUG: checking availability of $compressargs{'rawcmd'} on local machine...\n"; }
-		$avail{'localcompress'} = `$lscmd $compressargs{'rawcmd'} 2>/dev/null`;
+		$avail{'localcompress'} = `$checkcmd $compressargs{'rawcmd'} 2>/dev/null`;
 	}
 
 	my ($s,$t);
@@ -924,7 +927,7 @@ sub checkcommands {
 	}
 
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
-	$avail{'sourcembuffer'} = `$sourcessh $lscmd $mbuffercmd 2>/dev/null`;
+	$avail{'sourcembuffer'} = `$sourcessh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
 		if (!$quiet) { print "WARN: $mbuffercmd not available on source $s - sync will continue without source buffering.\n"; }
 		$avail{'sourcembuffer'} = 0;
@@ -933,7 +936,7 @@ sub checkcommands {
 	}
 
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
-	$avail{'targetmbuffer'} = `$targetssh $lscmd $mbuffercmd 2>/dev/null`;
+	$avail{'targetmbuffer'} = `$targetssh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
 		if (!$quiet) { print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n"; }
 		$avail{'targetmbuffer'} = 0;
@@ -944,7 +947,7 @@ sub checkcommands {
 	# if we're doing remote source AND remote target, check for local mbuffer as well
 	if ($sourcehost ne '' && $targethost ne '') {
 		if ($debug) { print "DEBUG: checking availability of $mbuffercmd on local machine...\n"; }
-		$avail{'localmbuffer'} = `$lscmd $mbuffercmd 2>/dev/null`;
+		$avail{'localmbuffer'} = `$checkcmd $mbuffercmd 2>/dev/null`;
 		if ($avail{'localmbuffer'} eq '') {
 			$avail{'localmbuffer'} = 0;
 			if (!$quiet) { print "WARN: $mbuffercmd not available on local machine - sync will continue without local buffering.\n"; }
@@ -952,7 +955,7 @@ sub checkcommands {
 	}
 
 	if ($debug) { print "DEBUG: checking availability of $pvcmd on local machine...\n"; }
-	$avail{'localpv'} = `$lscmd $pvcmd 2>/dev/null`;
+	$avail{'localpv'} = `$checkcmd $pvcmd 2>/dev/null`;
 	if ($avail{'localpv'} eq '') {
 		if (!$quiet) { print "WARN: $pvcmd not available on local machine - sync will continue without progress bar.\n"; }
 		$avail{'localpv'} = 0;
