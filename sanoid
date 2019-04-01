@@ -460,7 +460,13 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-					push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
+
+					# use zfs (atomic) recursion if specified in config
+					if ($config{$section}{'zfs_recursion'}) {
+						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@");
+					} else {
+						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
+					}
 				}
 			}
 		}
@@ -468,8 +474,16 @@ sub take_snapshots {
 
 	if ( (scalar(@newsnaps)) > 0) {
 		foreach my $snap ( @newsnaps ) {
-			my $dataset = (split '@', $snap)[0];
-			my $snapname = (split '@', $snap)[1];
+			my $extraMessage = "";
+			my @split = split '@', $snap, -1;
+			my $recursiveFlag = 0;
+			if (scalar(@split) == 3) {
+				$recursiveFlag = 1;
+				$extraMessage = " (zfs recursive)";
+				chop $snap;
+			}
+			my $dataset = $split[0];
+			my $snapname = $split[1];
 			my $presnapshotfailure = 0;
 			my $ret = 0;
 			if ($config{$dataset}{'pre_snapshot_script'}) {
@@ -490,17 +504,22 @@ sub take_snapshots {
 					$presnapshotfailure = 1;
 				}
 			}
-			if ($args{'verbose'}) { print "taking snapshot $snap\n"; }
+			if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
 			if (!$args{'readonly'}) {
-				system($zfs, "snapshot", "$snap") == 0
-					or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+				if ($recursiveFlag) {
+					system($zfs, "snapshot", "-r", "$snap") == 0
+						or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+				} else {
+					system($zfs, "snapshot", "$snap") == 0
+						or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+				}
 			}
 			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
-	
+
 					if (!$args{'readonly'}) {
 						runscript('post_snapshot_script',$dataset);
 					}
@@ -713,6 +732,8 @@ sub init {
 
 	# we'll use these later to normalize potentially true and false values on any toggle keys
 	my @toggles = ('autosnap','autoprune','monitor_dont_warn','monitor_dont_crit','monitor','recursive','process_children_only','skip_children','no_inconsistent_snapshot','force_post_snapshot_script');
+	# recursive is defined as toggle but can also have the special value "zfs", it is kept to be backward compatible
+
 	my @istrue=(1,"true","True","TRUE","yes","Yes","YES","on","On","ON");
 	my @isfalse=(0,"false","False","FALSE","no","No","NO","off","Off","OFF");
 
@@ -808,26 +829,49 @@ sub init {
 		}
 
 		# how 'bout some recursion? =)
+		if ($config{$section}{'zfs_recursion'} && $config{$section}{'zfs_recursion'} == 1 && $config{$section}{'autosnap'} == 1) {
+			warn "ignored autosnap configuration for '$section' because it's part of a zfs recursion.\n";
+			$config{$section}{'autosnap'} = 0;
+		}
+
 		my $recursive = $ini{$section}{'recursive'} && grep( /^$ini{$section}{'recursive'}$/, @istrue );
+		my $zfsRecursive = $ini{$section}{'recursive'} && $ini{$section}{'recursive'} =~ /zfs/i;
 		my $skipChildren = $ini{$section}{'skip_children'} && grep( /^$ini{$section}{'skip_children'}$/, @istrue );
 		my @datasets;
-		if ($recursive || $skipChildren) {
+		if ($zfsRecursive || $recursive || $skipChildren) {
+			if ($zfsRecursive) {
+				$config{$section}{'zfs_recursion'} = 1;
+			}
+
 			@datasets = getchilddatasets($config{$section}{'path'});
 			DATASETS: foreach my $dataset(@datasets) {
 				chomp $dataset;
 
-				if ($skipChildren) {
-					if ($args{'debug'}) { print "DEBUG: ignoring $dataset.\n"; }
-					delete $config{$dataset};
-					next DATASETS;
-				}
+				if ($zfsRecursive) {
+					# don't try to take the snapshot ourself, recursive zfs snapshot will take care of that
+					$config{$dataset}{'autosnap'} = 0;
 
-				foreach my $key (keys %{$config{$section}} ) {
-					if (! ($key =~ /template|recursive|children_only/)) {
-						if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
-						$config{$dataset}{$key} = $config{$section}{$key};
+					foreach my $key (keys %{$config{$section}} ) {
+						if (! ($key =~ /template|recursive|children_only|autosnap/)) {
+							if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
+							$config{$dataset}{$key} = $config{$section}{$key};
+						}
+					}
+				} else {
+					if ($skipChildren) {
+						if ($args{'debug'}) { print "DEBUG: ignoring $dataset.\n"; }
+						delete $config{$dataset};
+						next DATASETS;
+					}
+
+					foreach my $key (keys %{$config{$section}} ) {
+						if (! ($key =~ /template|recursive|children_only/)) {
+							if ($args{'debug'}) { print "DEBUG: recursively setting $key from $section to $dataset.\n"; }
+							$config{$dataset}{$key} = $config{$section}{$key};
+						}
 					}
 				}
+
 				$config{$dataset}{'path'} = $dataset;
 				$config{$dataset}{'initialized'} = 1;
 			}
@@ -1380,7 +1424,7 @@ sub getchilddatasets {
 	my $fs = shift;
 	my $mysudocmd = '';
 
-	my $getchildrencmd = "$mysudocmd $zfs list -o name -Hr $fs |";
+	my $getchildrencmd = "$mysudocmd $zfs list -o name -t filesystem,volume -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
 	my @children = <FH>;

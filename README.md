@@ -184,11 +184,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --source-bwlimit <limit t|g|m|k>
 
-	This is the bandwidth limit imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limites are desired.
+	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limits are desired. 
 
 + --target-bw-limit <limit t|g|m|k>
 
-	This is the bandwidth limit imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limites are desired.
+	This is the bandwidth limit in bytes (kbytes, mbytesm etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
 
 + --no-command-checks
 
@@ -201,6 +201,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --no-sync-snap
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+
++ --create-bookmark
+
+	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible. 
 
 + --no-clone-rollback
 
