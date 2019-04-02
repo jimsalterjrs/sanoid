@@ -125,6 +125,8 @@ Reload systemd and start our timer:
 ```bash
 # Tell systemd about our new service definitions
 sudo systemctl daemon-reload
+# Enable sanoid-prune.service to allow it to be triggered by sanoid.service
+sudo systemctl enable sanoid-prune.service
 # Enable and start the Sanoid timer
 sudo systemctl enable sanoid.timer
 sudo systemctl start sanoid.timer
