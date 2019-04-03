@@ -20,7 +20,7 @@
 Install prerequisite software:
 
 ```bash
-apt install libconfig-inifiles-perl pv lzop mbuffer
+apt install debhelper libconfig-inifiles-perl pv lzop mbuffer
 ```
 
 Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
