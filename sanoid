@@ -721,7 +721,7 @@ sub getsnaps {
 					print "INFO: cache expired - updating from zfs list.\n";
 				}
 			}
-			open FH, "$zfs get -Hpt snapshot creation |";
+			open FH, "$zfs get -Hrpt snapshot creation |";
 			@rawsnaps = <FH>;
 			close FH;
 
