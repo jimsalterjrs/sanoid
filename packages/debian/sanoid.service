@@ -2,9 +2,11 @@
 Description=Snapshot ZFS Pool
 Requires=zfs.target
 After=zfs.target
+Wants=sanoid-prune.service
+Before=sanoid-prune.service
 ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 
 [Service]
 Environment=TZ=UTC
 Type=oneshot
-ExecStart=/usr/sbin/sanoid --take-snapshots
+ExecStart=/usr/sbin/sanoid --take-snapshots --verbose
