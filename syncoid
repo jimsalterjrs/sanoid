@@ -13,6 +13,7 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
+use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 
@@ -672,10 +673,15 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					my $output = `$synccmd 2>&1`;
+					my $stdout;
+					my $stderr;
+					my $exit;
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
 
-					$? == 0 or do {
-						if (!$resume && $output =~ /\Qcontains partially-complete state\E/) {
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
 							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
@@ -700,10 +706,15 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					my $output = `$synccmd 2>&1`;
+					my $stdout;
+					my $stderr;
+					my $exit;
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
 
-					$? == 0 or do {
-						if (!$resume && $output =~ /\Qcontains partially-complete state\E/) {
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
 							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
@@ -739,10 +750,15 @@ sub syncdataset {
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
 
-				my $output = `$synccmd 2>&1`;
+				my $stdout;
+				my $stderr;
+				my $exit;
+				($stdout, $stderr, $exit) = tee {
+					system("$synccmd")
+				};
 
-				$? == 0 or do {
-					if (!$resume && $output =~ /\Qcontains partially-complete state\E/) {
+				$exit == 0 or do {
+					if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
 						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 						resetreceivestate($targethost,$targetfs,$targetisroot);
 						system("$synccmd") == 0 or do {
