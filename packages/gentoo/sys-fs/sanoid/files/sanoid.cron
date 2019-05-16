@@ -1,0 +1,1 @@
+* * * * * root TZ=UTC /usr/bin/sanoid --cron

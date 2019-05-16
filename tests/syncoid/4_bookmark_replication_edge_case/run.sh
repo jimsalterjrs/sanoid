@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# test replication with fallback to bookmarks and all intermediate snapshots
+# test replication edge cases with bookmarks
 
 set -x
 set -e
 
 . ../../common/lib.sh
 
-POOL_IMAGE="/tmp/syncoid-test-1.zpool"
+POOL_IMAGE="/tmp/syncoid-test-4.zpool"
 POOL_SIZE="200M"
-POOL_NAME="syncoid-test-1"
-TARGET_CHECKSUM="a23564d5bb8a2babc3ac8936fd82825ad9fff9c82d4924f5924398106bbda9f0  -"
+POOL_NAME="syncoid-test-4"
+TARGET_CHECKSUM="ad383b157b01635ddcf13612ac55577ad9c8dcf3fbfc9eb91792e27ec8db739b  -"
 
 truncate -s "${POOL_SIZE}" "${POOL_IMAGE}"
 
@@ -30,20 +30,10 @@ zfs bookmark "${POOL_NAME}"/src@snap1 "${POOL_NAME}"/src#snap1
 ../../../syncoid --no-sync-snap --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 # destroy last common snapshot on source
 zfs destroy "${POOL_NAME}"/src@snap1
-
-# create intermediate snapshots
-# sleep is needed so creation time can be used for proper sorting
-sleep 1
 zfs snapshot "${POOL_NAME}"/src@snap2
-sleep 1
-zfs snapshot "${POOL_NAME}"/src@snap3
-sleep 1
-zfs snapshot "${POOL_NAME}"/src@snap4
-sleep 1
-zfs snapshot "${POOL_NAME}"/src@snap5
 
-# replicate which should fallback to bookmarks
-../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst || exit 1
+# replicate which should fallback to bookmarks and stop because it's already on the latest snapshot
+../../../syncoid --no-sync-snap --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst || exit 1
 
 # verify
 output=$(zfs list -t snapshot -r -H -o name "${POOL_NAME}")

@@ -15,7 +15,7 @@ for test in */; do
 
     echo -n "Running test ${testName} ... "
     cd "${test}"
-    echo | bash run.sh > "${LOGFILE}" 2>&1
+    echo -n y | bash run.sh > "${LOGFILE}" 2>&1
 
     if [ $? -eq 0 ]; then
         echo "[PASS]"
