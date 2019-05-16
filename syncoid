@@ -290,7 +290,10 @@ sub syncdataset {
 
 	if (!defined $sync) {
 		# zfs already printed the corresponding error
-		if ($exitcode < 2) { $exitcode = 2; }
+		if (dataset_exists($sourcehost, $sourcefs, $sourceisroot) and $exitcode < 2) {
+			$exitcode = 2;
+		}
+
 		return 0;
 	}
 
@@ -1145,6 +1148,37 @@ sub getzfsvalue {
 	my @values = split(/\t/,$value);
 	$value = $values[2];
 	return $value;
+}
+
+sub dataset_exists {
+	my ($rhost, $fs, $isroot) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
+	my $mysudocmd;
+	if ($isroot) {
+		$mysudocmd = '';
+	}
+	else {
+		$mysudocmd = $sudocmd;
+	}
+
+	my $command = "$rhost $mysudocmd $zfscmd get -H creation $fsescaped";
+
+	if ($debug) {
+		print "$command\n";
+	}
+
+	open my $fh, '-|', "$command 2>&1";
+	my $result = <$fh>;
+	close $fh;
+
+	if ($result =~ /dataset does not exist/) {
+		warn "$fsescaped does not exist...\n";
+		return 0;
+	}
+
+	return 1;
 }
 
 sub readablebytes {
