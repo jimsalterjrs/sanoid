@@ -1174,7 +1174,6 @@ sub dataset_exists {
 	close $fh;
 
 	if ($result =~ /dataset does not exist/) {
-		warn "$fsescaped does not exist...\n";
 		return 0;
 	}
 
