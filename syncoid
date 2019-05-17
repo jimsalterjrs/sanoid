@@ -13,6 +13,7 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
+use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 
@@ -671,10 +672,28 @@ sub syncdataset {
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
-					system("$synccmd") == 0 or do {
-						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
-						return 0;
+
+					my $stdout;
+					my $stderr;
+					my $exit;
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
+
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+							resetreceivestate($targethost,$targetfs,$targetisroot);
+							system("$synccmd") == 0 or do {
+								warn "CRITICAL ERROR: $synccmd failed: $?";
+								if ($exitcode < 2) { $exitcode = 2; }
+								return 0;
+							}
+						} else {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
 					};
 
 					$matchingsnap = $nextsnapshot;
@@ -686,10 +705,28 @@ sub syncdataset {
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
-					system("$synccmd") == 0 or do {
-						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
-						return 0;
+
+					my $stdout;
+					my $stderr;
+					my $exit;
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
+
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+							resetreceivestate($targethost,$targetfs,$targetisroot);
+							system("$synccmd") == 0 or do {
+								warn "CRITICAL ERROR: $synccmd failed: $?";
+								if ($exitcode < 2) { $exitcode = 2; }
+								return 0;
+							}
+						} else {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
 					};
 				}
 			}
@@ -712,10 +749,28 @@ sub syncdataset {
 
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
-				system("$synccmd") == 0 or do {
-					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
+
+				my $stdout;
+				my $stderr;
+				my $exit;
+				($stdout, $stderr, $exit) = tee {
+					system("$synccmd")
+				};
+
+				$exit == 0 or do {
+					if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+						resetreceivestate($targethost,$targetfs,$targetisroot);
+						system("$synccmd") == 0 or do {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
+					} else {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					}
 				};
 			}
 
@@ -1674,6 +1729,26 @@ sub getoptionsline {
 	}
 
 	return $line;
+}
+
+sub resetreceivestate {
+	my ($rhost,$fs,$isroot) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	if ($debug) { print "DEBUG: reset partial receive state of $fs...\n"; }
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	my $resetcmd = "$rhost $mysudocmd $zfscmd receive -A $fsescaped";
+	if ($debug) { print "$resetcmd\n"; }
+	system("$resetcmd") == 0
+		or die "CRITICAL ERROR: $resetcmd failed: $?";
 }
 
 __END__
