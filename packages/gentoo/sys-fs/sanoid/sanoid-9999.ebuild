@@ -16,6 +16,7 @@ IUSE=""
 
 DEPEND="app-arch/lzop
 		dev-perl/Config-IniFiles
+		dev-perl/Capture-Tiny
 		sys-apps/pv
 		sys-block/mbuffer
 		virtual/perl-Data-Dumper"

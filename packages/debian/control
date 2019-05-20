@@ -10,5 +10,5 @@ Vcs-Browser: https://github.com/jimsalterjrs/sanoid
 
 Package: sanoid
 Architecture: all
-Depends: ${misc:Depends}, ${perl:Depends}, zfsutils-linux | zfs, libconfig-inifiles-perl
+Depends: ${misc:Depends}, ${perl:Depends}, zfsutils-linux | zfs, libconfig-inifiles-perl, libcapture-tiny-perl
 Description: Policy-driven snapshot management and replication tools
