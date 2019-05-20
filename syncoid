@@ -271,6 +271,8 @@ sub syncdataset {
 
 	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
 
+	my $stdout, $stderr, $exit;
+
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
@@ -673,9 +675,6 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					my $stdout;
-					my $stderr;
-					my $exit;
 					($stdout, $stderr, $exit) = tee {
 						system("$synccmd")
 					};
@@ -706,9 +705,6 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					my $stdout;
-					my $stderr;
-					my $exit;
 					($stdout, $stderr, $exit) = tee {
 						system("$synccmd")
 					};
@@ -750,9 +746,6 @@ sub syncdataset {
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
 
-				my $stdout;
-				my $stderr;
-				my $exit;
 				($stdout, $stderr, $exit) = tee {
 					system("$synccmd")
 				};
