@@ -20,7 +20,9 @@
 Install prerequisite software:
 
 ```bash
-apt install debhelper libconfig-inifiles-perl pv lzop mbuffer
+
+apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer
+
 ```
 
 Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
@@ -49,7 +51,7 @@ Install prerequisite software:
 # Install and enable epel if we don't already have it, and git too
 sudo yum install -y epel-release git
 # Install the packages that Sanoid depends on:
-sudo yum install -y perl-Config-IniFiles perl-Data-Dumper lzop mbuffer mhash pv
+sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-capture-tiny lzop mbuffer mhash pv
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:
@@ -137,7 +139,7 @@ Now, proceed to configure [**Sanoid**](#configuration)
 Install prerequisite software:
 
 ```bash
-pkg install p5-Config-Inifiles pv mbuffer lzop
+pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 ```
 
 **Additional notes:**

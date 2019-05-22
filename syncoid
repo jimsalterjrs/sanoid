@@ -13,6 +13,7 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
+use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 
@@ -270,6 +271,10 @@ sub syncdataset {
 
 	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
 
+	my $stdout;
+	my $stderr;
+	my $exit;
+
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
@@ -511,25 +516,37 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
-		    $sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
-		    my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
-		    my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
-		    my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
-		    my $disp_pvsize = readablebytes($pvsize);
-		    if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
-		    my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
+			$sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
+			my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
+			my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+			my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
+			my $disp_pvsize = readablebytes($pvsize);
+			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
+			my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
-		    if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
-		    if ($debug) { print "DEBUG: $synccmd\n"; }
-		    system("$synccmd") == 0 or do {
-		        warn "CRITICAL ERROR: $synccmd failed: $?";
-		        if ($exitcode < 2) { $exitcode = 2; }
-		        return 0;
-		    };
+			if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
+			if ($debug) { print "DEBUG: $synccmd\n"; }
 
-		    # a resumed transfer will only be done to the next snapshot,
-		    # so do an normal sync cycle
-		    return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+			($stdout, $stderr, $exit) = tee {
+				system("$synccmd")
+			};
+
+			$exit == 0 or do {
+				if ($stderr =~ /\Qused in the initial send no longer exists\E/) {
+					if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+					resetreceivestate($targethost,$targetfs,$targetisroot);
+					# do an normal sync cycle
+					return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
+				} else {
+					warn "CRITICAL ERROR: $synccmd failed: $?";
+					if ($exitcode < 2) { $exitcode = 2; }
+					return 0;
+				}
+			};
+
+			# a resumed transfer will only be done to the next snapshot,
+			# so do an normal sync cycle
+			return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 		}
 
 		# find most recent matching snapshot and do an -I
@@ -671,10 +688,25 @@ sub syncdataset {
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
-					system("$synccmd") == 0 or do {
-						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
-						return 0;
+
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
+
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+							resetreceivestate($targethost,$targetfs,$targetisroot);
+							system("$synccmd") == 0 or do {
+								warn "CRITICAL ERROR: $synccmd failed: $?";
+								if ($exitcode < 2) { $exitcode = 2; }
+								return 0;
+							}
+						} else {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
 					};
 
 					$matchingsnap = $nextsnapshot;
@@ -686,10 +718,25 @@ sub syncdataset {
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
-					system("$synccmd") == 0 or do {
-						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
-						return 0;
+
+					($stdout, $stderr, $exit) = tee {
+						system("$synccmd")
+					};
+
+					$exit == 0 or do {
+						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+							resetreceivestate($targethost,$targetfs,$targetisroot);
+							system("$synccmd") == 0 or do {
+								warn "CRITICAL ERROR: $synccmd failed: $?";
+								if ($exitcode < 2) { $exitcode = 2; }
+								return 0;
+							}
+						} else {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
 					};
 				}
 			}
@@ -712,10 +759,25 @@ sub syncdataset {
 
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
-				system("$synccmd") == 0 or do {
-					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
+
+				($stdout, $stderr, $exit) = tee {
+					system("$synccmd")
+				};
+
+				$exit == 0 or do {
+					if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+						resetreceivestate($targethost,$targetfs,$targetisroot);
+						system("$synccmd") == 0 or do {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
+					} else {
+						warn "CRITICAL ERROR: $synccmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					}
 				};
 			}
 
@@ -1674,6 +1736,26 @@ sub getoptionsline {
 	}
 
 	return $line;
+}
+
+sub resetreceivestate {
+	my ($rhost,$fs,$isroot) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	if ($debug) { print "DEBUG: reset partial receive state of $fs...\n"; }
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	my $resetcmd = "$rhost $mysudocmd $zfscmd receive -A $fsescaped";
+	if ($debug) { print "$resetcmd\n"; }
+	system("$resetcmd") == 0
+		or die "CRITICAL ERROR: $resetcmd failed: $?";
 }
 
 __END__
