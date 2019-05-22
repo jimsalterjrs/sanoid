@@ -78,6 +78,8 @@ cat << "EOF" | sudo tee /etc/systemd/system/sanoid.service
 Description=Snapshot ZFS Pool
 Requires=zfs.target
 After=zfs.target
+Wants=sanoid-prune.service
+Before=sanoid-prune.service
 ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
 
 [Service]
