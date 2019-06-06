@@ -526,9 +526,18 @@ sub syncdataset {
 			if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
-			($stdout, $exit) = tee_stdout {
-				system("$synccmd")
-			};
+			if ($pvsize == 0) {
+				# we need to capture the error of zfs send, this will render pv useless but in this case
+				# it doesn't matter because we don't know the estimated send size (probably because
+				# the initial snapshot used for resumed send doesn't exist anymore)
+				($stdout, $exit) = tee_stderr {
+					system("$synccmd")
+				};
+			} else {
+				($stdout, $exit) = tee_stdout {
+					system("$synccmd")
+				};
+			}
 
 			$exit == 0 or do {
 				if ($stdout =~ /\Qused in the initial send no longer exists\E/) {
