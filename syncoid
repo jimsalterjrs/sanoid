@@ -272,7 +272,6 @@ sub syncdataset {
 	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
 
 	my $stdout;
-	my $stderr;
 	my $exit;
 
 	my $sourcefsescaped = escapeshellparam($sourcefs);
@@ -518,7 +517,7 @@ sub syncdataset {
 		if (defined($receivetoken)) {
 			$sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
 			my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+			my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 			my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 			my $disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -527,13 +526,22 @@ sub syncdataset {
 			if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
-			($stdout, $stderr, $exit) = tee {
-				system("$synccmd")
-			};
+			if ($pvsize == 0) {
+				# we need to capture the error of zfs send, this will render pv useless but in this case
+				# it doesn't matter because we don't know the estimated send size (probably because
+				# the initial snapshot used for resumed send doesn't exist anymore)
+				($stdout, $exit) = tee_stderr {
+					system("$synccmd")
+				};
+			} else {
+				($stdout, $exit) = tee_stdout {
+					system("$synccmd")
+				};
+			}
 
 			$exit == 0 or do {
-				if ($stderr =~ /\Qused in the initial send no longer exists\E/) {
-					if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+				if ($stdout =~ /\Qused in the initial send no longer exists\E/) {
+					if (!$quiet) { print "WARN: resetting partially receive state because the snapshot source no longer exists\n"; }
 					resetreceivestate($targethost,$targetfs,$targetisroot);
 					# do an normal sync cycle
 					return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
@@ -683,18 +691,18 @@ sub syncdataset {
 				if ($nextsnapshot) {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
 					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					($stdout, $stderr, $exit) = tee {
+					($stdout, $exit) = tee_stdout {
 						system("$synccmd")
 					};
 
 					$exit == 0 or do {
-						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
@@ -713,18 +721,18 @@ sub syncdataset {
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
 					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					($stdout, $stderr, $exit) = tee {
+					($stdout, $exit) = tee_stdout {
 						system("$synccmd")
 					};
 
 					$exit == 0 or do {
-						if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
@@ -751,7 +759,7 @@ sub syncdataset {
 
 				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 				my $disp_pvsize = readablebytes($pvsize);
 				if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -760,12 +768,12 @@ sub syncdataset {
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
 
-				($stdout, $stderr, $exit) = tee {
+				($stdout, $exit) = tee_stdout {
 					system("$synccmd")
 				};
 
 				$exit == 0 or do {
-					if (!$resume && $stderr =~ /\Qcontains partially-complete state\E/) {
+					if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 						resetreceivestate($targethost,$targetfs,$targetisroot);
 						system("$synccmd") == 0 or do {
