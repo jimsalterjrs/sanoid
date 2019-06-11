@@ -51,7 +51,7 @@ Install prerequisite software:
 # Install and enable epel if we don't already have it, and git too
 sudo yum install -y epel-release git
 # Install the packages that Sanoid depends on:
-sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-capture-tiny lzop mbuffer mhash pv
+sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:

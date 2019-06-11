@@ -14,7 +14,7 @@ License:	   GPLv3
 URL:		   https://github.com/jimsalterjrs/sanoid
 Source0:	   https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
 
-Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles, perl-capture-tiny
+Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles, perl-Capture-Tiny
 %if 0%{?_with_systemd}
 Requires:      systemd >= 212
 
