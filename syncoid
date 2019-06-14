@@ -773,7 +773,8 @@ sub syncdataset {
 				};
 
 				$exit == 0 or do {
-					if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
+					# FreeBSD reports "dataset is busy" instead of "contains partially-complete state"
+					if (!$resume && ($stdout =~ /\Qcontains partially-complete state\E/ || $stdout =~ /\Qdataset is busy\E/)) {
 						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
 						resetreceivestate($targethost,$targetfs,$targetisroot);
 						system("$synccmd") == 0 or do {
