@@ -10,7 +10,7 @@ set -x
 POOL_NAME="sanoid-test-1"
 POOL_TARGET=""  # root
 RESULT="/tmp/sanoid_test_result"
-RESULT_CHECKSUM="68c67161a59d0e248094a66061972f53613067c9db52ad981030f36bc081fed7"
+RESULT_CHECKSUM="92f2c7afba94b59e8a6f6681705f0aa3f1c61e4aededaa38281e0b7653856935"
 
 # UTC timestamp of start and end
 START="1483225200"
