@@ -23,7 +23,7 @@ function cleanUp {
 # export pool in any case
 trap cleanUp EXIT
 
-zfs create "${POOL_NAME}"/src -o mountpoint="${MOUNT_TARGET}"
+zfs create -o mountpoint="${MOUNT_TARGET}" "${POOL_NAME}"/src
 ../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
 dd if=/dev/urandom of="${MOUNT_TARGET}"/big_file bs=1M count=200
@@ -31,19 +31,16 @@ dd if=/dev/urandom of="${MOUNT_TARGET}"/big_file bs=1M count=200
 ../../../syncoid --debug --compress=none --source-bwlimit=2m "${POOL_NAME}"/src "${POOL_NAME}"/dst &
 syncoid_pid=$!
 sleep 5
-list_descendants ()
-{
-  local children=$(ps -o pid= --ppid "$1")
-
-  for pid in $children
-  do
-    list_descendants "$pid"
-  done
-
-  echo "$children"
+function getcpid() {
+    cpids=$(pgrep -P "$1"|xargs)
+    for cpid in $cpids;
+    do
+        echo "$cpid"
+        getcpid "$cpid"
+    done
 }
 
-kill $(list_descendants $$) || true
+kill $(getcpid $$) || true
 wait
 sleep 1
 
