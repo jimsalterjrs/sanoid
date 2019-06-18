@@ -1369,7 +1369,7 @@ sub newsyncsnap {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
-	my $datestamp = DateTime->now()->iso8601();
+	my $datestamp = DateTime->now()->iso8601().'Z';
 	my $snapname = "syncoid\_$identifier$hostid\_$datestamp";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
