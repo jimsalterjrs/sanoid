@@ -15,6 +15,7 @@ use Time::Local;
 use Sys::Hostname;
 use Capture::Tiny ':all';
 use DateTime;
+use DateTime::Format::ISO8601::Format;
 
 my $mbuffer_size = "16M";
 
@@ -25,7 +26,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark",
+                   "create-bookmark", "localtime",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1369,7 +1370,14 @@ sub newsyncsnap {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
-	my $datestamp = DateTime->now()->iso8601().'Z';
+  my $formatdt = DateTime::Format::ISO8601::Format->new();
+  my $dt;
+  if (defined $args{'localtime'}) {
+    $dt = DateTime->now()->set_time_zone('local');
+  } else {
+    $dt = DateTime->now()->set_time_zone('UTC');
+  }
+  my $datestamp = $formatdt->format_datetime($dt);
 	my $snapname = "syncoid\_$identifier$hostid\_$datestamp";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
@@ -1789,6 +1797,7 @@ Options:
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+  --localtime           Generate syncoid snapshots using localtime naming rather than UTC
 
   --help                Prints this helptext
   --version             Prints the version number
