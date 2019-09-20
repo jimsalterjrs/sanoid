@@ -1,3 +1,84 @@
+2.0.2
+    9791094 some FreeBSD related fixes
+    56f97b5 capture the stderr of zfs send command in the case of a resumed replication where the send size can't be estimated (in which case pv is not working anyway, so we can break the interactivitiy)
+    22fe41c redirect zfs receive error to stdout and only capture stdout for parsing of error codes, this way stderr is left alone and pv can work interactively
+    5d7ee40 fix centos package name
+    83c5e2c added new dependency to all packages and install instructions
+    0537de5 test case for reseting the resume state if it's invalid
+    6eb1be3 handle resume states where the source snapshot was already deleted
+    16fceba moved common used variables to top of function
+    0ef2bd2 added test to verify the last changes to handle partially received replication streams
+    1046f7f use capture::tiny for teeing commands
+    eef598c Update rules
+    67ff4fe Update INSTALL.md
+    522bdec fixed ordering of snapshots with the same creation timestamp
+    ce93d89 Declare that sanoid service 'Wants' sanoid-prune
+
+2.0.1
+    ea90108 revert -r in zfs get (not needed here)
+    8d8df7e Add -r to zfs get -t snap for zfs 8.1
+    607aad0 Add -r to zfs get -Hpt snap for zfs 8.1
+    faf268b Added line to enable sanoid-prune.service
+    1900eca added verbose cmd line flags for journald logging
+    90b8c92 sanoid-prune.service is indeed referenced and run after the sanoid.service
+    17e15c2 Fix systemd service definitions.
+    68cc59a Update INSTALL.md
+    56d7c59 clarify --bwlimit units
+    681aa61 clarify bandwidth limit units
+    ffa6ad3 Fix gentoo package snafu - need a sanoid directory to store the files
+    df1e344 Fix gentoo package snafu - need a sanoid directory to store the files
+    cf496dc Changed (and simplified) DST handling (see here: https://github.com/jimsalterjrs/sanoid/issues/155)
+    736d031 initial replication without intermediate snapshots should use the created sync snapshot
+    e0e7b0d added bwlimit units
+    a97da7d Added bwlimit units
+    e014fd7 check if ssh connection works
+    eefc659 update the install instruction with recent changes
+    25c5e2e allow new zfs send/recv hold parameter (introduced in recent master) and drop invalid raw parameter for send size estimation for resumeable send
+    c543f9a use ordinary replication if clone recreation fails
+    d3f19c8 Sanoid ebuild for Gentoo
+    a748b41 if bookmark creation fails use guid bases suffix based fallback name
+    99b439e return if there is nothing to do
+    5812b57 check for invalid send/receive option syntax
+    10b2012 removed debug output
+    7d522fa fix unitialized variable
+    1053e93 missed sudo command for bookmark creation if source host is remote
+    f0fec53 fix root pool parsing for remote hosts
+    c5eebbe implemented parsing of provided zfs send/recv options and whitelisting for each use case as needed
+    5107380 codestyle
+    d68d7b4 implemented creation of zfs bookmarks
+    7141eab fix bookmark edge case where replication was already done to the latest snapshot (+ test)
+    ea9e989 only list filesystems and volumes
+    132c765 error out if no datasets are processed with recursive arg
+    85561dd handle the case of mistyped dataset name nicely
+    c12b6d7 check pool capability for resumeable replication instead of checking for support in the zfs module
+    7ef435c add "hotspare" template (for local, hourly replication targets)
+    c3e20fd FreeBSD sed needs a different syntax
+    ea482ce make tests work on FreeBSD
+    ab12540 added message if zfs recursion is used and fixed ordinary recursion in combination with zfs recursion
+    0fc16b4 fixed uninitialzed variable warning and clarified recursive value
+    271ede7 Revert "Revert "Zfs Recursion""
+    e4e9065 removed debug output from excludes loop
+    50a2374 Revert "Zfs Recursion"
+    165faee remove spurious line break from HTML
+    f941d7f fix for #316 - CRITICAL ERROR: bookmarks couldn't be listed for <volume>
+    bd4eb49 Added in --sendoptions=OPTIONS and --recvoptions=OPTIONS to inject OPTIONS enabling things like syncoid --sendoptions=-Lcep and syncoid --recvoptions="-x property"
+    ca76f42 syncoid: add '--mbuffer-size' option
+    c35c953 remove redundant loop
+    f8e0e00 preserve taking snapshots order always from yearly to frequently
+    7cf64be pre/post snapshot script calls should be also dumped in --readonly mode
+    4daafca prevent problems with shell expansion and codestyle
+    1605a60 CLIMATE-1151: added config option to use zfs recursion
+    8d88c47 improved documentation on --no-command-checks
+    ac80a75 made time units case insensitive and removed monthlies
+    cfab4ea added/fixed documentation
+    89f1d4e run compress commands bare too
+    941a770 updated comment regarding command existence check
+    be50481 use more portable/POSIX compatible ways to check for command existence
+    9b2c2f2 don't use hardcoded paths
+    abf3d45 check for partial resume state for non resume style transfers, if so reset state and retry
+    0f669a3 Cleaned up Configuration section to match the rest of the document
+    429da3a Add comprehensive installation instructions
+
 2.0.0  [overall]   documentation updates, small fixes, more warnings (@sparky3387, @ljwobker, @phreaker0)
        [syncoid]   added force delete flag (@phreaker0)
        [sanoid]    removed sleeping between snapshot taking (@phreaker0)
