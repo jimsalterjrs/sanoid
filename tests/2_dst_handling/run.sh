@@ -13,7 +13,7 @@ set -x
 POOL_NAME="sanoid-test-2"
 POOL_TARGET=""  # root
 RESULT="/tmp/sanoid_test_result"
-RESULT_CHECKSUM="0a6336ccdc948c69563cb56994d190aebbc9b21588aef17bb97e51ae074f879a"
+RESULT_CHECKSUM="846372ef238f2182b382c77a73ecddf99aa82f28cc9995bcc95592cc78305463"
 
 # UTC timestamp of start and end
 START="1509141600"
@@ -49,6 +49,6 @@ done
 saveSnapshotList "${POOL_NAME}" "${RESULT}"
 
 # hourly daily monthly
-verifySnapshotList "${RESULT}" 72 3 1 "${RESULT_CHECKSUM}"
+verifySnapshotList "${RESULT}" 73 3 1 "${RESULT_CHECKSUM}"
 
 # one more hour because of DST

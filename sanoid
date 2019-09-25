@@ -15,6 +15,7 @@ use File::Path;       # for rmtree command in use_prune
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
+use Capture::Tiny ':all';
 
 my %args = ("configdir" => "/etc/sanoid");
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
@@ -357,6 +358,19 @@ sub take_snapshots {
 
 	my @newsnaps;
 
+	# get utc timestamp of the current day for DST check
+	my $daystartUtc = timelocal(0, 0, 0, $datestamp{'mday'}, ($datestamp{'mon'}-1), $datestamp{'year'});
+	my ($isdst) = (localtime($daystartUtc))[8];
+	my $dstOffset = 0;
+
+	if ($isdst ne $datestamp{'isdst'}) {
+		# current dst is different then at the beginning og the day
+		if ($isdst) {
+			# DST ended in the current day
+			$dstOffset = 60*60;
+		}
+	}
+
 	if ($args{'verbose'}) { print "INFO: taking snapshots...\n"; }
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
@@ -380,6 +394,9 @@ sub take_snapshots {
 				my @preferredtime;
 				my $lastpreferred;
 
+				# to avoid duplicates with DST
+				my $handleDst = 0;
+
 				if ($type eq 'frequently')     {
 					my $frequentslice = int($datestamp{'min'} / $config{$section}{'frequent_period'});
 
@@ -399,6 +416,13 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
+
+					if ($dstOffset ne 0) {
+						# timelocal doesn't take DST into account
+						$lastpreferred += $dstOffset;
+						# DST ended, avoid duplicates
+						$handleDst = 1;
+					}
 					if ($lastpreferred > time()) { $lastpreferred -= 60*60; } # preferred time is later this hour - so look at last hour's
 				} elsif ($type eq 'daily')   {
 					push @preferredtime,0; # try to hit 0 seconds
@@ -408,10 +432,29 @@ sub take_snapshots {
 					push @preferredtime,($datestamp{'mon'}-1); # january is month 0
 					push @preferredtime,$datestamp{'year'};
 					$lastpreferred = timelocal(@preferredtime);
-					if ($lastpreferred > time()) {
-						$preferredtime[3] -= 1; # preferred time is later today - so look at yesterday's
-						$lastpreferred = timelocal(@preferredtime);
+
+					# timelocal doesn't take DST into account
+					$lastpreferred += $dstOffset;
+
+					# check if the planned time has different DST flag than the current
+					my ($isdst) = (localtime($lastpreferred))[8];
+					if ($isdst ne $datestamp{'isdst'}) {
+						if (!$isdst) {
+							# correct DST difference
+							$lastpreferred -= 60*60;
+						}
 					}
+
+					if ($lastpreferred > time()) {
+						$lastpreferred -= 60*60*24;
+
+						if ($dstOffset ne 0) {
+							# because we are going back one day
+							# the DST difference has to be accounted
+							# for in reverse now
+							$lastpreferred -= 2*$dstOffset;
+						}
+					} # preferred time is later today - so look at yesterday's
 				} elsif ($type eq 'weekly')   {
 					# calculate offset in seconds for the desired weekday
 					my $offset = 0;
@@ -461,9 +504,17 @@ sub take_snapshots {
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
 
+					my $flags = "";
 					# use zfs (atomic) recursion if specified in config
 					if ($config{$section}{'zfs_recursion'}) {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@");
+						$flags .= "r";
+					}
+					if ($handleDst) {
+						$flags .= "d";
+					}
+
+					if ($flags ne "") {
+						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@$flags");
 					} else {
 						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
 					}
@@ -477,9 +528,18 @@ sub take_snapshots {
 			my $extraMessage = "";
 			my @split = split '@', $snap, -1;
 			my $recursiveFlag = 0;
+			my $dstHandling = 0;
 			if (scalar(@split) == 3) {
-				$recursiveFlag = 1;
-				$extraMessage = " (zfs recursive)";
+				my $flags = $split[2];
+				if (index($flags, "r") != -1) {
+					$recursiveFlag = 1;
+					$extraMessage = " (zfs recursive)";
+					chop $snap;
+				}
+				if (index($flags, "d") != -1) {
+					$dstHandling = 1;
+					chop $snap;
+				}
 				chop $snap;
 			}
 			my $dataset = $split[0];
@@ -506,13 +566,40 @@ sub take_snapshots {
 			}
 			if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
 			if (!$args{'readonly'}) {
-				if ($recursiveFlag) {
-					system($zfs, "snapshot", "-r", "$snap") == 0
-						or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
-				} else {
-					system($zfs, "snapshot", "$snap") == 0
-						or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
-				}
+				my $stderr;
+				my $exit;
+				($stderr, $exit) = tee_stderr {
+					if ($recursiveFlag) {
+						system($zfs, "snapshot", "-r", "$snap");
+					} else {
+						system($zfs, "snapshot", "$snap");
+					}
+				};
+
+				$exit == 0 or do {
+					if ($dstHandling) {
+						if ($stderr =~ /already exists/) {
+							$exit = 0;
+							$snap =~ s/_([a-z]+)$/dst_$1/g;
+							if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
+							if ($recursiveFlag) {
+								system($zfs, "snapshot", "-r", "$snap") == 0
+									or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+							} else {
+								system($zfs, "snapshot", "$snap") == 0
+									or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+							}
+						}
+					}
+				};
+
+				$exit == 0 or do {
+					if ($recursiveFlag) {
+						warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+					} else {
+						warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+					}
+				};
 			}
 			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
