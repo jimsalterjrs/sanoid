@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# test resumable replication where the original snapshot doesn't exist anymore
+# test preserving the recordsize from the src filesystem to the target one
 
 set -x
 set -e
