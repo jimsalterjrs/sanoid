@@ -1,0 +1,17 @@
+version: '3.3'
+
+services:
+  sanoid:
+    image: rakstar/sanoid
+    build: ../
+    privileged: true
+    devices:
+      - "/dev/zfs:/dev/zfs:rw"
+    volumes:
+      # optionally provide your own ssh keys
+      - "ssh:/root/.ssh"
+      # don't forget to adjust the config for your environment
+      - "./sanoid.conf:/etc/sanoid/sanoid.conf"
+
+volumes:
+  ssh:
