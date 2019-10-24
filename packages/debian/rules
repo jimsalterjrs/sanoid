@@ -5,18 +5,25 @@
 #export DH_VERBOSE = 1
 
 %:
-	dh $@ --with systemd
+	dh $@
 
 DESTDIR = $(CURDIR)/debian/sanoid
 override_dh_auto_install:
-	@mkdir -p $(DESTDIR)/usr/sbin; \
-		cp sanoid syncoid findoid sleepymutex $(DESTDIR)/usr/sbin;
-	@mkdir -p $(DESTDIR)/etc/sanoid; \
-		cp sanoid.defaults.conf $(DESTDIR)/etc/sanoid;
-	@mkdir -p $(DESTDIR)/usr/share/doc/sanoid; \
-		cp sanoid.conf $(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example;
-	@mkdir -p $(DESTDIR)/lib/systemd/system; \
-		cp debian/sanoid-prune.service debian/sanoid.timer $(DESTDIR)/lib/systemd/system;
+	install -d $(DESTDIR)/etc/sanoid
+	install -m 664 sanoid.defaults.conf $(DESTDIR)/etc/sanoid
+
+	install -d $(DESTDIR)/lib/systemd/system
+	install -m 664 debian/sanoid-prune.service debian/sanoid.timer \
+		$(DESTDIR)/lib/systemd/system
+
+	install -d $(DESTDIR)/usr/sbin
+	install -m 775 \
+		findoid sanoid sleepymutex syncoid \
+		$(DESTDIR)/usr/sbin
+
+	install -d $(DESTDIR)/usr/share/doc/sanoid
+	install -m 664 sanoid.conf \
+		$(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example
 
 override_dh_installinit:
 	dh_installinit --noscripts
