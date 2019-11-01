@@ -503,47 +503,30 @@ sub take_snapshots {
 					# update to most current possible datestamp
 					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
-
-					my $flags = "";
-					# use zfs (atomic) recursion if specified in config
-					if ($config{$section}{'zfs_recursion'}) {
-						$flags .= "r";
-					}
-					if ($handleDst) {
-						$flags .= "d";
-					}
-
-					if ($flags ne "") {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@$flags");
-					} else {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
-					}
+					my $snap = {
+						'dataset' => $path,
+						'snapshot' => "autosnap_$datestamp{'sortable'}_$type",
+						'recursive' => $config{$section}{'zfs_recrsion'}, # use zfs (atomic) recursion if specified in config
+						'handleDst' => $handleDst,
+					};
+					push(@newsnaps, $snap);
 				}
 			}
 		}
 	}
 
 	if ( (scalar(@newsnaps)) > 0) {
-		foreach my $snap ( @newsnaps ) {
+		foreach my $snapData ( @newsnaps ) {
+			my $dataset = $snapData->{dataset};
+			my $snapname = $snapData->{snapshot};
+			my $recursiveFlag = $snapData->{recursive};
+			my $dstHandling = $snapData->{handleDst};
 			my $extraMessage = "";
-			my @split = split '@', $snap, -1;
-			my $recursiveFlag = 0;
-			my $dstHandling = 0;
-			if (scalar(@split) == 3) {
-				my $flags = $split[2];
-				if (index($flags, "r") != -1) {
-					$recursiveFlag = 1;
-					$extraMessage = " (zfs recursive)";
-					chop $snap;
-				}
-				if (index($flags, "d") != -1) {
-					$dstHandling = 1;
-					chop $snap;
-				}
-				chop $snap;
+			if ($recursiveFlag) {
+				$extraMessage = " (zfs recursive)";
 			}
-			my $dataset = $split[0];
-			my $snapname = $split[1];
+			my $snap = "$dataset\@$snapname";
+
 			my $presnapshotfailure = 0;
 			my $ret = 0;
 			if ($config{$dataset}{'pre_snapshot_script'}) {
