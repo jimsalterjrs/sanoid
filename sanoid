@@ -509,7 +509,7 @@ sub take_snapshots {
 					my $snap = {
 						'dataset' => $path,
 						'snapshot' => "autosnap_$datestamp{'sortable'}_$type",
-						'recursive' => $config{$section}{'zfs_recrsion'}, # use zfs (atomic) recursion if specified in config
+						'recursive' => $config{$section}{'zfs_recursion'}, # use zfs (atomic) recursion if specified in config
 						'handleDst' => $handleDst,
 						'type' => $type,
 						'batch' => \@batch,  # Reference the source array, because we may be adding to it in subsequent loops
