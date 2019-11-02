@@ -317,11 +317,13 @@ sub prune_snapshots {
 										if ($config{$dataset}{'pruning_script'}) {
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											$ENV{'SANOID_SCRIPT'} = 'prune';
 											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
 											my $ret = runscript('pruning_script',$dataset);
 
 											delete $ENV{'SANOID_TARGET'};
 											delete $ENV{'SANOID_SNAPNAME'};
+											delete $ENV{'SANOID_SCRIPT'};
 										}
 									} else {
 										warn "could not remove $snap : $?";
@@ -378,7 +380,8 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
-                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
+		my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
+		my @batch = ();
 
                 foreach my $type (@types) {
 			if ($config{$section}{$type} > 0) {
@@ -508,7 +511,10 @@ sub take_snapshots {
 						'snapshot' => "autosnap_$datestamp{'sortable'}_$type",
 						'recursive' => $config{$section}{'zfs_recrsion'}, # use zfs (atomic) recursion if specified in config
 						'handleDst' => $handleDst,
+						'type' => $type,
+						'batch' => \@batch,  # Reference the source array, because we may be adding to it in subsequent loops
 					};
+					push(@batch, $snap->{snapshot});
 					push(@newsnaps, $snap);
 				}
 			}
@@ -521,6 +527,8 @@ sub take_snapshots {
 			my $snapname = $snapData->{snapshot};
 			my $recursiveFlag = $snapData->{recursive};
 			my $dstHandling = $snapData->{handleDst};
+			my $f = $snapData->{batch};
+			my $batch = join(",", @$f);
 			my $extraMessage = "";
 			if ($recursiveFlag) {
 				$extraMessage = " (zfs recursive)";
@@ -532,6 +540,9 @@ sub take_snapshots {
 			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_SNAPNAME'} = $snapname;
+				$ENV{'SANOID_TYPE'} = $snapData->{type};
+				$ENV{'SANOID_BATCH'} = $batch;
+				$ENV{'SANOID_SCRIPT'} = 'pre';
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 				if (!$args{'readonly'}) {
@@ -540,6 +551,9 @@ sub take_snapshots {
 
 				delete $ENV{'SANOID_TARGET'};
 				delete $ENV{'SANOID_SNAPNAME'};
+				delete $ENV{'SANOID_TYPE'};
+				delete $ENV{'SANOID_BATCH'};
+				delete $ENV{'SANOID_SCRIPT'};
 
 				if ($ret != 0) {
 					# warning was already thrown by runscript function
@@ -588,6 +602,10 @@ sub take_snapshots {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_SNAPNAME'} = $snapname;
+					$ENV{'SANOID_TYPE'} = $snapData->{type};
+					$ENV{'SANOID_BATCH'} = $batch;
+					$ENV{'SANOID_SCRIPT'} = 'post';
+					$ENV{'SANOID_PRE_FAILURE'} = $presnapshotfailure;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 					if (!$args{'readonly'}) {
@@ -596,6 +614,10 @@ sub take_snapshots {
 
 					delete $ENV{'SANOID_TARGET'};
 					delete $ENV{'SANOID_SNAPNAME'};
+					delete $ENV{'SANOID_TYPE'};
+					delete $ENV{'SANOID_BATCH'};
+					delete $ENV{'SANOID_SCRIPT'};
+					delete $ENV{'SANOID_PRE_FAILURE'};
 				}
 			}
 		}
