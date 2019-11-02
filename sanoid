@@ -527,8 +527,7 @@ sub take_snapshots {
 			my $snapname = $snapData->{snapshot};
 			my $recursiveFlag = $snapData->{recursive};
 			my $dstHandling = $snapData->{handleDst};
-			my $f = $snapData->{batch};
-			my $batch = join(",", @$f);
+			my $batch = join(",", @{$snapData->{batch}});
 			my $extraMessage = "";
 			if ($recursiveFlag) {
 				$extraMessage = " (zfs recursive)";
