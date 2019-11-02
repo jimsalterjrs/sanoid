@@ -101,6 +101,51 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	Show help message.
 
+### Sanoid script hooks
+
+There are 3 scripts which can optionally be executed at various stages in the lifecycle of a snapshot:
+
+##### `pre_snapshot_script`
+
+This script will be executed before a snapshot is taken.  The following environment variables with be passed:
+
+| Env vars          | Description
+| ----------------- | -----------
+| `SANOID_SCRIPT`   | The type of script being executed, one of `pre`, `post`, or `prune`.  Allows for one script to be used for multiple tasks
+| `SANOID_TARGET`   | The dataset about to be snapshot
+| `SANOID_SNAPNAME` | The name of the snapshot that will be taken (does not include the dataset name)
+| `SANOID_TYPE`     | The type of snapshot to be taken (yearly, monthly, weekly, daily, hourly, frequently)
+| `SANOID_BATCH`    | All the snapshots which will be taken against this dataset (does not include the dataset name), joined by commas.  Note that not all of the snapshots will have been taken.  For example, monthly is taken before weekly, but weekly is still included when `SANOID_TYPE` is monthly.  It is guaranteed to take snapshots in ascending frequency: yearly, monthly, ... frequently
+
+If the script returns a non-zero exit code, the snapshot will not be taken unless `no_inconsistent_snapshot` is false.
+
+##### `post_snapshot_script`
+
+This script will be executed when:
+
+- The pre-snapshot script succeeded or
+- The pre-snapshot script failed and `force_post_snapshot_script` is true.
+
+| Env vars             | Description
+| -------------------- | -----------
+| `SANOID_SCRIPT`      | as above |
+| `SANOID_TARGET`      | as above |
+| `SANOID_SNAPNAME`    | as above |
+| `SANOID_TYPE`        | as above |
+| `SANOID_BATCH`       | as above |
+| `SANOID_PRE_FAILURE` | This will indicate if the pre-snapshot script failed |
+
+
+##### `pruning_script`
+
+This script will be executed after a snapshot is successfully deleted.  The following environment variables will be passed:
+
+| Env vars          | Description
+| ----------------- | -----------
+| `SANOID_SCRIPT`   | as above |
+| `SANOID_TARGET`   | as above |
+| `SANOID_SNAPNAME` | as above |
+
 ----------
 
 # Syncoid
