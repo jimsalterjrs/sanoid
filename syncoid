@@ -14,6 +14,8 @@ use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
 use Capture::Tiny ':all';
+use DateTime;
+use DateTime::Format::ISO8601::Format;
 
 my $mbuffer_size = "16M";
 
@@ -24,7 +26,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark",
+                   "create-bookmark", "localtime",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1369,8 +1371,15 @@ sub newsyncsnap {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
-	my %date = getdate();
-	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
+  my $formatdt = DateTime::Format::ISO8601::Format->new();
+  my $dt;
+  if (defined $args{'localtime'}) {
+    $dt = DateTime->now()->set_time_zone('local');
+  } else {
+    $dt = DateTime->now()->set_time_zone('UTC');
+  }
+  my $datestamp = $formatdt->format_datetime($dt);
+	my $snapname = "syncoid\_$identifier$hostid\_$datestamp";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
 	system($snapcmd) == 0 or do {
@@ -1641,21 +1650,6 @@ sub getsendsize {
 	return $sendsize;
 }
 
-sub getdate {
-	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
-	$year += 1900;
-	my %date;
-	$date{'unix'} = (((((((($year - 1971) * 365) + $yday) * 24) + $hour) * 60) + $min) * 60) + $sec;
-	$date{'year'} = $year;
-	$date{'sec'} = sprintf ("%02u", $sec);
-	$date{'min'} = sprintf ("%02u", $min);
-	$date{'hour'} = sprintf ("%02u", $hour);
-	$date{'mday'} = sprintf ("%02u", $mday);
-	$date{'mon'} = sprintf ("%02u", ($mon + 1));
-	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
-	return %date;
-}
-
 sub escapeshellparam {
 	my ($par) = @_;
 	# avoid use of uninitialized string in regex
@@ -1804,6 +1798,7 @@ Options:
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+  --localtime           Generate syncoid snapshots using localtime naming rather than UTC
 
   --help                Prints this helptext
   --version             Prints the version number
