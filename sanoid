@@ -11,15 +11,19 @@ use strict;
 use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
-use File::Path;       # for rmtree command in use_prune
+use File::Path 'make_path';
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
 
-my %args = ("configdir" => "/etc/sanoid");
+my %args = (
+	"configdir" => "/etc/sanoid",
+	"cache-dir" => "/var/cache/sanoid"
+);
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
-                   "monitor-health", "force-update", "configdir=s",
+                   "configdir=s", "cache-dir=s",
+                   "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
           ) or pod2usage(2);
@@ -41,9 +45,13 @@ my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 # parse config file
 my %config = init($conf_file,$default_conf_file);
 
+my $cache_dir = $args{'cache-dir'};
+
+make_path($cache_dir);
+
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
-my $cache = '/var/cache/sanoidsnapshots.txt';
+my $cache = "$cache_dir/snapshots.txt";
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
@@ -1659,6 +1667,7 @@ Assumes --cron --verbose if no other arguments (other than configdir) are specif
 Options:
 
   --configdir=DIR       Specify a directory to find config file sanoid.conf
+  --cache-dir=DIR       Specify a directory to store the zfs snapshot cache
 
   --cron                Creates snapshots and purges expired snapshots
   --verbose             Prints out additional information during a sanoid run
