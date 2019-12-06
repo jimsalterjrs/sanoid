@@ -19,10 +19,11 @@ use Capture::Tiny ':all';
 
 my %args = (
 	"configdir" => "/etc/sanoid",
-	"cache-dir" => "/var/cache/sanoid"
+	"cache-dir" => "/var/cache/sanoid",
+	"run-dir" => "/var/run/sanoid"
 );
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
-                   "configdir=s", "cache-dir=s",
+                   "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
@@ -46,8 +47,10 @@ my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 my %config = init($conf_file,$default_conf_file);
 
 my $cache_dir = $args{'cache-dir'};
+my $run_dir = $args{'run-dir'};
 
 make_path($cache_dir);
+make_path($run_dir);
 
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
@@ -1373,10 +1376,10 @@ sub get_zpool_capacity {
 sub checklock {
 	# take argument $lockname.
 	#
-	# read /var/run/$lockname.lock for a pid on first line and a mutex on second line.
+	# read $run_dir/$lockname.lock for a pid on first line and a mutex on second line.
 	#
-	# check process list to see if the pid from /var/run/$lockname.lock is still active with
-	# the original mutex found in /var/run/$lockname.lock.
+	# check process list to see if the pid from $run_dir/$lockname.lock is still active with
+	# the original mutex found in $run_dir/$lockname.lock.
 	#
 	# return:
 	#    0 if lock is present and valid for another process
@@ -1388,7 +1391,7 @@ sub checklock {
 	#
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (! -e $lockfile) {
 		# no lockfile
@@ -1441,11 +1444,11 @@ sub checklock {
 sub removelock {
 	# take argument $lockname.
 	#
-	# make sure /var/run/$lockname.lock actually belongs to me (contains my pid and mutex)
+	# make sure $run_dir/$lockname.lock actually belongs to me (contains my pid and mutex)
 	# and remove it if it does, die if it doesn't.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (checklock($lockname) == 2) {
 		unlink $lockfile;
@@ -1460,11 +1463,11 @@ sub removelock {
 sub writelock {
 	# take argument $lockname.
 	#
-	# write a lockfile to /var/run/$lockname.lock with first line
+	# write a lockfile to $run_dir/$lockname.lock with first line
 	# being my pid and second line being my mutex.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	# die honorably rather than overwriting a valid, existing lock
 	if (! checklock($lockname)) {
@@ -1668,6 +1671,7 @@ Options:
 
   --configdir=DIR       Specify a directory to find config file sanoid.conf
   --cache-dir=DIR       Specify a directory to store the zfs snapshot cache
+  --run-dir=DIR         Specify a directory for temporary files such as lock files
 
   --cron                Creates snapshots and purges expired snapshots
   --verbose             Prints out additional information during a sanoid run
