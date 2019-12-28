@@ -1389,7 +1389,9 @@ sub checklock {
 	# make sure lockfile contains something
 	if ( -z $lockfile) {
 	        # zero size lockfile, something is wrong
-	        die "ERROR: something is wrong! $lockfile is empty\n";
+	        warn "WARN: deleting invalid/empty $lockfile\n";
+	        unlink $lockfile;
+	        return 1
 	}
 
 	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if
@@ -1400,7 +1402,9 @@ sub checklock {
 	close FH;
 	# if we didn't get exactly 2 items from the lock file there is a problem
 	if (scalar(@lock) != 2) {
-	    die "ERROR: $lockfile is invalid.\n"
+	    warn "WARN: deleting invalid $lockfile\n"
+	    unlink $lockfile;
+	    return 1
 	}
 
 	my $lockmutex = pop(@lock);
