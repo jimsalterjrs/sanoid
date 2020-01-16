@@ -1707,9 +1707,9 @@ sub getsendsize {
 	if (defined($receivetoken)) {
 		$sendoptions = getoptionsline(\@sendoptions, ('e'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','v','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','w'));
 	}
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nvP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
