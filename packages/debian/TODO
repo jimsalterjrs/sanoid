@@ -1,0 +1,12 @@
+- This package needs to be a 3.0 (quilt) format, not 3.0 (native).
+  - Fix the changelog
+  - Move the packaging out to a separate repository, or at a minimum,
+    a separate branch.
+- Provide an extended description in debian/control
+- Figure out a plan for sanoid.defaults.conf.  It is not supposed to be
+  edited, so it shouldn't be installed in /etc.  At a minimum, install
+  it under /usr and make a symlink, but preferably patch sanoid to look
+  there directly.
+- Man pages are necessary for all the utilities installed.
+  - With these, there is probably no need to ship README.md.
+- Break out syncoid into a separate package?

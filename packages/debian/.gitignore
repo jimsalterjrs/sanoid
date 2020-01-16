@@ -1,0 +1,7 @@
+*.debhelper
+*.debhelper.log
+*.substvars
+debhelper-build-stamp
+files
+sanoid
+tmp

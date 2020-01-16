@@ -175,4 +175,6 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 
 ## Sanoid
 
-Take a look at the files `sanoid.defaults.conf` and` sanoid.conf.example` for all possible configuration options. Also have a look at the README.md
+Take a look at the files `sanoid.defaults.conf` and `sanoid.conf` for all possible configuration options.
+
+Also have a look at the README.md for a simpler suggestion for `sanoid.conf`.
