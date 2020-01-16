@@ -159,16 +159,16 @@ sub monitor_snapshots {
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
-						push @msgs, "CRIT: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
+						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
 					}
 				}
 			 } elsif ($elapsed > $warn) {
 				if ($warn > 0) {
 					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
-					push @msgs, "WARN: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
+					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
 			} else {
-				# push @msgs .= "OK: $path\'s newest $type snapshot is $dispelapsed old \n";
+				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 			}
 
 		}
