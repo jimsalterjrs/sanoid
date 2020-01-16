@@ -1527,7 +1527,7 @@ sub getsnapsfallback() {
 	}
 
 	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
-	warn "snapshot listing failed, trying fallback command"
+	warn "snapshot listing failed, trying fallback command";
 	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
