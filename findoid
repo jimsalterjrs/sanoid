@@ -81,6 +81,14 @@ sub getversions {
 		}
 	}
 
+	my $filename = "$dataset/$relpath";
+	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat($filename);
+
+	if (defined $size) {
+		$versions{$filename}{'size'} = $size;
+		$versions{$filename}{'mtime'} = $mtime;
+	}
+
 	return %versions;
 }
 
