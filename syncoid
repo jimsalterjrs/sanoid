@@ -16,6 +16,7 @@ use Sys::Hostname;
 use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
+my $pvoptions = "-p -t -e -r -b";
 
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
@@ -24,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark",
+                   "create-bookmark", "pv-options=s" => \$pvoptions,
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1240,13 +1241,13 @@ sub buildsynccmd {
 		}
 
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
 		# local source, remote target.
 		#$synccmd = "$sendcmd | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		$synccmd .= " $sshcmd $targethost ";
@@ -1269,7 +1270,7 @@ sub buildsynccmd {
 		$synccmd .= " | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
@@ -1283,7 +1284,7 @@ sub buildsynccmd {
 		$synccmd .= " | ";
 
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'cmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost ";
@@ -1897,6 +1898,7 @@ Options:
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer
   --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
+  --pv-options=OPTIONS  Configure how pv displays the progress bar, default '-p -t -e -r -b'
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
