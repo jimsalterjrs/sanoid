@@ -285,11 +285,20 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
-	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+	my ($sync, $error) = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
 
 	if (!defined $sync) {
 		# zfs already printed the corresponding error
-		if ($exitcode < 2) { $exitcode = 2; }
+		if ($error =~ /\bdataset does not exist\b/) {
+			if (!$quiet) { print "WARN Skipping dataset (dataset no longer exists): $sourcefs...\n"; }
+			return 0;
+		}
+		else {
+			# print the error out and set exit code
+			print "ERROR: $error\n";
+			if ($exitcode < 2) { $exitcode = 2 }
+		}
+
 		return 0;
 	}
 
@@ -1143,17 +1152,22 @@ sub getzfsvalue {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fsescaped\n"; }
-	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
-	my $value = <FH>;
-	close FH;
-
-	if (!defined $value) {
-		return undef;
-	}
+	my ($value, $error, $exit) = capture {
+		system("$rhost $mysudocmd $zfscmd get -H $property $fsescaped");
+	};
 
 	my @values = split(/\t/,$value);
 	$value = $values[2];
-	return $value;
+
+	my $wantarray = wantarray || 0;
+
+	# If we are in scalar context and there is an error, print it out.
+	# Otherwise we assume the caller will deal with it.
+	if (!$wantarray and $error) {
+		print "ERROR getzfsvalue $fs $property: $error\n";
+	}
+
+	return $wantarray ? ($value, $error) : $value;
 }
 
 sub readablebytes {
