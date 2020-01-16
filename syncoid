@@ -1455,11 +1455,19 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped |";
-	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get A-Hpd 1 -t snapshot guid,creation $fsescaped";
+	if ($debug) {
+		$getsnapcmd = "$getsnapcmd |";
+		print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n";
+	} else {
+		$getsnapcmd = "$getsnapcmd 2>/dev/null |";
+	}
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+	close FH or do {
+		# fallback (solaris for example doesn't support the -t option)
+		return getsnapsfallback($type,$rhost,$fs,$isroot,%snaps);
+	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1505,6 +1513,89 @@ sub getsnaps() {
 
 			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
 		}
+	}
+
+	return %snaps;
+}
+
+sub getsnapsfallback() {
+	# fallback (solaris for example doesn't support the -t option)
+	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
+	warn "snapshot listing failed, trying fallback command";
+	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
+	open FH, $getsnapcmd;
+	my @rawsnaps = <FH>;
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+
+	my %creationtimes=();
+
+	my $state = 0;
+	foreach my $line (@rawsnaps) {
+		if ($state < 0) {
+			$state++;
+			next;
+		}
+
+		if ($state eq 0) {
+			if ($line !~ /\Q$fs\E\@.*type\s*snapshot/) {
+				# skip non snapshot type object
+				$state = -2;
+				next;
+			}
+		} elsif ($state eq 1) {
+			if ($line !~ /\Q$fs\E\@.*guid/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
+			}
+
+			chomp $line;
+			my $guid = $line;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			$snaps{$type}{$snap}{'guid'}=$guid;
+		} elsif ($state eq 2) {
+			if ($line !~ /\Q$fs\E\@.*creation/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
+			}
+
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# snapshots in the same second are highly likely. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for snapshot with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			$state = -1;
+		}
+
+		$state++;
 	}
 
 	return %snaps;
