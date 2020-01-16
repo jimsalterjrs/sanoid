@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.0.2';
+$::VERSION = '2.0.3';
 
 use strict;
 use warnings;
@@ -16,6 +16,7 @@ use Sys::Hostname;
 use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
+my $pvoptions = "-p -t -e -r -b";
 
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
@@ -24,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark",
+                   "create-bookmark", "pv-options=s" => \$pvoptions,
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -285,11 +286,20 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
-	my $sync = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+	my ($sync, $error) = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
 
 	if (!defined $sync) {
 		# zfs already printed the corresponding error
-		if ($exitcode < 2) { $exitcode = 2; }
+		if ($error =~ /\bdataset does not exist\b/) {
+			if (!$quiet) { print "WARN Skipping dataset (dataset no longer exists): $sourcefs...\n"; }
+			return 0;
+		}
+		else {
+			# print the error out and set exit code
+			print "ERROR: $error\n";
+			if ($exitcode < 2) { $exitcode = 2 }
+		}
+
 		return 0;
 	}
 
@@ -1143,17 +1153,22 @@ sub getzfsvalue {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fsescaped\n"; }
-	open FH, "$rhost $mysudocmd $zfscmd get -H $property $fsescaped |";
-	my $value = <FH>;
-	close FH;
-
-	if (!defined $value) {
-		return undef;
-	}
+	my ($value, $error, $exit) = capture {
+		system("$rhost $mysudocmd $zfscmd get -H $property $fsescaped");
+	};
 
 	my @values = split(/\t/,$value);
 	$value = $values[2];
-	return $value;
+
+	my $wantarray = wantarray || 0;
+
+	# If we are in scalar context and there is an error, print it out.
+	# Otherwise we assume the caller will deal with it.
+	if (!$wantarray and $error) {
+		print "ERROR getzfsvalue $fs $property: $error\n";
+	}
+
+	return $wantarray ? ($value, $error) : $value;
 }
 
 sub readablebytes {
@@ -1226,13 +1241,13 @@ sub buildsynccmd {
 		}
 
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
 		# local source, remote target.
 		#$synccmd = "$sendcmd | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd -s $pvsize |"; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		$synccmd .= " $sshcmd $targethost ";
@@ -1255,7 +1270,7 @@ sub buildsynccmd {
 		$synccmd .= " | ";
 		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
 		#remote source, remote target... weird, but whatever, I'm not here to judge you.
@@ -1269,7 +1284,7 @@ sub buildsynccmd {
 		$synccmd .= " | ";
 
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
-		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd -s $pvsize | "; }
+		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'cmd'} | "; }
 		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost ";
@@ -1455,11 +1470,19 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped |";
-	if ($debug) { print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n"; }
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get A-Hpd 1 -t snapshot guid,creation $fsescaped";
+	if ($debug) {
+		$getsnapcmd = "$getsnapcmd |";
+		print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n";
+	} else {
+		$getsnapcmd = "$getsnapcmd 2>/dev/null |";
+	}
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+	close FH or do {
+		# fallback (solaris for example doesn't support the -t option)
+		return getsnapsfallback($type,$rhost,$fs,$isroot,%snaps);
+	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
@@ -1505,6 +1528,89 @@ sub getsnaps() {
 
 			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
 		}
+	}
+
+	return %snaps;
+}
+
+sub getsnapsfallback() {
+	# fallback (solaris for example doesn't support the -t option)
+	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
+	warn "snapshot listing failed, trying fallback command";
+	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
+	open FH, $getsnapcmd;
+	my @rawsnaps = <FH>;
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+
+	my %creationtimes=();
+
+	my $state = 0;
+	foreach my $line (@rawsnaps) {
+		if ($state < 0) {
+			$state++;
+			next;
+		}
+
+		if ($state eq 0) {
+			if ($line !~ /\Q$fs\E\@.*type\s*snapshot/) {
+				# skip non snapshot type object
+				$state = -2;
+				next;
+			}
+		} elsif ($state eq 1) {
+			if ($line !~ /\Q$fs\E\@.*guid/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
+			}
+
+			chomp $line;
+			my $guid = $line;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			$snaps{$type}{$snap}{'guid'}=$guid;
+		} elsif ($state eq 2) {
+			if ($line !~ /\Q$fs\E\@.*creation/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
+			}
+
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# snapshots in the same second are highly likely. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for snapshot with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			$state = -1;
+		}
+
+		$state++;
 	}
 
 	return %snaps;
@@ -1602,9 +1708,9 @@ sub getsendsize {
 	if (defined($receivetoken)) {
 		$sendoptions = getoptionsline(\@sendoptions, ('e'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','v','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','w'));
 	}
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nvP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
@@ -1792,6 +1898,7 @@ Options:
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer
   --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
+  --pv-options=OPTIONS  Configure how pv displays the progress bar, default '-p -t -e -r -b'
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
