@@ -8,7 +8,7 @@
 use strict;
 use warnings;
 
-my $zfs = '/sbin/zfs';
+my $zfs = 'zfs';
 my %args = getargs(@ARGV);
 
 my $progversion = '1.4.7';
