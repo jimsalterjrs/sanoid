@@ -1,3 +1,44 @@
+sanoid (2.0.3) unstable; urgency=medium
+
+  [sanoid]    reverted DST handling and improved it as quickfix (@phreaker0)
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 02 Oct 2019 17:00:00 +0100
+
+sanoid (2.0.2) unstable; urgency=medium
+
+  [overall]   documentation updates, new dependencies, small fixes, more warnings (@benyanke, @matveevandrey, @RulerOf, @klemens-u, @johnramsden, @danielewood, @g-a-c, @hartzell, @fryfrog, @phreaker0)
+  [syncoid]   changed and simplified DST handling (@shodanshok)
+  [syncoid]   reset partially resume state automatically (@phreaker0)
+  [syncoid]   handle some zfs erros automatically by parsing the stderr outputs (@phreaker0)
+  [syncoid]   fixed ordering of snapshots with the same creation timestamp (@phreaker0)
+  [syncoid]   don't use hardcoded paths (@phreaker0)
+  [syncoid]   fix for special setup with listsnapshots=on (@phreaker0)
+  [syncoid]   check ssh connection on startup (@phreaker0)
+  [syncoid]   fix edge case with initial send and no-stream option (@phreaker0)
+  [syncoid]   fallback to normal replication if clone recreation fails (@phreaker0)
+  [packaging] ebuild for gentoo (@thehaven)
+  [syncoid]   support for zfs bookmark creation (@phreaker0)
+  [syncoid]   fixed bookmark edge cases (@phreaker0)
+  [syncoid]   handle invalid dataset paths nicely (@phreaker0)
+  [syncoid]   fixed resume support check to be zpool based (@phreaker0)
+  [sanoid]    added hotspare template  (@jimsalterjrs)
+  [syncoid]   support for advanced zfs send/recv options (@clinta, @phreaker0)
+  [syncoid]   option to change mbuffer size (@TerraTech)
+  [tests]     fixes for FreeBSD (@phreaker0)
+  [sanoid]    support for zfs recursion (@jMichaelA, @phreaker0)
+  [syncoid]   fixed bookmark handling for volumens (@ppcontrib)
+  [sanoid]    allow time units for monitoring warn/crit values (@phreaker0)
+
+ -- Jim Salter <github@jrs-s.net>  Fri, 20 Sep 2019 23:01:00 +0100
+
+sanoid (2.0.1) unstable; urgency=medium
+
+  [sanoid]    fixed broken monthly warn/critical monitoring values in default template (@jimsalterjrs)
+  [sanoid]    flag to force pruning while filesystem is in an active zfs send/recv (@shodanshok)
+  [syncoid]   flags to disable rollbacks (@shodanshok)
+
+ -- Jim Salter <github@jrs-s.net>  Fri, 14 Dec 2018 16:48:00 +0100
+
 sanoid (2.0.0) unstable; urgency=medium
 
   [overall]   documentation updates, small fixes, more warnings (@sparky3387, @ljwobker, @phreaker0)

@@ -1,4 +1,4 @@
-%global version 2.0.0
+%global version 2.0.3
 %global git_tag v%{version}
 
 # Enable with systemctl "enable sanoid.timer"
@@ -14,7 +14,7 @@ License:	   GPLv3
 URL:		   https://github.com/jimsalterjrs/sanoid
 Source0:	   https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
 
-Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles, perl-capture-tiny
+Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles, perl-Capture-Tiny
 %if 0%{?_with_systemd}
 Requires:      systemd >= 212
 
@@ -111,6 +111,10 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
+* Wed Oct 02 2019 Christoph Klaffl <christoph@phreaker.eu> - 2.0.3
+- Bump to 2.0.3
+* Wed Sep 25 2019 Christoph Klaffl <christoph@phreaker.eu> - 2.0.2
+- Bump to 2.0.2
 * Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
 - Bump to 2.0.0
 * Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1

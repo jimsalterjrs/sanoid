@@ -8,7 +8,7 @@
 use strict;
 use warnings;
 
-my $zfs = '/sbin/zfs';
+my $zfs = 'zfs';
 my %args = getargs(@ARGV);
 
 my $progversion = '1.4.7';
@@ -64,6 +64,10 @@ sub getversions {
 		my $filename = "$dataset/$snappath/$snap/$relpath";
 		my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat($filename);
 
+		if (!defined $size) {
+			next;
+		}
+
 		# only push to the $versions hash if this size and mtime aren't already present (simple dedupe)
 		my $duplicate = 0;
 		foreach my $version (keys %versions) {
@@ -75,6 +79,14 @@ sub getversions {
 			$versions{$filename}{'size'} = $size;
 			$versions{$filename}{'mtime'} = $mtime;
 		}
+	}
+
+	my $filename = "$dataset/$relpath";
+	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat($filename);
+
+	if (defined $size) {
+		$versions{$filename}{'size'} = $size;
+		$versions{$filename}{'mtime'} = $mtime;
 	}
 
 	return %versions;
@@ -102,14 +114,19 @@ sub getdataset {
 
 	my ($path) = @_;
 
-	open FH, "$zfs list -Ho mountpoint |";
+	open FH, "$zfs list -H -t filesystem -o mountpoint,mounted |";
 	my @datasets = <FH>;
 	close FH;
 
 	my @matchingdatasets;
 	foreach my $dataset (@datasets) {
 		chomp $dataset;
-		if ( $path =~ /^$dataset/ ) { push @matchingdatasets, $dataset; }
+		my ($mountpoint, $mounted) = ($dataset =~ m/([^\t]*)\t*(.*)/);
+		if ($mounted ne "yes") {
+			next;
+		}
+
+		if ( $path =~ /^$mountpoint/ ) { push @matchingdatasets, $mountpoint; }
 	}
 
 	my $bestmatch = '';
