@@ -1402,7 +1402,7 @@ sub checklock {
 	close FH;
 	# if we didn't get exactly 2 items from the lock file there is a problem
 	if (scalar(@lock) != 2) {
-	    warn "WARN: deleting invalid $lockfile\n"
+	    warn "WARN: deleting invalid $lockfile\n";
 	    unlink $lockfile;
 	    return 1
 	}
