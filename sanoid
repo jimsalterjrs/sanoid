@@ -1428,7 +1428,7 @@ sub checklock {
 		# we own the lockfile. no need to check any further.
 		return 2;
 	}
-	open PL, "$pscmd -p $lockpid -o args= |";
+	open PL, "$pscmd -o args= | grep $lockpid |";
 	my @processlist = <PL>;
 	close PL;
 
@@ -1480,7 +1480,7 @@ sub writelock {
 
 	my $pid = $$;
 
-	open PL, "$pscmd -p $$ -o args= |";
+	open PL, "$pscmd -o args= | grep $$ |";
 	my @processlist = <PL>;
 	close PL;
 
