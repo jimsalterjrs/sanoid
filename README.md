@@ -262,6 +262,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	Use specified identity file as per ssh -i.
 
++ --sshconfig
+
+	Use specified ssh_config(5) file as per ssh -F.
+
 + --quiet
 
 	Supress non-error output.
