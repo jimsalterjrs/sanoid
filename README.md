@@ -49,6 +49,14 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 
 	Specify a location for the config file named sanoid.conf. Defaults to /etc/sanoid
 
++ --cache-dir
+
+	Specify a directory to store the zfs snapshot cache. Defaults to /var/cache/sanoid
+
++ --run-dir
+
+	Specify a directory for temporary files such as lock files. Defaults to /var/run/sanoid
+
 + --take-snapshots
 
 	This will process your sanoid.conf file, create snapshots, but it will NOT purge expired ones. (Note that snapshots taken are atomic in an individual dataset context, <i>not</i> a global context - snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent and atomic, but one may be a few filesystem transactions "newer" than the other.)

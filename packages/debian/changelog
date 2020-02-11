@@ -1,3 +1,9 @@
+sanoid (2.0.3) unstable; urgency=medium
+
+  [sanoid]    reverted DST handling and improved it as quickfix (@phreaker0)
+
+ -- Jim Salter <github@jrs-s.net>  Wed, 02 Oct 2019 17:00:00 +0100
+
 sanoid (2.0.2) unstable; urgency=medium
 
   [overall]   documentation updates, new dependencies, small fixes, more warnings (@benyanke, @matveevandrey, @RulerOf, @klemens-u, @johnramsden, @danielewood, @g-a-c, @hartzell, @fryfrog, @phreaker0)

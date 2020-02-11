@@ -4,22 +4,27 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.0.2';
+$::VERSION = '2.0.3';
 my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
 use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
-use File::Path;       # for rmtree command in use_prune
+use File::Path 'make_path';
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
 
-my %args = ("configdir" => "/etc/sanoid");
+my %args = (
+	"configdir" => "/etc/sanoid",
+	"cache-dir" => "/var/cache/sanoid",
+	"run-dir" => "/var/run/sanoid"
+);
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
-                   "monitor-health", "force-update", "configdir=s",
+                   "configdir=s", "cache-dir=s", "run-dir=s",
+                   "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
           ) or pod2usage(2);
@@ -41,9 +46,15 @@ my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 # parse config file
 my %config = init($conf_file,$default_conf_file);
 
+my $cache_dir = $args{'cache-dir'};
+my $run_dir = $args{'run-dir'};
+
+make_path($cache_dir);
+make_path($run_dir);
+
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
-my $cache = '/var/cache/sanoidsnapshots.txt';
+my $cache = "$cache_dir/snapshots.txt";
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
@@ -159,16 +170,16 @@ sub monitor_snapshots {
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
-						push @msgs, "CRIT: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
+						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
 					}
 				}
 			 } elsif ($elapsed > $warn) {
 				if ($warn > 0) {
 					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
-					push @msgs, "WARN: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
+					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
 			} else {
-				# push @msgs .= "OK: $path\'s newest $type snapshot is $dispelapsed old \n";
+				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 			}
 
 		}
@@ -1369,10 +1380,10 @@ sub get_zpool_capacity {
 sub checklock {
 	# take argument $lockname.
 	#
-	# read /var/run/$lockname.lock for a pid on first line and a mutex on second line.
+	# read $run_dir/$lockname.lock for a pid on first line and a mutex on second line.
 	#
-	# check process list to see if the pid from /var/run/$lockname.lock is still active with
-	# the original mutex found in /var/run/$lockname.lock.
+	# check process list to see if the pid from $run_dir/$lockname.lock is still active with
+	# the original mutex found in $run_dir/$lockname.lock.
 	#
 	# return:
 	#    0 if lock is present and valid for another process
@@ -1384,7 +1395,7 @@ sub checklock {
 	#
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (! -e $lockfile) {
 		# no lockfile
@@ -1393,7 +1404,9 @@ sub checklock {
 	# make sure lockfile contains something
 	if ( -z $lockfile) {
 	        # zero size lockfile, something is wrong
-	        die "ERROR: something is wrong! $lockfile is empty\n";
+	        warn "WARN: deleting invalid/empty $lockfile\n";
+	        unlink $lockfile;
+	        return 1
 	}
 
 	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if
@@ -1404,7 +1417,9 @@ sub checklock {
 	close FH;
 	# if we didn't get exactly 2 items from the lock file there is a problem
 	if (scalar(@lock) != 2) {
-	    die "ERROR: $lockfile is invalid.\n"
+	    warn "WARN: deleting invalid $lockfile\n";
+	    unlink $lockfile;
+	    return 1
 	}
 
 	my $lockmutex = pop(@lock);
@@ -1437,11 +1452,11 @@ sub checklock {
 sub removelock {
 	# take argument $lockname.
 	#
-	# make sure /var/run/$lockname.lock actually belongs to me (contains my pid and mutex)
+	# make sure $run_dir/$lockname.lock actually belongs to me (contains my pid and mutex)
 	# and remove it if it does, die if it doesn't.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (checklock($lockname) == 2) {
 		unlink $lockfile;
@@ -1456,11 +1471,11 @@ sub removelock {
 sub writelock {
 	# take argument $lockname.
 	#
-	# write a lockfile to /var/run/$lockname.lock with first line
+	# write a lockfile to $run_dir/$lockname.lock with first line
 	# being my pid and second line being my mutex.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	# die honorably rather than overwriting a valid, existing lock
 	if (! checklock($lockname)) {
@@ -1663,6 +1678,8 @@ Assumes --cron --verbose if no other arguments (other than configdir) are specif
 Options:
 
   --configdir=DIR       Specify a directory to find config file sanoid.conf
+  --cache-dir=DIR       Specify a directory to store the zfs snapshot cache
+  --run-dir=DIR         Specify a directory for temporary files such as lock files
 
   --cron                Creates snapshots and purges expired snapshots
   --verbose             Prints out additional information during a sanoid run
