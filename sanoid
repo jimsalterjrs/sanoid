@@ -1428,18 +1428,28 @@ sub checklock {
 		# we own the lockfile. no need to check any further.
 		return 2;
 	}
-	open PL, "$pscmd -o args= | grep $lockpid |";
+
+	open PL, "$pscmd -o pid,args | grep \"$lockpid \" | grep -v \"grep $lockpid\" |";
 	my @processlist = <PL>;
 	close PL;
 
-	my $checkmutex = pop(@processlist);
-	chomp $checkmutex;
+	if (scalar @processlist > 0)
+	{
+		my @data = split / /, pop(@processlist), 2;
+		my $checkmutex = pop(@data);
+		chomp $checkmutex;
 
-	if ($checkmutex eq $lockmutex) {
-		# lock exists, is valid, is not owned by us - return false
-		return 0;
-	} else {
-		# lock is present but not valid - remove and return true
+		if ($checkmutex eq $lockmutex) {
+			# lock exists, is valid, is not owned by us - return false
+			return 0;
+		} else {
+			# lock is present but not valid - remove and return true
+			unlink $lockfile;
+			return 1;
+		}
+	}
+	else
+	{
 		unlink $lockfile;
 		return 1;
 	}
@@ -1480,11 +1490,13 @@ sub writelock {
 
 	my $pid = $$;
 
-	open PL, "$pscmd -o args= | grep $$ |";
+	open PL, "$pscmd -o pid,args | grep \"$pid \" | grep -v \"grep $pid\" |";
+
 	my @processlist = <PL>;
 	close PL;
 
-	my $mutex = pop(@processlist);
+	my @data = split / /, pop(@processlist), 2;
+	my $mutex = pop(@data);
 	chomp $mutex;
 
 	open FH, "> $lockfile";
