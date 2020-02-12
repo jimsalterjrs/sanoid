@@ -39,6 +39,8 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 
 Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
 
+**Note**: Be aware that if you don't specify some interval options the defaults will be used (from /etc/sanoid/sanoid.defaults.conf)
+
 ##### Sanoid Command Line Options
 
 + --cron
@@ -192,7 +194,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --source-bwlimit <limit t|g|m|k>
 
-	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limits are desired. 
+	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limits are desired.
 
 + --target-bw-limit <limit t|g|m|k>
 
@@ -212,7 +214,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --create-bookmark
 
-	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible. 
+	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
 
 + --no-clone-rollback
 
