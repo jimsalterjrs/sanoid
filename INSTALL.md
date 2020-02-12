@@ -167,6 +167,17 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 3.  Create the config directory `/etc/sanoid` and put `sanoid.defaults.conf` in there, and create `sanoid.conf` in it too
 4.  Create a cron job or a systemd timer that runs `sanoid --cron` once per minute
 
+## cron
+
+If you use cron there is the need to ensure that only one instance of sanoid is run at any time (or else there will be funny error messages about missing snapshots, ...). It's also good practice to separate the snapshot taking and pruning so the later won't block the former in case of long running pruning operations. Following is the recommend setup for a standard install:
+
+```
+*/15 * * * * root flock -n /var/run/sanoid/cron-take.lock -c "TZ=UTC sanoid --take-snapshots"
+*/15 * * * * root flock -n /var/run/sanoid/cron-prune.lock -c "sanoid --prune-snapshots"
+```
+
+Adapt the timer interval to the lowest configured snapshot interval.
+
 # Configuration
 
 **Sanoid** won't do anything useful unless you tell it how to handle your ZFS datasets in `/etc/sanoid/sanoid.conf`.
