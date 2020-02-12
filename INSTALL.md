@@ -52,6 +52,11 @@ Install prerequisite software:
 sudo yum install -y epel-release git
 # Install the packages that Sanoid depends on:
 sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
+# if the perl depencies can't be found in the configured repositories you can install them from CPAN manually:
+sudo dnf install perl-CPAN perl-CPAN
+cpan # answer the questions and past the following lines
+# install Capture::Tiny
+# install Config::IniFiles
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:
