@@ -31,6 +31,8 @@ Clone this repo, build the debian package and install it (alternatively you can 
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
+# checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
+git checkout $(git tag | grep "^v" | tail -n 1)
 ln -s packages/debian .
 dpkg-buildpackage -uc -us
 apt install ../sanoid_*_all.deb
@@ -60,6 +62,8 @@ Clone this repo, then put the executables and config files into the appropriate 
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
+# checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
+git checkout $(git tag | grep "^v" | tail -n 1)
 # Install the executables
 sudo cp sanoid syncoid findoid sleepymutex /usr/local/sbin
 # Create the config directory
