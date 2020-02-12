@@ -1748,7 +1748,19 @@ sub getsendsize {
 }
 
 sub getdate {
-	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+	my @time = localtime(time);
+
+	# get timezone info
+	my $offset = timegm(@time) - timelocal(@time);
+	my $sign = ''; # + is not allowed in a snapshot name
+	if ($offset < 0) {
+		$sign = '-';
+		$offset = abs($offset);
+	}
+	my $hours = int($offset / 3600);
+	my $minutes = int($offset / 60) - $hours * 60;
+
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = @time;
 	$year += 1900;
 	my %date;
 	$date{'unix'} = (((((((($year - 1971) * 365) + $yday) * 24) + $hour) * 60) + $min) * 60) + $sec;
@@ -1758,7 +1770,8 @@ sub getdate {
 	$date{'hour'} = sprintf ("%02u", $hour);
 	$date{'mday'} = sprintf ("%02u", $mday);
 	$date{'mon'} = sprintf ("%02u", ($mon + 1));
-	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
+	$date{'tzoffset'} = sprintf ("GMT%s%02d:%02u", $sign, $hours, $minutes);
+	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}-$date{'tzoffset'}";
 	return %date;
 }
 
