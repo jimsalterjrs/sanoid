@@ -316,6 +316,25 @@ sub prune_snapshots {
 					if (checklock('sanoid_pruning')) {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
+							my $dataset = (split '@', $snap)[0];
+							my $snapname = (split '@', $snap)[1];
+
+							if (! $args{'readonly'} && $config{$dataset}{'pre_pruning_script'}) {
+								$ENV{'SANOID_TARGET'} = $dataset;
+								$ENV{'SANOID_SNAPNAME'} = $snapname;
+								if ($args{'verbose'}) { print "executing pre_pruning_script '".$config{$dataset}{'pre_pruning_script'}."' on dataset '$dataset'\n"; }
+								my $ret = runscript('pre_pruning_script', $dataset);
+
+								delete $ENV{'SANOID_TARGET'};
+								delete $ENV{'SANOID_SNAPNAME'};
+
+								if ($ret != 0) {
+									# warning was already thrown by runscript function
+									# skip pruning if pre snapshot script returns non zero exit code
+									next;
+								}
+							}
+
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 							if (!$args{'force-prune'} && iszfsbusy($path)) {
 								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
@@ -323,8 +342,6 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
-										my $dataset = (split '@', $snap)[0];
-										my $snapname = (split '@', $snap)[1];
 										if ($config{$dataset}{'pruning_script'}) {
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
