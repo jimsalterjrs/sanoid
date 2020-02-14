@@ -8,6 +8,7 @@
 	- [Debian/Ubuntu](#debianubuntu)
 	- [CentOS](#centos)
 	- [FreeBSD](#freebsd)
+	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
 	- [Sanoid](#sanoid)
@@ -157,6 +158,13 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 *   Simplest path workaround is symlinks, eg `ln -s /usr/local/bin/lzop /usr/bin/lzop` or similar, as appropriate to create links in **/usr/bin** to wherever the utilities actually are on your system.
 
 *   See note about mbuffer and other things in FREEBSD.readme
+
+## Alpine Linux / busybox based distributions
+
+The busybox implementation of ps is lacking needed arguments so a proper ps program needs to be installed.
+For Alpine Linux this can be done with:
+
+`apk --no-cache add procps`
 
 ## Other OSes
 
