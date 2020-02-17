@@ -561,7 +561,7 @@ sub take_snapshots {
 			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
 				$ENV{'SANOID_TARGETS'} = $datasetString;
-				$ENV{'SANOID_SNAPNAME'} = @snapshots[0];
+				$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
 				$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
 				$ENV{'SANOID_TYPES'} = $typeString;
 				$ENV{'SANOID_SCRIPT'} = 'pre';
@@ -631,7 +631,7 @@ sub take_snapshots {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
 					$ENV{'SANOID_TARGETS'} = $datasetString;
-					$ENV{'SANOID_SNAPNAME'} = @snapshots[0];
+					$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
 					$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
 					$ENV{'SANOID_TYPES'} = $typeString;
 					$ENV{'SANOID_SCRIPT'} = 'post';
