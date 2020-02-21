@@ -262,6 +262,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	Use specified identity file as per ssh -i.
 
++ --insecure-direct-connection=IP:PORT[,IP:PORT]
+
+	WARNING: This is an insecure option as the data is not encrypted while being sent over the network. Only use if you trust the complete network path.
+	Use a direct tcp connection (with socat and busybox nc) for the actual zfs send/recv stream. All control commands are still executed via the ssh connection. The first address pair is used for connecting to the target host from the source host and the second pair is for listening on the target host. If the later isn't provided the same as the former is used. This can be used for saturating high throughput connection like >= 10GBe network which isn't easy with the overhead off ssh. It can also be useful for encrypted datasets to lower the cpu usage needed for replication but be aware that metadata is NOT ENCRYPTED in this case. (This option can't be used for relaying between two remote hosts)
+
 + --quiet
 
 	Supress non-error output.
