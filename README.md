@@ -319,6 +319,9 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --preserve-recordsize
 
 	This argument tells syncoid to set the recordsize on the target before writing any data to it matching the one set on the replication src. This only applies to initial sends.
++ --push-snap-removal
+
+	With this argument snapshots that are removed in the source will also be removed.  Use this if you only want to handle snapshots on the source.
 
 + --no-clone-rollback
 
