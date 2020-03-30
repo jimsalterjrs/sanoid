@@ -1284,9 +1284,11 @@ sub buildsynccmd {
 		my $remotecmd = "";
 		if (length $directlisten) {
 			# wait up to 10 seconds for a connection or error out
-			$remotecmd .= " busybox nc -l " . $directlisten . " -w 10 |";
+			$remotecmd .= " $mbuffercmd $args{'target -bwlimit'} -W 10 -I " . $directlisten . " $mbufferoptions |";
+		} else {
+			if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
 		}
-		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+
 		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
 		$remotecmd .= " $recvcmd";
 
@@ -1307,9 +1309,11 @@ sub buildsynccmd {
 		$synccmd .= " | ";
 		if (length $directlisten) {
 			# wait up to 10 seconds for a connection or error out
-			$synccmd .= " busybox nc -l " . $directlisten . " -w 10 |";
+			$synccmd .= "$mbuffercmd $args{'target-bwlimit'} -W 10 -I " . $directlisten . " $mbufferoptions | ";
+		} else {
+			if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		}
-		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
