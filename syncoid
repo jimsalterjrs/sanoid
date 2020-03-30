@@ -120,6 +120,14 @@ if ($debug) { print "DEBUG: SSHCMD: $sshcmd\n"; }
 my ($sourcehost,$sourcefs,$sourceisroot) = getssh($rawsourcefs);
 my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
+my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
+my $targetsudocmd = $targetisroot ? '' : $sudocmd;
+
+# figure out whether compression, mbuffering, pv
+# are available on source, target, local machines.
+# warn user of anything missing, then continue with sync.
+my %avail = checkcommands();
+
 # handle insecure direct connection arguments
 my $directconnect = "";
 my $directlisten = "";
@@ -144,14 +152,6 @@ if (length $args{'insecure-direct-connection'}) {
 		$directlisten = $args{'insecure-direct-connection'};
 	}
 }
-
-my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
-my $targetsudocmd = $targetisroot ? '' : $sudocmd;
-
-# figure out whether compression, mbuffering, pv
-# are available on source, target, local machines.
-# warn user of anything missing, then continue with sync.
-my %avail = checkcommands();
 
 my %snaps;
 my $exitcode = 0;
