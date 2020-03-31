@@ -86,6 +86,7 @@ my $pscmd = 'ps';
 
 my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
+my $socatcmd = 'socat';
 my $sudocmd = 'sudo';
 my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
@@ -1032,6 +1033,14 @@ sub checkcommands {
 		$avail{'compress'} = 0;
 	}
 
+	if (length $args{'insecure-direct-connection'}) {
+		if ($debug) { print "DEBUG: checking availability of $socatcmd on source...\n"; }
+		my $socatAvailable = `$sourcessh $checkcmd $socatcmd 2>/dev/null`;
+		if ($socatAvailable eq '') {
+			die "CRIT: $socatcmd is needed on source for insecure direct connection!\n";
+		}
+	}
+
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
 	$avail{'sourcembuffer'} = `$sourcessh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
@@ -1044,6 +1053,9 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
 	$avail{'targetmbuffer'} = `$targetssh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
+		if (length $args{'insecure-direct-connection'}) {
+			die "CRIT: $mbuffercmd is needed on target for insecure direct connection!\n";
+		}
 		if (!$quiet) { print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n"; }
 		$avail{'targetmbuffer'} = 0;
 	} else {
@@ -1277,7 +1289,7 @@ sub buildsynccmd {
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		if (length $directconnect) {
 			# try 10 times over 10 seconds to connect
-			$synccmd .= " socat - TCP:" . $directconnect . ",retry=10,interval=1 |";
+			$synccmd .= " $socatcmd - TCP:" . $directconnect . ",retry=10,interval=1 |";
 		}
 		$synccmd .= " $sshcmd $targethost ";
 
@@ -1302,7 +1314,7 @@ sub buildsynccmd {
 		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		if (length $directconnect) {
 			# try 10 times over 10 seconds to connect
-			$remotecmd .= " | socat - TCP:" . $directconnect . ",retry=10,interval=1";
+			$remotecmd .= " | $socatcmd - TCP:" . $directconnect . ",retry=10,interval=1";
 		}
 
 		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
