@@ -262,10 +262,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	Use specified identity file as per ssh -i.
 
-+ --insecure-direct-connection=IP:PORT[,IP:PORT]
++ --insecure-direct-connection=IP:PORT[,IP:PORT,[TIMEOUT,[mbuffer]]]
 
 	WARNING: This is an insecure option as the data is not encrypted while being sent over the network. Only use if you trust the complete network path.
-	Use a direct tcp connection (with socat and mbuffer) for the actual zfs send/recv stream. All control commands are still executed via the ssh connection. The first address pair is used for connecting to the target host from the source host and the second pair is for listening on the target host. If the later isn't provided the same as the former is used. This can be used for saturating high throughput connection like >= 10GBe network which isn't easy with the overhead off ssh. It can also be useful for encrypted datasets to lower the cpu usage needed for replication but be aware that metadata is NOT ENCRYPTED in this case. (This option can't be used for relaying between two remote hosts)
+	Use a direct tcp connection (with socat and busybox nc/mbuffer) for the actual zfs send/recv stream. All control commands are still executed via the ssh connection. The first address pair is used for connecting to the target host from the source host and the second pair is for listening on the target host. If the later isn't provided the same as the former is used. This can be used for saturating high throughput connection like >= 10GBe network which isn't easy with the overhead off ssh. It can also be useful for encrypted datasets to lower the cpu usage needed for replication but be aware that metadata is NOT ENCRYPTED in this case. The default timeout is 60 seconds and can be overridden by providing it as third argument. By default busybox nc is used for the listeing tcp socket, if mbuffer is preferred specify its name as fourth argument but be aware that mbuffer listens on all interfaces and uses an optionally provided ip address for access restriction (This option can't be used for relaying between two remote hosts)
 
 + --quiet
 
