@@ -1067,11 +1067,11 @@ sub checkcommands {
 		my $resumechkcmd = "$zpoolcmd get -o value -H feature\@extensible_dataset";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
-		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		$avail{'sourceresume'} = system("$sourcessh $sourcesudocmd $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
-		$avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		$avail{'targetresume'} = system("$targetssh $targetsudocmd $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
 
 		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
