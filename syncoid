@@ -1758,7 +1758,7 @@ sub getdate {
 	$date{'hour'} = sprintf ("%02u", $hour);
 	$date{'mday'} = sprintf ("%02u", $mday);
 	$date{'mon'} = sprintf ("%02u", ($mon + 1));
-	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
+	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}_$date{'hour'}:$date{'min'}:$date{'sec'}";
 	return %date;
 }
 
