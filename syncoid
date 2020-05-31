@@ -14,6 +14,7 @@ use Pod::Usage;
 use Time::Local;
 use Sys::Hostname;
 use Capture::Tiny ':all';
+use File::Temp qw(tempdir);
 
 my $mbuffer_size = "16M";
 my $pvoptions = "-p -t -e -r -b";
@@ -29,6 +30,10 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
+
+# Install an explicit signal handler to enable proper clean-up of temporary files/dirs.
+# See https://stackoverflow.com/questions/38711725/under-what-circumstances-are-end-blocks-skipped-in-perl
+$SIG{INT} = sub { };
 
 my @sendoptions = ();
 if (length $args{'sendoptions'}) {
@@ -1433,7 +1438,10 @@ sub getssh {
 		 $remoteuser =~ s/\@.*$//;
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+		my $originalumask = umask 077;
+		my $socketdir = tempdir("syncoid-$remoteuser-$rhost.XXXXXXXX", CLEANUP => 1, TMPDIR => 1);
+		umask $originalumask;
+		$socket = "$socketdir/ssh.sock";
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
 
