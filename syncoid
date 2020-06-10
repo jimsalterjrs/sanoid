@@ -23,7 +23,7 @@ my $pvoptions = "-p -t -e -r -b";
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "debug", "quiet", "no-stream", "no-sync-snap", "skip-redundant-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
                    "create-bookmark", "pv-options=s" => \$pvoptions,
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
@@ -345,6 +345,7 @@ sub syncdataset {
 	}
 
 	my $newsyncsnap;
+	my $madesyncsnap = 0;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -364,6 +365,15 @@ sub syncdataset {
 		    print "\n\n\n";
 		}
 
+		$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+		if (defined $args{'skip-redundant-sync-snap'} && $newsyncsnap) {
+			my $written = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'-p written@' . escapeshellparam($newsyncsnap));
+			if ($written == '0') {
+				if (!$quiet) { print "INFO: No data written since last snapshot - not creating sync snapshot\n"; }
+				$skipsnapshot = 1;
+			}
+		}
+
 		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
@@ -371,9 +381,9 @@ sub syncdataset {
 				# we already whined about the error
 				return 0;
 			}
+			$madesyncsnap = 1;
 		} else {
-			# we don't want sync snapshots created, so use the newest snapshot we can find.
-			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+			# we don't want sync snapshots created, so use the newest snapshot we already found
 			if ($newsyncsnap eq 0) {
 				warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
 				if ($exitcode < 1) { $exitcode = 1; }
@@ -836,7 +846,7 @@ sub syncdataset {
 				}
 			};
 		}
-	} else {
+	} elsif ($madesyncsnap) {
 		# prune obsolete sync snaps on source and target (only if this run created ones).
 		pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 		pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
