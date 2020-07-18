@@ -208,11 +208,15 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-sync-snap
 
-	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots. Also useful to avoid having to give the receiving user (if not root, see --no-privilege-elevation) the destroy permission.
 
 + --create-bookmark
 
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible. 
+
++ --accept-snap=REGEX
+
+	Only consider snaps whose name matches the given regular expression as snap to sync as the most recent snap (only relevant with --no-sync-snap), or the first snap on initial sync. Note that any non-matching snaps in between will still be synced, unless --no-stream is used.
 
 + --no-clone-rollback
 
