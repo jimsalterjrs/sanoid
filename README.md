@@ -208,11 +208,15 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-sync-snap
 
-	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots. Also useful to avoid having to give the receiving user (if not root, see --no-privilege-elevation) the destroy permission.
 
 + --create-bookmark
 
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible. 
+
++ --accept-snap=REGEX
+
+	Only consider snaps whose name matches the given regular expression as snap to sync as the most recent snap (only relevant with --no-sync-snap), or the first snap on initial sync. Note that any non-matching snaps in between will still be synced, unless --no-stream is used.
 
 + --no-clone-rollback
 
@@ -283,3 +287,33 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 	This doesn't do anything right now.
 
 Note that the sync snapshots syncoid creates are not atomic in a global context: sync snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent, but one may be a few filesystem transactions "newer" than the other.  (This does not affect the consistency of snapshots already taken in other ways, which syncoid replicates in the overall stream unless --no-stream is specified. So if you want to manually zfs snapshot -R pool@1 before replicating with syncoid, the global atomicity of pool/dataset1@1 and pool/dataset2@1 will still be intact.)
+
+#### Syncoid examples
+
+##### Push sync to unprivileged user
+
+To push-replicate a `dataset` from host `source` to a non-root user on host `target`, first create such a user on the target host and give it sufficient permissions to receive ZFS backups:
+```bash
+adduser --system zfs-from-${source} --gecos '' --group --disabled-password --shell /bin/sh # must also set up SSH keys
+zfs create -o mountpoint=none -o canmount=off backup/${source} # assumes `backup` pool exists
+zfs allow -u zfs-from-${source} create,receive,mount,canmount,userprop backup/${source}
+# note that `mount` is required for `receive` to have an effect, at least linux will still prevent the user from actually mounting anything
+```
+And then run this Syncoid command as a service/cron on the source:
+```bash
+syncoid \
+    --recursive --no-sync-snap --create-bookmark \
+    --accept-snap='^autosnap_[0-9:_-]+_(?:daily|weekly|monthly|yearly)$' \
+    --no-rollback --no-privilege-elevation --sshkey /root/.ssh/syncoid_ed25519 \
+    --sendoptions='w' --recvoptions='u o canmount=off' \
+    ${dataset} zfs-from-${source}@${target}:backup/${source}/${dataset}
+```
+The source is assumed to use Sanoid to maintain its set of reasonably recent and old snapshots.
+The target receives these, in this example potentially skipping the `frequently` and `hourly` ones, but is responsible for pruning its copy itself.
+
+Using the `--no-sync-snap` makes the replication possible without giving the target user the very powerful `destroy` permission.
+This usually causes the replication to fail once the latest replicated snap is pruned from the target.
+The `--accept-snap` filtering therefore makes sure that only daily and longer living snaps are used as the targets for the next sync.
+The replication may still fail if any of the accepted snaps are pruned before the next sync.
+
+A more complete guide to this setup can be found [here](https://gist.github.com/NiklasGollenstede/db2b228a4a86455b4ecb34f8e8c833ab#setting-up-sanoid-and-syncoid-for-zfs-replication-between-ubuntu-2004-hosts).

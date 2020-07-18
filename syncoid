@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark", "pv-options=s" => \$pvoptions,
+                   "create-bookmark", "pv-options=s" => \$pvoptions, "accept-snap=s",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1187,9 +1187,13 @@ sub readablebytes {
 
 sub getoldestsnapshot {
 	my $snaps = shift;
+
+	my $filter = 0; if (defined $args{'accept-snap'}) { $filter = $args{'accept-snap'}; }
 	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
-		# return on first snap found - it's the oldest
-		return $snap;
+		if (!$filter || $snap =~ /$filter/) {
+			# return on first matching snap found - it's the oldest
+			return $snap;
+		} elsif ($debug) { print "DEBUG: ignoring snap $snap because it does not match $filter\n"; }
 	}
 	# must not have had any snapshots on source - luckily, we already made one, amirite?
 	if (defined ($args{'no-sync-snap'}) ) {
@@ -1201,10 +1205,14 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
+
+	my $filter = 0; if (defined $args{'accept-snap'}) { $filter = $args{'accept-snap'}; }
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
-		# return on first snap found - it's the newest
-		if (!$quiet) { print "NEWEST SNAPSHOT: $snap\n"; }
-		return $snap;
+		if (!$filter || $snap =~ /$filter/) {
+			# return on first matching snap found - it's the newest
+			if (!$quiet) { print "NEWEST SNAPSHOT: $snap\n"; }
+			return $snap;
+		} elsif ($debug) { print "DEBUG: ignoring snap $snap because it does not match $filter\n"; }
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
 	if (defined ($args{'no-sync-snap'}) ) {
@@ -1897,11 +1905,12 @@ Options:
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
   --target-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer
-  --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
+  --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page
   --pv-options=OPTIONS  Configure how pv displays the progress bar, default '-p -t -e -r -b'
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --accept-snap=REGEX   Only consider snaps whose name matches the given regular expression as snap to sync as the most recent snap (only relevant with --no-sync-snap), or the first snap on initial sync
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
