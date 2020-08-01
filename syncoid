@@ -215,53 +215,86 @@ if (!defined $args{'recursive'}) {
 		$exitcode = 2;
 	}
 
-	my @deferred;
-
-	foreach my $datasetProperties(@datasets) {
+	my %datasetsByName;
+	foreach my $datasetProperties (@datasets) {
 		my $dataset = $datasetProperties->{'name'};
 		my $origin = $datasetProperties->{'origin'};
-		if ($origin eq "-" || defined $args{'no-clone-handling'}) {
-			$origin = undef;
-		} else {
-			# check if clone source is replicated too
-			my @values = split(/@/, $origin, 2);
-			my $srcdataset = $values[0];
+		$datasetsByName{$dataset} = $datasetProperties;
 
-			my $found = 0;
-			foreach my $datasetProperties(@datasets) {
-				if ($datasetProperties->{'name'} eq $srcdataset) {
-					$found = 1;
-					last;
+		# Clean the 'origin' property
+		# (we set 'origin' to undef whenever we don't want to handle it during sync)
+		if ($origin eq "-" || defined $args{'no-clone-handling'}) {
+			$datasetProperties->{'origin'} = undef;
+		}
+	}
+
+	my %synced;
+
+	foreach my $dataset1Properties (@datasets) {
+		my $dataset1 = $dataset1Properties->{'name'};
+
+		# Collect all transitive dependencies of this dataset.
+		# A dataset can have two dependencies:
+		# - the parent dataset
+		# - the origin (if it is a clone)
+		my @todo = ($dataset1);  # the datasets whose dependencies we still have to collect
+		my @tosync;  # the datasets we have to sync (in the correct order)
+		my %tosyncSet;  # set of synced datasets to check for dependency cycles
+		while (@todo) {
+			my $dataset = shift(@todo);
+
+			if (exists $synced{$dataset}) {
+				# We already synced this dataset, thus also all its dependencies => skip
+				next;
+			}
+
+			if (exists $tosyncSet{$dataset}) {
+				# We already processed this dataset once during this loop,
+				# so we do not need to do it again.
+				# This check is also necessary to break dependency cycles.
+				#
+				# NOTE:
+				# If there is a cycle, multiple syncoid runs might be necessary to replicate all datasets,
+				# and not all clone relationships will be preserved
+				# (it seems like huge effort to handle this case properly, and it should be quite rare in practice)
+				next;
+			}
+
+			unshift @tosync, $dataset;
+			$tosyncSet{$dataset} = 1;
+
+			my ($parent) = $dataset =~ /(.*)\/[^\/]+/;
+			if (defined $parent) {
+				# If parent is replicated too, sync it first
+				if (exists $datasetsByName{$parent}) {
+					push @todo, $parent;
 				}
 			}
 
-			if ($found == 0) {
-				# clone source is not replicated, do a full replication
-				$origin = undef;
-			} else {
-				# clone source is replicated, defer until all non clones are replicated
-				push @deferred, $datasetProperties;
-				next;
+			my $origin = $datasetsByName{$dataset}->{'origin'};
+			if (defined $origin) {
+				# If clone source is replicated too, sync it first
+				my @values = split(/@/, $origin, 2);
+				my $srcdataset = $values[0];
+
+				if (exists $datasetsByName{$srcdataset}) {
+					push @todo, $srcdataset;
+				} else {
+					$datasetsByName{$dataset}->{'origin'} = undef;
+				}
 			}
 		}
 
-		$dataset =~ s/\Q$sourcefs\E//;
-		chomp $dataset;
-		my $childsourcefs = $sourcefs . $dataset;
-		my $childtargetfs = $targetfs . $dataset;
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
-	}
-
-	# replicate cloned datasets and if this is the initial run, recreate them on the target
-	foreach my $datasetProperties(@deferred) {
-		my $dataset = $datasetProperties->{'name'};
-		my $origin = $datasetProperties->{'origin'};
-
-		$dataset =~ s/\Q$sourcefs\E//;
-		chomp $dataset;
-		my $childsourcefs = $sourcefs . $dataset;
-		my $childtargetfs = $targetfs . $dataset;
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+		foreach my $dataset (@tosync) {
+			my $origin = $datasetsByName{$dataset}->{'origin'};
+			my $datasetPath = $dataset;
+			$datasetPath =~ s/\Q$sourcefs\E//;
+			chomp $datasetPath;
+			my $childsourcefs = $sourcefs . $datasetPath;
+			my $childtargetfs = $targetfs . $datasetPath;
+			syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+			$synced{$dataset} = 1;
+		}
 	}
 }
 
