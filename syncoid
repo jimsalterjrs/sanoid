@@ -1314,7 +1314,7 @@ sub buildsynccmd {
 
 		my $remotecmd = "";
 		if ($directmbuffer) {
-			$remotecmd .= " $mbuffercmd $args{'target -bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
+			$remotecmd .= " $mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
 		} elsif (length $directlisten) {
 			$remotecmd .= " busybox nc -l " . $directlisten . " -w $directtimeout |";
 		}
