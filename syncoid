@@ -890,15 +890,18 @@ sub syncdataset {
 	}
 
 	if (defined $args{'delete-target-snapshots'}) {
-		foreach my $snap ( sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } keys %{ $snaps{'target'} }) {
-			if (!exists $snaps{'source'}{$snap}) {
-				if ($targethost ne '') {
-					if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd destroy $targetfsescaped\@$snap\n"; }
-					system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snap"));
-				} else {
-					if ($debug) { print "$targetsudocmd $zfscmd destroy $targetfsescaped\@$snap\n"; }
-					system ("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snap");
-				}
+		my $snaps = join ',', grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		if ($snaps ne '') {
+			my $command;
+			if ($targethost ne '') {
+				$command = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps");
+			} else {
+				$command = "$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps";
+			}
+			if ($debug) { print "$command\n"; }
+			my ($stdout, $stderr, $result) = capture { system $command; };
+			if ($result != 0 && !$quiet) {
+				warn "$command failed: $stderr";
 			}
 		}
 	}
