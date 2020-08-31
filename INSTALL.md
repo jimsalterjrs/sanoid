@@ -52,6 +52,9 @@ Install prerequisite software:
 ```bash
 # Install and enable epel if we don't already have it, and git too
 sudo yum install -y epel-release git
+# For Centos 8, install dnf plugins, and use them to enable the 'PowerTools' Repo
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --set-enabled PowerTools
 # Install the packages that Sanoid depends on:
 sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
 ```
@@ -136,8 +139,7 @@ sudo systemctl daemon-reload
 # Enable sanoid-prune.service to allow it to be triggered by sanoid.service
 sudo systemctl enable sanoid-prune.service
 # Enable and start the Sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
 Now, proceed to configure [**Sanoid**](#configuration)
