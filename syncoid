@@ -757,6 +757,15 @@ sub syncdataset {
 						}
 					};
 				}
+				# This bookmark is no longer of use, delete it
+				my $deletebookmarkcmd = "$sourcesudocmd $zfscmd destroy $sourcefsescaped#$bookmarkescaped";
+				if ($sourcehost ne '') {
+					$deletebookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam($deletebookmarkcmd);
+				}
+				if ($debug) { print "DEBUG: $deletebookmarkcmd\n"; }
+					system($deletebookmarkcmd) == 0 or do {
+					warn "CRITICAL ERROR: $deletebookmarkcmd failed: $?";
+				}
 			}
 
 			# do a normal replication if bookmarks aren't used or if previous
@@ -798,6 +807,22 @@ sub syncdataset {
 						return 0;
 					}
 				};
+
+				# Look for a bookmark corresponding to matchingsnap and delete it
+				my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+				my $guid = $snaps{'source'}{$matchingsnap}{'guid'};
+				if (defined $bookmarks{$guid}) {
+					# found a match
+					my $bookmarkescaped = escapeshellparam($bookmarks{$guid}{'name'});
+					my $deletebookmarkcmd = "$sourcesudocmd $zfscmd destroy $sourcefsescaped#$bookmarkescaped";
+					if ($sourcehost ne '') {
+						$deletebookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam($deletebookmarkcmd);
+					}
+					if ($debug) { print "DEBUG: $deletebookmarkcmd\n"; }
+					system($deletebookmarkcmd) == 0 or do {
+						warn "CRITICAL ERROR: $deletebookmarkcmd failed: $?";
+					}
+				}
 			}
 
 			# restore original readonly value to target after sync complete
@@ -810,30 +835,18 @@ sub syncdataset {
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
 			my $bookmarkcmd;
+			my $hostid = hostname();
+			my $bookmarkescaped = escapeshellparam($newsyncsnap . "_syncoid_" . $identifier . $hostid);
 			if ($sourcehost ne '') {
-				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
+				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$bookmarkescaped");
 			} else {
-				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
+				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$bookmarkescaped";
 			}
 			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 			system($bookmarkcmd) == 0 or do {
-				# fallback: assume nameing conflict and try again with guid based suffix
-				my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
-				$guid = substr($guid, 0, 6);
-
-				if (!$quiet) { print "INFO: bookmark creation failed, retrying with guid based suffix ($guid)...\n"; }
-
-				if ($sourcehost ne '') {
-					$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
-				} else {
-					$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
-				}
-				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
-				system($bookmarkcmd) == 0 or do {
-					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
-				}
+				warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+				if ($exitcode < 2) { $exitcode = 2; }
+				return 0;
 			};
 		}
 	} else {
@@ -1647,7 +1660,9 @@ sub getbookmarks() {
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
 
+	my $signature = "_syncoid_" . $identifier . hostname();
 	my $lastguid;
+	my $register = 1;
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
@@ -1657,14 +1672,19 @@ sub getbookmarks() {
 			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
-			$bookmarks{$lastguid}{'name'}=$bookmark;
+			$register = ($bookmark =~ /$signature$/);
+			if ($register) {
+				$bookmarks{$lastguid}{'name'}=$bookmark;
+			}
 		} elsif ($line =~ /\Q$fs\E\#.*creation/) {
 			chomp $line;
 			my $creation = $line;
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation;
+			if ($register) {
+				$bookmarks{$lastguid}{'creation'}=$creation;
+			}
 		}
 	}
 

@@ -25,9 +25,8 @@ trap cleanUp EXIT
 
 zfs create "${POOL_NAME}"/src
 zfs snapshot "${POOL_NAME}"/src@snap1
-zfs bookmark "${POOL_NAME}"/src@snap1 "${POOL_NAME}"/src#snap1
 # initial replication
-../../../syncoid --no-sync-snap --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
+../../../syncoid --no-sync-snap --create-bookmark --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 # destroy last common snapshot on source
 zfs destroy "${POOL_NAME}"/src@snap1
 
