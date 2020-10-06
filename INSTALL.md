@@ -21,7 +21,7 @@ Install prerequisite software:
 
 ```bash
 
-apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer
+apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer git
 
 ```
 
