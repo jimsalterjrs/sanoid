@@ -23,7 +23,7 @@ my $pvoptions = "-p -t -e -r -b";
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "exclude-snap=s@", "skip-parent", "identifier=s",
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "exclude-snaps=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
                    "create-bookmark", "pv-options=s" => \$pvoptions,
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
@@ -1462,13 +1462,13 @@ sub dumphash() {
 sub shouldexcludesnap{
 	my $snap = $_[0];
 
-	if (!defined $args{'exclude-snap'}) {
+	if (!defined $args{'exclude-snaps'}) {
 		return 0;
 	}
-        my $excludes_snap = $args{'exclude-snap'};
-        foreach (@$excludes_snap) {
+        my $excludes_snaps = $args{'exclude-snaps'};
+        foreach (@$excludes_snaps) {
         	if ($snap =~ /$_/) {
-              		if($debug){ print "DEBUG: exlcuded snapshot $snap because of $_\n"; }
+              		if($debug){ print "DEBUG: excluded snapshot $snap because of $_\n"; }
                         return 1;
                  }
        	}
@@ -1925,7 +1925,7 @@ Options:
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
-  --exclude-snap=REGEX  Exclude specific snapshots which match the given regular expression. Can be specified multiple times
+  --exclude-snaps=REGEX Exclude specific snapshots which match the given regular expression. Can be specified multiple times
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh key to use to connect
