@@ -23,7 +23,7 @@ my $pvoptions = "-p -t -e -r -b";
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
-                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
+                   "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "exclude-snap=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
                    "create-bookmark", "pv-options=s" => \$pvoptions,
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
@@ -1458,6 +1458,23 @@ sub dumphash() {
 	print Dumper($hash);
 }
 
+
+sub shouldexcludesnap{
+	my $snap = $_[0];
+
+	if (!defined $args{'exclude-snap'}) {
+		return 0;
+	}
+        my $excludes_snap = $args{'exclude-snap'};
+        foreach (@$excludes_snap) {
+        	if ($snap =~ /$_/) {
+              		if($debug){ print "DEBUG: exlcuded snapshot $snap because of $_\n"; }
+                        return 1;
+                 }
+       	}
+	return 0;
+}
+
 sub getsnaps() {
 	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
@@ -1497,7 +1514,9 @@ sub getsnaps() {
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			$snaps{$type}{$snap}{'guid'}=$guid;
+			if(shouldexcludesnap($snap) == 0){
+				$snaps{$type}{$snap}{'guid'}=$guid;
+			};
 		}
 	}
 
@@ -1525,11 +1544,12 @@ sub getsnaps() {
 				}
 				$counter += 1;
 			}
-
-			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			
+			if(shouldexcludesnap($snap) == 0){
+				$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			}
 		}
 	}
-
 	return %snaps;
 }
 
