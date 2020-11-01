@@ -35,10 +35,13 @@ if (keys %args < 2) {
 	$args{'verbose'} = 1;
 }
 
-my $pscmd = '/bin/ps';
+# for compatibility reasons, older versions used hardcoded command paths
+$ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/sbin";
 
-my $zfs = '/sbin/zfs';
-my $zpool = '/sbin/zpool';
+my $pscmd = 'ps';
+
+my $zfs = 'zfs';
+my $zpool = 'zpool';
 
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
