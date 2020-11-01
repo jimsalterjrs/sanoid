@@ -550,7 +550,10 @@ sub syncdataset {
 			}
 
 			$exit == 0 or do {
-				if ($stdout =~ /\Qused in the initial send no longer exists\E/) {
+				if (
+					$stdout =~ /\Qused in the initial send no longer exists\E/ ||
+					$stdout =~ /incremental source [0-9xa-f]+ no longer exists/
+				) {
 					if (!$quiet) { print "WARN: resetting partially receive state because the snapshot source no longer exists\n"; }
 					resetreceivestate($targethost,$targetfs,$targetisroot);
 					# do an normal sync cycle
