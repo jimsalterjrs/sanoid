@@ -39,6 +39,8 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 
 Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
 
+**Note**: Be aware that if you don't specify some interval options the defaults will be used (from /etc/sanoid/sanoid.defaults.conf)
+
 ##### Sanoid Command Line Options
 
 + --cron
