@@ -331,11 +331,13 @@ sub prune_snapshots {
 										if ($config{$dataset}{'pruning_script'}) {
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											$ENV{'SANOID_SCRIPT'} = 'prune';
 											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
 											my $ret = runscript('pruning_script',$dataset);
 
 											delete $ENV{'SANOID_TARGET'};
 											delete $ENV{'SANOID_SNAPNAME'};
+											delete $ENV{'SANOID_SCRIPT'};
 										}
 									} else {
 										warn "could not remove $snap : $?";
@@ -370,7 +372,7 @@ sub take_snapshots {
 	my %datestamp = get_date();
 	my $forcecacheupdate = 0;
 
-	my @newsnaps;
+	my %newsnapsgroup;
 
 	# get utc timestamp of the current day for DST check
 	my $daystartUtc = timelocal(0, 0, 0, $datestamp{'mday'}, ($datestamp{'mon'}-1), $datestamp{'year'});
@@ -392,9 +394,9 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
-                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
+		my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 
-                foreach my $type (@types) {
+		foreach my $type (@types) {
 			if ($config{$section}{$type} > 0) {
 
 				my $newestage; # in seconds
@@ -514,55 +516,58 @@ sub take_snapshots {
 				my $maxage = time()-$lastpreferred;
 
 				if ( $newestage > $maxage ) {
-					# update to most current possible datestamp
-					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
+					if (!exists $newsnapsgroup{$path}) {
+						$newsnapsgroup{$path} = {
+							'recursive' => $config{$section}{'zfs_recursion'},
+							'handleDst' => $handleDst,
+							'datasets' => [$path], # for later atomic grouping, currently only a one element array
+							'types' => []
+						};
+					}
 
-					my $flags = "";
-					# use zfs (atomic) recursion if specified in config
-					if ($config{$section}{'zfs_recursion'}) {
-						$flags .= "r";
-					}
-					if ($handleDst) {
-						$flags .= "d";
-					}
-
-					if ($flags ne "") {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@$flags");
-					} else {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
-					}
+					push(@{$newsnapsgroup{$path}{'types'}}, $type);
 				}
 			}
 		}
 	}
 
-	if ( (scalar(@newsnaps)) > 0) {
-		foreach my $snap ( @newsnaps ) {
-			my $extraMessage = "";
-			my @split = split '@', $snap, -1;
-			my $recursiveFlag = 0;
-			my $dstHandling = 0;
-			if (scalar(@split) == 3) {
-				my $flags = $split[2];
-				if (index($flags, "r") != -1) {
-					$recursiveFlag = 1;
-					$extraMessage = " (zfs recursive)";
-					chop $snap;
-				}
-				if (index($flags, "d") != -1) {
-					$dstHandling = 1;
-					chop $snap;
-				}
-				chop $snap;
+	if (%newsnapsgroup) {
+		while ((my $path, my $snapData) = each(%newsnapsgroup)) {
+			my $recursiveFlag = $snapData->{recursive};
+			my $dstHandling = $snapData->{handleDst};
+
+			my @datasets = @{$snapData->{datasets}};
+			my $dataset = $datasets[0];
+			my @types = @{$snapData->{types}};
+
+			# same timestamp for all snapshots types (daily, hourly, ...)
+			my %datestamp = get_date();
+			my @snapshots;
+
+			foreach my $type (@types) {
+				my $snapname = "autosnap_$datestamp{'sortable'}_$type";
+				push(@snapshots, $snapname);
 			}
-			my $dataset = $split[0];
-			my $snapname = $split[1];
+
+			my $datasetString = join(",", @datasets);
+			my $typeString = join(",", @types);
+			my $snapshotString = join(",", @snapshots);
+
+			my $extraMessage = "";
+			if ($recursiveFlag) {
+				$extraMessage = " (zfs recursive)";
+			}
+
 			my $presnapshotfailure = 0;
 			my $ret = 0;
 			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
-				$ENV{'SANOID_SNAPNAME'} = $snapname;
+				$ENV{'SANOID_TARGETS'} = $datasetString;
+				$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
+				$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
+				$ENV{'SANOID_TYPES'} = $typeString;
+				$ENV{'SANOID_SCRIPT'} = 'pre';
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 				if (!$args{'readonly'}) {
@@ -570,7 +575,11 @@ sub take_snapshots {
 				}
 
 				delete $ENV{'SANOID_TARGET'};
+				delete $ENV{'SANOID_TARGETS'};
 				delete $ENV{'SANOID_SNAPNAME'};
+				delete $ENV{'SANOID_SNAPNAMES'};
+				delete $ENV{'SANOID_TYPES'};
+				delete $ENV{'SANOID_SCRIPT'};
 
 				if ($ret != 0) {
 					# warning was already thrown by runscript function
@@ -578,47 +587,58 @@ sub take_snapshots {
 					$presnapshotfailure = 1;
 				}
 			}
-			if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
-			if (!$args{'readonly'}) {
-				my $stderr;
-				my $exit;
-				($stderr, $exit) = tee_stderr {
-					if ($recursiveFlag) {
-						system($zfs, "snapshot", "-r", "$snap");
-					} else {
-						system($zfs, "snapshot", "$snap");
-					}
-				};
 
-				$exit == 0 or do {
-					if ($dstHandling) {
-						if ($stderr =~ /already exists/) {
-							$exit = 0;
-							$snap =~ s/_([a-z]+)$/dst_$1/g;
-							if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
-							if ($recursiveFlag) {
-								system($zfs, "snapshot", "-r", "$snap") == 0
-									or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
-							} else {
-								system($zfs, "snapshot", "$snap") == 0
-									or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+			foreach my $snap (@snapshots) {
+				$snap = "$dataset\@$snap";
+				if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
+
+				if (!$args{'readonly'}) {
+					my $stderr;
+					my $exit;
+					($stderr, $exit) = tee_stderr {
+						if ($recursiveFlag) {
+							system($zfs, "snapshot", "-r", "$snap");
+						} else {
+							system($zfs, "snapshot", "$snap");
+						}
+					};
+
+					$exit == 0 or do {
+						if ($dstHandling) {
+							if ($stderr =~ /already exists/) {
+								$exit = 0;
+								$snap =~ s/_([a-z]+)$/dst_$1/g;
+								if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
+								if ($recursiveFlag) {
+									system($zfs, "snapshot", "-r", "$snap") == 0
+										or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+								} else {
+									system($zfs, "snapshot", "$snap") == 0
+										or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+								}
 							}
 						}
-					}
-				};
+					};
 
-				$exit == 0 or do {
-					if ($recursiveFlag) {
-						warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
-					} else {
-						warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
-					}
-				};
+					$exit == 0 or do {
+						if ($recursiveFlag) {
+							warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+						} else {
+							warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+						}
+					};
+				}
 			}
+
 			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
-					$ENV{'SANOID_SNAPNAME'} = $snapname;
+					$ENV{'SANOID_TARGETS'} = $datasetString;
+					$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
+					$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
+					$ENV{'SANOID_TYPES'} = $typeString;
+					$ENV{'SANOID_SCRIPT'} = 'post';
+					$ENV{'SANOID_PRE_FAILURE'} = $presnapshotfailure;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 					if (!$args{'readonly'}) {
@@ -626,7 +646,12 @@ sub take_snapshots {
 					}
 
 					delete $ENV{'SANOID_TARGET'};
+					delete $ENV{'SANOID_TARGETS'};
 					delete $ENV{'SANOID_SNAPNAME'};
+					delete $ENV{'SANOID_SNAPNAMES'};
+					delete $ENV{'SANOID_TYPES'};
+					delete $ENV{'SANOID_SCRIPT'};
+					delete $ENV{'SANOID_PRE_FAILURE'};
 				}
 			}
 		}
