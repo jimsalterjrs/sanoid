@@ -1420,20 +1420,53 @@ sub targetexists {
 sub getssh {
 	my $fs = shift;
 
-	my $rhost;
+	my $rhost = "";
 	my $isroot;
 	my $socket;
+	my $remoteuser = "";
 
 	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
-		$fs =~ s/^\S*\@\S*://;
+		$fs =~ s/^[^\@:]*\@[^\@:]*://;
 		$rhost =~ s/:\Q$fs\E$//;
-		my $remoteuser = $rhost;
-		 $remoteuser =~ s/\@.*$//;
+		$remoteuser = $rhost;
+		$remoteuser =~ s/\@.*$//;
+		# do not require a username to be specified
+		$rhost =~ s/^@//;
+	} elsif ($fs =~ m{^[^/]*:}) {
+		# if we got passed something with an : in it, BEFORE any forward slash
+		# (i.e., not in a dataset name) it MAY be an ssh connection
+		# but we need to check if there is a pool with that name
+		my $pool = $fs;
+		$pool =~ s%/.*$%%;
+		my ($pools, $error, $exit) = capture {
+			system("$zfscmd list -d0 -H -oname");
+		};
+		$rhost = $fs;
+		if ($exit != 0) {
+			warn "Unable to enumerate pools (is zfs available?)";
+		} else {
+			foreach (split(/\n/,$pools)) {
+				if ($_ eq $pool) {
+					# there's a pool with this name.
+					$rhost = "";
+					last;
+				}
+			}
+		}
+		if ($rhost ne "") {
+			# there's no pool that might conflict with this
+			$rhost =~ s/:.*$//;
+			$fs =~ s/\Q$rhost\E://;
+		}
+	}
+
+	if ($rhost ne "") {
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+		$socket = "/tmp/syncoid-$rhost-" . time();
+
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
 
@@ -1882,9 +1915,9 @@ syncoid - ZFS snapshot replication tool
 =head1 SYNOPSIS
 
  syncoid [options]... SOURCE TARGET
- or   syncoid [options]... SOURCE USER@HOST:TARGET
- or   syncoid [options]... USER@HOST:SOURCE TARGET
- or   syncoid [options]... USER@HOST:SOURCE USER@HOST:TARGET
+ or   syncoid [options]... SOURCE [[USER]@]HOST:TARGET
+ or   syncoid [options]... [[USER]@]HOST:SOURCE TARGET
+ or   syncoid [options]... [[USER]@]HOST:SOURCE [[USER]@]HOST:TARGET
 
  SOURCE                Source ZFS dataset. Can be either local or remote
  TARGET                Target ZFS dataset. Can be either local or remote
