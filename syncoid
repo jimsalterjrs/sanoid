@@ -38,6 +38,16 @@ if (length $args{'sendoptions'}) {
 		pod2usage(2);
 		exit 127;
 	}
+
+	if (defined $args{'recursive'}) {
+		foreach my $option(@sendoptions) {
+			if ($option->{option} eq 'R') {
+				warn "invalid argument combination, zfs send -R and --recursive aren't compatible!";
+				pod2usage(2);
+				exit 127;
+			}
+		}
+	}
 }
 
 my @recvoptions = ();
