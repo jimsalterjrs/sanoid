@@ -24,9 +24,25 @@ function cleanUp {
 trap cleanUp EXIT
 
 zfs create "${POOL_NAME}"/src
+zfs create -V 100M -o volblocksize=4k "${POOL_NAME}"/src/zvol4
+zfs create -V 100M -o volblocksize=16k "${POOL_NAME}"/src/zvol16
+zfs create -V 100M -o volblocksize=64k "${POOL_NAME}"/src/zvol64
 zfs create -o recordsize=16k "${POOL_NAME}"/src/16
 zfs create -o recordsize=32k "${POOL_NAME}"/src/32
 zfs create -o recordsize=128k "${POOL_NAME}"/src/128
 ../../../syncoid --preserve-recordsize --recursive --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
 zfs get recordsize -t filesystem -r "${POOL_NAME}"/dst
+zfs get volblocksize -t volume -r "${POOL_NAME}"/dst
+
+if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/16)" != "16K" ]; then
+	exit 1
+fi
+
+if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/32)" != "32K" ]; then
+	exit 1
+fi
+
+if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/128)" != "128K" ]; then
+	exit 1
+fi

@@ -439,8 +439,11 @@ sub syncdataset {
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		if (defined $args{'preserve-recordsize'}) {
-			my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
-			$recvoptions .= "-o recordsize=$recordsize"
+			my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
+			if ($type eq "filesystem") {
+				my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
+				$recvoptions .= "-o recordsize=$recordsize"
+			}
 		}
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
