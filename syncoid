@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap",
+                   "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -437,6 +437,14 @@ sub syncdataset {
 			}
 		}
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
+
+		if (defined $args{'preserve-recordsize'}) {
+			my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
+			if ($type eq "filesystem") {
+				my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
+				$recvoptions .= "-o recordsize=$recordsize"
+			}
+		}
 
 		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
 		my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
@@ -1964,6 +1972,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
