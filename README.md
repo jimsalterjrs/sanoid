@@ -4,7 +4,7 @@
 
 <p align="center"><a href="https://youtu.be/ZgowLNBsu00" target="_blank"><img src="http://www.openoid.net/sanoid_video_launcher.png" alt="sanoid rollback demo" title="sanoid rollback demo"></a><br clear="all"><sup>(Real time demo: rolling back a full-scale cryptomalware infection in seconds!)</sup></p>
 
-More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job:
+More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md fore more details:
 ```
 * * * * * TZ=UTC /usr/local/bin/sanoid --cron
 ```
@@ -39,6 +39,8 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 
 Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
 
+**Note**: Be aware that if you don't specify some interval options the defaults will be used (from /etc/sanoid/sanoid.defaults.conf)
+
 ##### Sanoid Command Line Options
 
 + --cron
@@ -48,6 +50,14 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 + --configdir
 
 	Specify a location for the config file named sanoid.conf. Defaults to /etc/sanoid
+
++ --cache-dir
+
+	Specify a directory to store the zfs snapshot cache. Defaults to /var/cache/sanoid
+
++ --run-dir
+
+	Specify a directory for temporary files such as lock files. Defaults to /var/run/sanoid
 
 + --take-snapshots
 
@@ -100,6 +110,100 @@ Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 da
 + --help
 
 	Show help message.
+
+### Sanoid script hooks
+
+There are three script types which can optionally be executed at various stages in the lifecycle of a snapshot:
+
+#### `pre_snapshot_script`
+
+Will be executed before the snapshot(s) of a single dataset are taken. The following environment variables are passed:
+
+| Env vars           | Description                                                                                                                                          |
+| -----------------  | -----------                                                                                                                                          |
+| `SANOID_SCRIPT`    | The type of script being executed, one of `pre`, `post`, or `prune`.  Allows for one script to be used for multiple tasks                            |
+| `SANOID_TARGET`    | **DEPRECATED** The dataset about to be snapshot (only the first dataset will be provided)                                                            |
+| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshoted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
+| `SANOID_SNAPNAME`  | **DEPRECATED** The name of the snapshot that will be taken (only the first name will be provided, does not include the dataset name)                 |
+| `SANOID_SNAPNAMES` | Comma separated list of all snapshot names that will be taken (does not include the dataset name)                                                    |
+| `SANOID_TYPES`     | Comma separated list of all snapshot types to be taken (yearly, monthly, weekly, daily, hourly, frequently)                                          |
+
+If the script returns a non-zero exit code, the snapshot(s) will not be taken unless `no_inconsistent_snapshot` is false.
+
+#### `post_snapshot_script`
+
+Will be executed when:
+
+- The pre-snapshot script succeeded or
+- The pre-snapshot script failed and `force_post_snapshot_script` is true.
+
+| Env vars             | Description                                          |
+| -------------------- | -----------                                          |
+| `SANOID_SCRIPT`      | as above                                             |
+| `SANOID_TARGET`      | **DEPRECATED** as above                              |
+| `SANOID_TARGETS`     | as above                                             |
+| `SANOID_SNAPNAME`    | **DEPRECATED** as above                              |
+| `SANOID_SNAPNAMES`   | as above                                             |
+| `SANOID_TYPES`       | as above                                             |
+| `SANOID_PRE_FAILURE` | This will indicate if the pre-snapshot script failed |
+
+#### `pruning_script`
+
+Will be executed after a snapshot is successfully deleted. The following environment variables will be passed:
+
+| Env vars          | Description |
+| ----------------- | ----------- |
+| `SANOID_SCRIPT`   | as above    |
+| `SANOID_TARGET`   | as above    |
+| `SANOID_SNAPNAME` | as above    |
+
+
+#### example
+
+**sanoid.conf**:
+```
+...
+[sanoid-test-0]
+	use_template = production
+	recursive = yes
+	pre_snapshot_script = /tmp/debug.sh
+	post_snapshot_script = /tmp/debug.sh
+	pruning_script = /tmp/debug.sh
+...
+```
+
+**verbose sanoid output**:
+```
+...
+executing pre_snapshot_script '/tmp/debug.sh' on dataset 'sanoid-test-0'
+taking snapshot sanoid-test-0@autosnap_2020-02-12_14:49:33_yearly
+taking snapshot sanoid-test-0@autosnap_2020-02-12_14:49:33_monthly
+taking snapshot sanoid-test-0@autosnap_2020-02-12_14:49:33_daily
+taking snapshot sanoid-test-0@autosnap_2020-02-12_14:49:33_hourly
+executing post_snapshot_script '/tmp/debug.sh' on dataset 'sanoid-test-0'
+...
+```
+
+**pre script env variables**:
+```
+SANOID_SCRIPT=pre
+SANOID_TARGET=sanoid-test-0/b/bb
+SANOID_TARGETS=sanoid-test-0/b/bb
+SANOID_SNAPNAME=autosnap_2020-02-12_14:49:32_yearly
+SANOID_SNAPNAMES=autosnap_2020-02-12_14:49:32_yearly,autosnap_2020-02-12_14:49:32_monthly,autosnap_2020-02-12_14:49:32_daily,autosnap_2020-02-12_14:49:32_hourly
+SANOID_TYPES=yearly,monthly,daily,hourly
+```
+
+**post script env variables**:
+```
+SANOID_SCRIPT=post
+SANOID_TARGET=sanoid-test-0/b/bb
+SANOID_TARGETS=sanoid-test-0/b/bb
+SANOID_SNAPNAME=autosnap_2020-02-12_14:49:32_yearly
+SANOID_SNAPNAMES=autosnap_2020-02-12_14:49:32_yearly,autosnap_2020-02-12_14:49:32_monthly,autosnap_2020-02-12_14:49:32_daily,autosnap_2020-02-12_14:49:32_hourly
+SANOID_TYPES=yearly,monthly,daily,hourly
+SANOID_PRE_FAILURE=0
+```
 
 ----------
 
@@ -186,7 +290,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the source. This is mainly used if the target does not have mbuffer installed, but bandwidth limits are desired.
 
-+ --target-bw-limit <limit t|g|m|k>
++ --target-bwlimit <limit t|g|m|k>
 
 	This is the bandwidth limit in bytes (kbytes, mbytesm etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
 
@@ -201,6 +305,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --no-sync-snap
 
 	This argument tells syncoid to restrict itself to existing snapshots, instead of creating a semi-ephemeral syncoid snapshot at execution time. Especially useful in multi-target (A->B, A->C) replication schemes, where you might otherwise accumulate a large number of foreign syncoid snapshots.
+
++ --keep-sync-snap
+
+    This argument tells syncoid to skip pruning old snapshots created and used by syncoid for replication if '--no-sync-snap' isn't specified.
 
 + --create-bookmark
 

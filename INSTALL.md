@@ -8,6 +8,7 @@
 	- [Debian/Ubuntu](#debianubuntu)
 	- [CentOS](#centos)
 	- [FreeBSD](#freebsd)
+	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
 	- [Sanoid](#sanoid)
@@ -21,7 +22,7 @@ Install prerequisite software:
 
 ```bash
 
-apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer
+apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer build-essential
 
 ```
 
@@ -31,6 +32,8 @@ Clone this repo, build the debian package and install it (alternatively you can 
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
+# checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
+git checkout $(git tag | grep "^v" | tail -n 1)
 ln -s packages/debian .
 dpkg-buildpackage -uc -us
 apt install ../sanoid_*_all.deb
@@ -52,6 +55,11 @@ Install prerequisite software:
 sudo yum install -y epel-release git
 # Install the packages that Sanoid depends on:
 sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
+# if the perl dependencies can't be found in the configured repositories you can install them from CPAN manually:
+sudo dnf install perl-CPAN perl-CPAN
+cpan # answer the questions and past the following lines
+# install Capture::Tiny
+# install Config::IniFiles
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:
@@ -60,6 +68,8 @@ Clone this repo, then put the executables and config files into the appropriate 
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
+# checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
+git checkout $(git tag | grep "^v" | tail -n 1)
 # Install the executables
 sudo cp sanoid syncoid findoid sleepymutex /usr/local/sbin
 # Create the config directory
@@ -154,6 +164,13 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 
 *   See note about mbuffer and other things in FREEBSD.readme
 
+## Alpine Linux / busybox based distributions
+
+The busybox implementation of ps is lacking needed arguments so a proper ps program needs to be installed.
+For Alpine Linux this can be done with:
+
+`apk --no-cache add procps`
+
 ## Other OSes
 
 **Sanoid** depends on the Perl module Config::IniFiles and will not operate without it. Config::IniFiles may be installed from CPAN, though the project strongly recommends using your distribution's repositories instead.
@@ -166,6 +183,17 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 2.  Download the **Sanoid** repo
 3.  Create the config directory `/etc/sanoid` and put `sanoid.defaults.conf` in there, and create `sanoid.conf` in it too
 4.  Create a cron job or a systemd timer that runs `sanoid --cron` once per minute
+
+## cron
+
+If you use cron there is the need to ensure that only one instance of sanoid is run at any time (or else there will be funny error messages about missing snapshots, ...). It's also good practice to separate the snapshot taking and pruning so the later won't block the former in case of long running pruning operations. Following is the recommend setup for a standard install:
+
+```
+*/15 * * * * root flock -n /var/run/sanoid/cron-take.lock -c "TZ=UTC sanoid --take-snapshots"
+*/15 * * * * root flock -n /var/run/sanoid/cron-prune.lock -c "sanoid --prune-snapshots"
+```
+
+Adapt the timer interval to the lowest configured snapshot interval.
 
 # Configuration
 

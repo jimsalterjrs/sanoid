@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# remove old cache file
+[ -f /var/cache/sanoidsnapshots.txt ] && rm /var/cache/sanoidsnapshots.txt || true

@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark", "preserve-recordsize", "pv-options=s" => \$pvoptions,
+                   "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
                    "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -37,6 +37,16 @@ if (length $args{'sendoptions'}) {
 		warn "invalid send options!";
 		pod2usage(2);
 		exit 127;
+	}
+
+	if (defined $args{'recursive'}) {
+		foreach my $option(@sendoptions) {
+			if ($option->{option} eq 'R') {
+				warn "invalid argument combination, zfs send -R and --recursive aren't compatible!";
+				pod2usage(2);
+				exit 127;
+			}
+		}
 	}
 }
 
@@ -555,7 +565,10 @@ sub syncdataset {
 			}
 
 			$exit == 0 or do {
-				if ($stdout =~ /\Qused in the initial send no longer exists\E/) {
+				if (
+					$stdout =~ /\Qused in the initial send no longer exists\E/ ||
+					$stdout =~ /incremental source [0-9xa-f]+ no longer exists/
+				) {
 					if (!$quiet) { print "WARN: resetting partially receive state because the snapshot source no longer exists\n"; }
 					resetreceivestate($targethost,$targetfs,$targetisroot);
 					# do an normal sync cycle
@@ -842,9 +855,11 @@ sub syncdataset {
 			};
 		}
 	} else {
-		# prune obsolete sync snaps on source and target (only if this run created ones).
-		pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
-		pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+		if (!defined $args{'keep-sync-snap'}) {
+			# prune obsolete sync snaps on source and target (only if this run created ones).
+			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
+			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+		}
 	}
 
 } # end syncdataset()
@@ -1072,11 +1087,11 @@ sub checkcommands {
 		my $resumechkcmd = "$zpoolcmd get -o value -H feature\@extensible_dataset";
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on source...\n"; }
-		$avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		$avail{'sourceresume'} = system("$sourcessh $sourcesudocmd $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'sourceresume'} = $avail{'sourceresume'} == 0 ? 1 : 0;
 
 		if ($debug) { print "DEBUG: checking availability of zfs resume feature on target...\n"; }
-		$avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		$avail{'targetresume'} = system("$targetssh $targetsudocmd $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
 		$avail{'targetresume'} = $avail{'targetresume'} == 0 ? 1 : 0;
 
 		if ($avail{'sourceresume'} == 0 || $avail{'targetresume'} == 0) {
@@ -1112,7 +1127,7 @@ sub iszfsbusy {
 
 	foreach my $process (@processes) {
 		# if ($debug) { print "DEBUG: checking process $process...\n"; }
-		if ($process =~ /zfs *(receive|recv).*\Q$fs\E/) {
+		if ($process =~ /zfs *(receive|recv).*\Q$fs\E\Z/) {
 			# there's already a zfs receive process for our target filesystem - return true
 			if ($debug) { print "DEBUG: process $process matches target $fs!\n"; }
 			return 1;
@@ -1425,20 +1440,53 @@ sub targetexists {
 sub getssh {
 	my $fs = shift;
 
-	my $rhost;
+	my $rhost = "";
 	my $isroot;
 	my $socket;
+	my $remoteuser = "";
 
 	# if we got passed something with an @ in it, we assume it's an ssh connection, eg root@myotherbox
 	if ($fs =~ /\@/) {
 		$rhost = $fs;
-		$fs =~ s/^\S*\@\S*://;
+		$fs =~ s/^[^\@:]*\@[^\@:]*://;
 		$rhost =~ s/:\Q$fs\E$//;
-		my $remoteuser = $rhost;
-		 $remoteuser =~ s/\@.*$//;
+		$remoteuser = $rhost;
+		$remoteuser =~ s/\@.*$//;
+		# do not require a username to be specified
+		$rhost =~ s/^@//;
+	} elsif ($fs =~ m{^[^/]*:}) {
+		# if we got passed something with an : in it, BEFORE any forward slash
+		# (i.e., not in a dataset name) it MAY be an ssh connection
+		# but we need to check if there is a pool with that name
+		my $pool = $fs;
+		$pool =~ s%/.*$%%;
+		my ($pools, $error, $exit) = capture {
+			system("$zfscmd list -d0 -H -oname");
+		};
+		$rhost = $fs;
+		if ($exit != 0) {
+			warn "Unable to enumerate pools (is zfs available?)";
+		} else {
+			foreach (split(/\n/,$pools)) {
+				if ($_ eq $pool) {
+					# there's a pool with this name.
+					$rhost = "";
+					last;
+				}
+			}
+		}
+		if ($rhost ne "") {
+			# there's no pool that might conflict with this
+			$rhost =~ s/:.*$//;
+			$fs =~ s/\Q$rhost\E://;
+		}
+	}
+
+	if ($rhost ne "") {
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$remoteuser-$rhost-" . time();
+		$socket = "/tmp/syncoid-$rhost-" . time();
+
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
 
@@ -1475,7 +1523,7 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get A-Hpd 1 -t snapshot guid,creation $fsescaped";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
 		print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n";
@@ -1753,7 +1801,19 @@ sub getsendsize {
 }
 
 sub getdate {
-	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+	my @time = localtime(time);
+
+	# get timezone info
+	my $offset = timegm(@time) - timelocal(@time);
+	my $sign = ''; # + is not allowed in a snapshot name
+	if ($offset < 0) {
+		$sign = '-';
+		$offset = abs($offset);
+	}
+	my $hours = int($offset / 3600);
+	my $minutes = int($offset / 60) - $hours * 60;
+
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = @time;
 	$year += 1900;
 	my %date;
 	$date{'unix'} = (((((((($year - 1971) * 365) + $yday) * 24) + $hour) * 60) + $min) * 60) + $sec;
@@ -1763,7 +1823,8 @@ sub getdate {
 	$date{'hour'} = sprintf ("%02u", $hour);
 	$date{'mday'} = sprintf ("%02u", $mday);
 	$date{'mon'} = sprintf ("%02u", ($mon + 1));
-	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}";
+	$date{'tzoffset'} = sprintf ("GMT%s%02d:%02u", $sign, $hours, $minutes);
+	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}-$date{'tzoffset'}";
 	return %date;
 }
 
@@ -1887,9 +1948,9 @@ syncoid - ZFS snapshot replication tool
 =head1 SYNOPSIS
 
  syncoid [options]... SOURCE TARGET
- or   syncoid [options]... SOURCE USER@HOST:TARGET
- or   syncoid [options]... USER@HOST:SOURCE TARGET
- or   syncoid [options]... USER@HOST:SOURCE USER@HOST:TARGET
+ or   syncoid [options]... SOURCE [[USER]@]HOST:TARGET
+ or   syncoid [options]... [[USER]@]HOST:SOURCE TARGET
+ or   syncoid [options]... [[USER]@]HOST:SOURCE [[USER]@]HOST:TARGET
 
  SOURCE                Source ZFS dataset. Can be either local or remote
  TARGET                Target ZFS dataset. Can be either local or remote
@@ -1906,13 +1967,14 @@ Options:
   --pv-options=OPTIONS  Configure how pv displays the progress bar, default '-p -t -e -r -b'
   --no-stream           Replicates using newest snapshot instead of intermediates
   --no-sync-snap        Does not create new snapshot, only transfers existing
+  --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
-  --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filterd as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
-  --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filterd as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
+  --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
+  --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh key to use to connect
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
