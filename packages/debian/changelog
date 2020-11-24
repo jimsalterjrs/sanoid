@@ -1,3 +1,33 @@
+sanoid (2.1.0) unstable; urgency=medium
+
+  [overall]   documentation updates, small fixes (@HavardLine, @croadfeldt, @jimsalterjrs, @jim-perkins, @kr4z33, @phreaker0)
+  [syncoid]   do not require user to be specified for syncoid (@aerusso)
+  [syncoid]   implemented option for keeping sync snaps (@phreaker0)
+  [syncoid]   use sudo if neccessary for checking pool capabilities regarding resumeable send (@phreaker0)
+  [syncoid]   catch another case were the resume state isn't availabe anymore (@phreaker0)
+  [syncoid]   check for an invalid argument combination (@phreaker0)
+  [syncoid]   fix iszfsbusy check for similar dataset names (@phreaker0)
+  [syncoid]   append timezone offset to the syncoid snapshot name to fix DST collisions (@phreaker0)
+  [packaging] post install script for debian package to remove old unused snapshot cache file (@phreaker0)
+  [syncoid]   implemented fallback for listing snapshots on solaris (@phreaker0)
+  [sanoid]    remove invalid locks (@phreaker0)
+  [packaging] removed debian dependency for systemd (@phreaker0)
+  [sanoid]    move sanoid cache and lock files to subdirectories (@lopsided98)
+  [sanoid]    remove 's in monitoring messages (@dlangille)
+  [findoid]   reworked argument parsing and error out if file path is not provided (@phreaker0)
+  [findoid]   also show current file version if available (@phreaker0)
+  [findoid]   handle FileNotFound errors properly (@phreaker0)
+  [findoid]   don't use hardcoded paths (@phreaker0)
+  [findoid]   improve dataset detection by only including mounted datasets (@phreaker0)
+  [sanoid]    pass more information to pre/post/prune scripts and execute them only once per dataset (@tiedotguy, @phreaker0)
+  [syncoid]   implemented option for preserving recordsizes on initial replications (@phreaker0)
+  [syncoid]   fixed send size estimation for latest FreeBSD versions (@phreaker0)
+  [syncoid]   add ability to configure pv (@gdevenyi)
+  [sanoid]    don't use hardcoded paths (@phreaker0)
+  [syncoid]   gracefully handle error when source dataset disappeared (@mschout)
+
+ -- Jim Salter <github@jrs-s.net>  Tue, 24 Nov 2020 11:47:00 +0100
+
 sanoid (2.0.3) unstable; urgency=medium
 
   [sanoid]    reverted DST handling and improved it as quickfix (@phreaker0)
