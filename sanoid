@@ -881,6 +881,13 @@ sub init {
 			if (! defined ($defaults{'template_default'}{$key})) {
 				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
 			}
+
+			# in case of duplicate lines we will end up with an array of all values
+			my $value = $ini{$section}{$key};
+			if (ref($value) eq 'ARRAY') {
+				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
+				$ini{$section}{$key} = $value->[0];
+			}
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
