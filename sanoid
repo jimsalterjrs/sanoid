@@ -1239,7 +1239,7 @@ sub check_zpool() {
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
-			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE")) {
+			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL")) {
 				# check for io/checksum errors
 
 				my @vdeverr = ();
