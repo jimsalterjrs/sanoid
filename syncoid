@@ -4,8 +4,8 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 # 
-# 2021-03-ß2: redbike
-# support f0r zfs holds added
+# 2021-03-03: redbike
+# support for zfs holds added
 
 $::VERSION = '2.0.3';
 
@@ -845,21 +845,27 @@ sub syncdataset {
 		} else {
 			$holdcmd = "$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped";
 			$holdreleasecmd = "$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped";
-		};
+		}
 		if ($debug) { print "DEBUG: Set new hold on source: $holdcmd\n"; }
 		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
-		if ($debug) { print "DEBUG: Release old hold on source: $holdreleasecmd\n"; }
-		system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on source: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
 		if ($targethost ne '') {
 			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
 			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
 		} else {
 			$holdcmd = "$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped";				$holdreleasecmd = "$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped";
-		};
+		}
 		if ($debug) { print "DEBUG: Set new hold on target: $holdcmd\n"; }
 		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
-		if ($debug) { print "DEBUG: Release old hold on target: $holdreleasecmd\n"; }
-		system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on target: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
 	}
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
@@ -2005,6 +2011,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
