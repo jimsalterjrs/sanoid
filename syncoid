@@ -25,8 +25,8 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
-                   "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
+                   "create-bookmark", "ignore-failed-create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap",
+                   "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -851,9 +851,13 @@ sub syncdataset {
 				}
 				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 				system($bookmarkcmd) == 0 or do {
-					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
+					if (!defined $args{'ignore-failed-create-bookmark'}) {
+						warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					} else {
+						if (!$quiet) { print "INFO: bookmark with guid based suffix creation failed, ignoring...\n"; }
+					}
 				}
 			};
 		}
@@ -1972,6 +1976,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --ignore-failed-create-bookmark Ignore failure when creating a zfs bookmark (bookmark and bookmark with guid suffix already exist, only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
