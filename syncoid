@@ -440,6 +440,7 @@ sub syncdataset {
 
 	my $newsyncsnap;
 	my $matchingsnap;
+	my $usebookmark = 0;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -606,24 +607,26 @@ sub syncdataset {
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
 		my %bookmark = ();
+		my $bookmarksnap = 0;
+
+		# find most recent matching bookmark
+		my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+
+		# check for matching guid of source bookmark and target snapshot (newest first)
+		foreach my $snap ( sort { sortsnapshots($snaps{'target'}, $b, $a) } keys %{ $snaps{'target'} }) {
+			my $guid = $snaps{'target'}{$snap}{'guid'};
+
+			if (defined $bookmarks{$guid}) {
+				# found a match
+				%bookmark = %{ $bookmarks{$guid} };
+				$bookmarksnap = $snap;
+				last;
+			}
+		}
 
 		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
-			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
-
-			# check for matching guid of source bookmark and target snapshot (newest first)
-			foreach my $snap ( sort { sortsnapshots($snaps{'target'}, $b, $a) } keys %{ $snaps{'target'} }) {
-				my $guid = $snaps{'target'}{$snap}{'guid'};
-
-				if (defined $bookmarks{$guid}) {
-					# found a match
-					%bookmark = %{ $bookmarks{$guid} };
-					$matchingsnap = $snap;
-					last;
-				}
-			}
-
 			if (! %bookmark) {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
@@ -678,6 +681,20 @@ sub syncdataset {
 
 				# return false now in case more child datasets need replication.
 				return 0;
+			} else {
+				# use bookmark as fallback
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
+			}
+		} elsif (%bookmark) {
+			my $comparisonkey = 'creation';
+			if (defined $snaps{'source'}{$matchingsnap}{'createtxg'} && defined $bookmark{'createtxg'}) {
+				$comparisonkey = 'createtxg';
+			}
+			if ($bookmark{$comparisonkey} > $snaps{'source'}{$matchingsnap}{$comparisonkey}) {
+				writelog('DEBUG', "using bookmark $bookmark{'name'} because it was created after latest matching snapshot $matchingsnap");
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
 			}
 		}
 
@@ -697,7 +714,7 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if (%bookmark) {
+			if ($usebookmark) {
 
 				if (!defined $args{'no-stream'}) {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
@@ -758,7 +775,7 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			# edge case: skip replication if bookmark replication used the latest snapshot
-			if ((!%bookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
+			if ((!$usebookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
 
 				($exit, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $matchingsnap, $newsyncsnap, defined($args{'no-stream'}));
 
