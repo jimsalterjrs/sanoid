@@ -762,7 +762,7 @@ sub syncdataset {
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
 					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
-						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+						if (substr($snaps{'source'}{$snap}{'creation'}, 0, -3) >= $bookmarks{$bookmarkguid}{'creation'}) {
 							$nextsnapshot = $snap;
 							last;
 						}
