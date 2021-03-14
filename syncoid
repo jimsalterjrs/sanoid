@@ -25,8 +25,8 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties")
+                   "ignore-failed-create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
+                   "mbuffer-size=s" => \$mbuffer_size, "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -961,9 +961,13 @@ sub syncdataset {
 				}
 				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 				system($bookmarkcmd) == 0 or do {
-					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
+					if (!defined $args{'ignore-failed-create-bookmark'}) {
+						warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+						if ($exitcode < 2) { $exitcode = 2; }
+						return 0;
+					} else {
+						if (!$quiet) { print "INFO: bookmark with guid based suffix creation failed, ignoring...\n"; }
+					}
 				}
 			};
 		}
@@ -2209,6 +2213,7 @@ Options:
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
+  --ignore-failed-create-bookmark Ignore failure when creating a zfs bookmark (bookmark and bookmark with guid suffix already exist, only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --preserve-properties Preserves locally set dataset properties similiar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
