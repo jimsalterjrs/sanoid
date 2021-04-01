@@ -3,9 +3,6 @@
 # this software is licensed for use under the Free Software Foundation's GPL v3.0 license, as retrieved
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
-# 
-# 2021-03-03: redbike
-# support for zfs holds added
 
 $::VERSION = '2.0.3';
 
@@ -831,7 +828,7 @@ sub syncdataset {
 			#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);
 		}
 	}
-# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
+	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
 	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
 	if (defined $args{'use-hold'}) {
 		my $holdcmd;
@@ -1364,7 +1361,7 @@ sub buildsynccmd {
 sub pruneoldsyncsnaps {
 	my ($rhost,$fs,$newsyncsnap,$isroot,@snaps) = @_;
 
-	my $fsescaped = escapeshellparam($fs);	
+	my $fsescaped = escapeshellparam($fs);
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
