@@ -8,8 +8,8 @@
 	- [Debian/Ubuntu](#debianubuntu)
 	- [CentOS](#centos)
 	- [FreeBSD](#freebsd)
-	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
-	- [OmniOS](#OmniOS-Illumos-based-distributions)
+	- [Alpine Linux / busybox](#alpine-Linux-or-busybox-based-distributions)
+	- [OmniOS](#OmniOS)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
 	- [Sanoid](#sanoid)
@@ -165,14 +165,14 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
 
 *   See note about mbuffer and other things in FREEBSD.readme
 
-## Alpine Linux / busybox based distributions
+## Alpine Linux or busybox based distributions
 
 The busybox implementation of ps is lacking needed arguments so a proper ps program needs to be installed.
 For Alpine Linux this can be done with:
 
 `apk --no-cache add procps`
 
-## OmniOS / Illumos based distributions
+## OmniOS
 
 Used  with OmniOS r34, r36 and r37 (with napp-it installed). Hence, we presume you have a standard perl installation etc.
 
