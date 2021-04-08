@@ -9,6 +9,7 @@
 	- [CentOS](#centos)
 	- [FreeBSD](#freebsd)
 	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
+	- [OmniOS](#OmniOS-Illumos-based-distributions)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
 	- [Sanoid](#sanoid)
@@ -177,7 +178,8 @@ Used  with OmniOS r34, r36 and r37 (with napp-it installed). Hence, we presume y
 
 1. Install prerequisites: Perl module Config::IniFiles, ssh, pv, gzip, lzop, and mbuffer
 
-```# install/update standard programs
+```bash
+# install/update standard programs
 pfexec pkg install openssh gzip mbuffer pipe-viewer
 
 # include OpenCSW repository 
@@ -205,7 +207,7 @@ pfexec perl -MCPAN -e shell
 
 2. Download and clone the Sanoid repo:
 
-```
+```bash
 # install git
 pfexec pkg install git
 
@@ -234,7 +236,8 @@ pfexec ln -s /opt/sanoid/sanoid /usr/bin/sanoid & pfexec ln -s /opt/sanoid/synco
 ```	
 
 3. Create the config directory /etc/sanoid,  put default sanoid files there, and create and edit sanoid.conf:
-```# Create the config directory
+```bash
+# Create the config directory
 pfexec mkdir /etc/sanoid
 
 # Copy default config and sample config
