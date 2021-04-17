@@ -111,13 +111,13 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
-* Wed Nov 24 2020 Christoph Klaffl <christoph@phreaker.eu> - 2.1.0
+* Tue Nov 24 2020 Christoph Klaffl <christoph@phreaker.eu> - 2.1.0
 - Bump to 2.1.0
 * Wed Oct 02 2019 Christoph Klaffl <christoph@phreaker.eu> - 2.0.3
 - Bump to 2.0.3
 * Wed Sep 25 2019 Christoph Klaffl <christoph@phreaker.eu> - 2.0.2
 - Bump to 2.0.2
-* Wed Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
+* Tue Dec 04 2018 Christoph Klaffl <christoph@phreaker.eu> - 2.0.0
 - Bump to 2.0.0
 * Sat Apr 28 2018 Dominic Robinson <github@dcrdev.com> - 1.4.18-1
 - Bump to 1.4.18
