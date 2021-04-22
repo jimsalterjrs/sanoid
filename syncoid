@@ -1141,6 +1141,22 @@ sub iszfsbusy {
 	return 0;
 }
 
+sub getbinarypath {
+	my ($rhost,$binary,$paths) = @_;
+	my $cmd = "export PATH=$paths && which $binary";
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		$cmd = "$rhost ". escapeshellparam($cmd);
+	}
+	if ($debug) { print "DEBUG: trying to find path for $binary...\n"; }
+	my ($value, $error, $exit) = capture {
+		system($cmd);
+	};
+	chomp($value);
+	if ($value eq '') { die "CRIT: The following binary: \"$binary\" is not found in the PATH on \"$rhost\"\n"};
+	return $value;
+}
+
 sub setzfsvalue {
 	my ($rhost,$fs,$isroot,$property,$value) = @_;
 
