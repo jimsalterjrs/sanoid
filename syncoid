@@ -26,9 +26,14 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
                    "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
-                   "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
+                   "mbuffer-size=s" => \$mbuffer_size, "exclude-snaps=s") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
+
+# --exclude-snaps implies --no-stream
+if (defined $args{'exclude-snaps'}) {
+	$args{'no-stream'} = 1;
+}
 
 my @sendoptions = ();
 if (length $args{'sendoptions'}) {
@@ -145,8 +150,15 @@ my $exitcode = 0;
 ## can loop across children separately, for recursive     ##
 ## replication                                            ##
 
+my $syncreturn = 0;
 if (!defined $args{'recursive'}) {
-	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+	if (defined $args{'exclude-snaps'}) {
+		while ($syncreturn != 2) {
+			$syncreturn = syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+		}
+	} else {
+		syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+	}
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
@@ -192,7 +204,13 @@ if (!defined $args{'recursive'}) {
 		my $childsourcefs = $sourcefs . $dataset;
 		my $childtargetfs = $targetfs . $dataset;
 		# print "syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs); \n";
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+		if (defined $args{'exclude-snaps'}) {
+			while ($syncreturn != 2) {
+				$syncreturn = syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+			}
+		} else {
+			syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+		}
 	}
 
 	# replicate cloned datasets and if this is the initial run, recreate them on the target
@@ -204,7 +222,13 @@ if (!defined $args{'recursive'}) {
 		chomp $dataset;
 		my $childsourcefs = $sourcefs . $dataset;
 		my $childtargetfs = $targetfs . $dataset;
-		syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+		if (defined $args{'exclude-snaps'}) {
+			while ($syncreturn != 2) {
+				$syncreturn = syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+			}
+		} else {
+			syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+		}
 	}
 }
 
@@ -404,6 +428,9 @@ sub syncdataset {
 
 	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
 	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
+	
+	# for exclude-snaps:
+	my $lastsnapsyncd = 0;
 
 	# sync 'em up.
 	if (! $targetexists) {
@@ -428,12 +455,14 @@ sub syncdataset {
 			$oldestsnap = $newsyncsnap;
 		}
 
-		# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
-		if (defined $args{'no-stream'}) {
-			if (defined ($args{'no-sync-snap'}) ) {
-				$oldestsnap = getnewestsnapshot(\%snaps);
-			} else {
-				$oldestsnap = $newsyncsnap;
+		if (! (defined $args{'exclude-snaps'})) {
+			# if --no-stream is specified, our full needs to be the newest snapshot, not the oldest.
+			if (defined $args{'no-stream'}) {
+				if (defined ($args{'no-sync-snap'}) ) {
+					$oldestsnap = getnewestsnapshot(\%snaps);
+				} else {
+					$oldestsnap = $newsyncsnap;
+				}
 			}
 		}
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
@@ -471,7 +500,11 @@ sub syncdataset {
 			if (!defined ($args{'no-stream'}) ) {
 				print "INFO: Sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
 			} else {
-				print "INFO: --no-stream selected; sending newest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
+				if (defined $args{'exclude-snaps'}) {
+					print "INFO: --exclude-snaps selected; sending oldest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n"; 
+				} else {
+					print "INFO: --no-stream selected; sending newest full snapshot $sourcefs\@$oldestsnap (~ $disp_pvsize) to new target filesystem:\n";
+				}
 			}
 		}
 		if ($debug) { print "DEBUG: $synccmd\n"; }
@@ -531,6 +564,8 @@ sub syncdataset {
 				}
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
+				# for exclude-snaps:
+				$lastsnapsyncd = 1;
 			}
 
 			# restore original readonly value to target after sync complete
@@ -667,6 +702,11 @@ sub syncdataset {
 				return 0;
 			}
 		}
+		
+		if (defined $args{'exclude-snaps'}) {
+			$newsyncsnap = getnextsnapshot($sourcefs, $targetfs, $targetsize, $matchingsnap, \%snaps);
+			$newsyncsnapescaped = escapeshellparam($newsyncsnap);
+		}
 
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
@@ -678,7 +718,11 @@ sub syncdataset {
 		if ($matchingsnap eq $newsyncsnap) {
 			# barf some text but don't touch the filesystem
 			if (!$quiet) { print "INFO: no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.\n"; }
-			return 0;
+			if (defined $args{'exclude-snaps'}) {
+				return 2;
+			} else {
+				return 0;
+			}
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
 			# rollback target to matchingsnap
@@ -860,11 +904,20 @@ sub syncdataset {
 	} else {
 		if (!defined $args{'keep-sync-snap'}) {
 			# prune obsolete sync snaps on source and target (only if this run created ones).
-			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
-			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+			# only do this in exclude-snaps mode if we finished with the last snapshot to sync for this fs
+			if ((!(defined $args{'exclude-snaps'})) || ($lastsnapsyncd)) {
+				pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
+				pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+			}
 		}
 	}
-
+	
+	# return a particular value if the last snapshot was synchronized, so we know to stop looping in main
+	if (defined $args{'exclude-snaps'}) {
+		if ($lastsnapsyncd) {
+			return 2;
+		}
+	}
 } # end syncdataset()
 
 sub compressargset {
@@ -1222,6 +1275,24 @@ sub getoldestsnapshot {
 	return 0;
 }
 
+# for exclude-snaps:
+sub getnextsnapshot {
+	my ($sourcefs, $targetfs, $targetsize, $matchingsnap, $snaps) = @_;
+	my $snapfound = 0;
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+		# processing from oldest to newest
+		# look for the matched snap. when you find it, set a variable which is checked on the next loop, which should be the next-oldest snapshot
+		if ($snapfound) {
+			return $snap;
+		}
+		if ($snap eq $matchingsnap) {
+			$snapfound = 1;
+		}
+	}
+	# if we got here, there wasn't a next-oldest snapshot. return $matchingsnap and the condition of the snapshots being the same will be caught later
+	return $matchingsnap;
+}
+
 sub getnewestsnapshot {
 	my $snaps = shift;
 	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
@@ -1542,10 +1613,41 @@ sub getsnaps() {
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
 	# as though each were an entirely separate get command.
+	
+	my $excludeterm;
+	my @excludeterms;
+	my $skipsnap = 0;
+	if (defined $args{'exclude-snaps'}) {
+		$excludeterm = $args{'exclude-snaps'};
+		@excludeterms = split(/,/,join(',',$excludeterm));
+		if ($debug) {
+			foreach my $term (@excludeterms) {
+				#print "DEBUG: --exclude-snaps term found: $term\n";
+			}
+		}
+	}
 
 	my %creationtimes=();
 
 	foreach my $line (@rawsnaps) {
+		# pretend this snapshot doesn't exist if it matches a type we are excluding
+		if (defined $args{'exclude-snaps'}) {
+			foreach my $term (@excludeterms) {
+				if ($line =~ /$fs\@.*$term/) {
+					$skipsnap = 1;
+				}
+			}
+			# For now, also assume we don't want to sync any @syncoid* produced by sync-snap if we are excluding autosnaps ... could always break this out into another option like --exclude-sync-snaps later if needed.
+			if ($line =~ /$fs\@syncoid.*/) {
+				next;
+			}
+			if ($skipsnap) {
+				#if ($debug) { print "DEBUG: skipping snapshot:$line due to matching --exclude-snaps param\n"; }
+				$skipsnap = 0;
+				next;
+			}
+		}
+	
 		# only import snap guids from the specified filesystem
 		if ($line =~ /\Q$fs\E\@.*guid/) {
 			chomp $line;
@@ -1558,6 +1660,24 @@ sub getsnaps() {
 	}
 
 	foreach my $line (@rawsnaps) {
+		# pretend this snapshot doesn't exist if it matches a type we are excluding
+		if (defined $args{'exclude-snaps'}) {
+			foreach my $term (@excludeterms) {
+				if ($line =~ /$fs\@.*$term/) {
+					$skipsnap = 1;
+				}
+			}
+			# For now, also assume we don't want to sync any @syncoid* produced by sync-snap if we are excluding autosnaps ... could always break this out into another option like --exclude-sync-snaps later if needed.
+			if ($line =~ /$fs\@syncoid.*/) {
+				next;
+			}
+			if ($skipsnap) {
+				#if ($debug) { print "DEBUG: skipping snapshot:$line due to matching --exclude-snaps param\n"; }
+				$skipsnap = 0;
+				next;
+			}
+		}
+	
 		# only import snap creations from the specified filesystem
 		if ($line =~ /\Q$fs\E\@.*creation/) {
 			chomp $line;
@@ -1608,6 +1728,19 @@ sub getsnapsfallback() {
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
 	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+	
+	my $excludeterm;
+	my @excludeterms;
+	my $skipsnap = 0;
+	if (defined $args{'exclude-snaps'}) {
+		$excludeterm = $args{'exclude-snaps'};
+		@excludeterms = split(/,/,join(',',$excludeterm));
+		if ($debug) {
+			foreach my $term (@excludeterms) {
+				#print "DEBUG: --exclude-snaps term found: $term\n";
+			}
+		}
+	}
 
 	my %creationtimes=();
 
@@ -1616,6 +1749,24 @@ sub getsnapsfallback() {
 		if ($state < 0) {
 			$state++;
 			next;
+		}
+		
+		# pretend this snapshot doesn't exist if it matches a type we are excluding
+		if (defined $args{'exclude-snaps'}) {
+			foreach my $term (@excludeterms) {
+				if ($line =~ /$fs\@.*$term/) {
+					$skipsnap = 1;
+				}
+			}
+			# For now, also assume we don't want to sync any @syncoid* produced by sync-snap if we are excluding autosnaps ... could always break this out into another option like --exclude-sync-snaps later if needed.
+			if ($line =~ /$fs\@syncoid.*/) {
+				next;
+			}
+			if ($skipsnap) {
+				#if ($debug) { print "DEBUG: skipping snapshot:$line due to matching --exclude-snaps param\n"; }
+				$skipsnap = 0;
+				next;
+			}
 		}
 
 		if ($state eq 0) {
@@ -1976,6 +2127,7 @@ Options:
   --no-clone-rollback   Does not rollback clones on target
   --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
+  --exclude-snaps=REGEX Exclude specific snapshots which match the given regular expression. To specify multiple terms, comma-delimit them (--exclude-snaps=hourly,frequent)
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh key to use to connect
