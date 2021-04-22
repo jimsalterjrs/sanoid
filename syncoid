@@ -133,6 +133,11 @@ my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
 my $targetsudocmd = $targetisroot ? '' : $sudocmd;
 
+my $zfssendcmd = getbinarypath($sourcehost,$zfscmd,$ENV{'PATH'});
+my $zfsrecvcmd = getbinarypath($targethost,$zfscmd,$ENV{'PATH'});
+my $zpoolsendcmd = getbinarypath($sourcehost,$zpoolcmd,$ENV{'PATH'});
+my $zpoolrecvcmd = getbinarypath($targethost,$zpoolcmd,$ENV{'PATH'});
+
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
 # warn user of anything missing, then continue with sync.
@@ -149,7 +154,7 @@ if (!defined $args{'recursive'}) {
 	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 } else {
 	if ($debug) { print "DEBUG: recursive sync of $sourcefs.\n"; }
-	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
+	my @datasets = getchilddatasets($sourcehost, $zfssendcmd, $sourcefs, $sourceisroot);
 
 	if (!@datasets) {
 		warn "CRITICAL ERROR: no datasets found";
@@ -226,7 +231,7 @@ exit $exitcode;
 ##############################################################################
 
 sub getchilddatasets {
-	my ($rhost,$fs,$isroot,%snaps) = @_;
+	my ($rhost,$zfsbin,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 
@@ -237,7 +242,7 @@ sub getchilddatasets {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getchildrencmd = "$rhost $mysudocmd $zfscmd list -o name,origin -t filesystem,volume -Hr $fsescaped |";
+	my $getchildrencmd = "$rhost $mysudocmd $zfsbin list -o name,origin -t filesystem,volume -Hr $fsescaped |";
 	if ($debug) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	if (! open FH, $getchildrencmd) {
 		die "ERROR: list command failed!\n";
@@ -296,7 +301,7 @@ sub syncdataset {
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
-	my ($sync, $error) = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
+	my ($sync, $error) = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,$zfssendcmd,'syncoid:sync');
 
 	if (!defined $sync) {
 		# zfs already printed the corresponding error
@@ -336,7 +341,7 @@ sub syncdataset {
 	}
 
 	# does the target filesystem exist yet?
-	my $targetexists = targetexists($targethost,$targetfs,$targetisroot);
+	my $targetexists = targetexists($targethost,$targetfs,$targetisroot,$zfsrecvcmd);
 
 	my $receiveextraargs = "";
 	my $receivetoken;
@@ -360,10 +365,10 @@ sub syncdataset {
 	if (!defined($receivetoken)) {
 		# build hashes of the snaps on the source and target filesystems.
 
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,$zfssendcmd);
 
 		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,$zfsrecvcmd);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
 		}
@@ -376,7 +381,7 @@ sub syncdataset {
 
 		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
-			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
+			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot,$zfssendcmd);
 			if (!$newsyncsnap) {
 				# we already whined about the error
 				return 0;
@@ -439,20 +444,20 @@ sub syncdataset {
 		my $oldestsnapescaped = escapeshellparam($oldestsnap);
 
 		if (defined $args{'preserve-recordsize'}) {
-			my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
+			my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,$zfssendcmd,'type');
 			if ($type eq "filesystem") {
-				my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
+				my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,$zfssendcmd,'recordsize');
 				$recvoptions .= "-o recordsize=$recordsize"
 			}
 		}
 
-		my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
-		my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
+		my $sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions $sourcefsescaped\@$oldestsnapescaped";
+		my $recvcmd = "$targetsudocmd $zfsrecvcmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped";
 
 		my $pvsize;
 		if (defined $origin) {
 			my $originescaped = escapeshellparam($origin);
-			$sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $originescaped $sourcefsescaped\@$oldestsnapescaped";
+			$sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions -i $originescaped $sourcefsescaped\@$oldestsnapescaped";
 			my $streamargBackup = $args{'streamarg'};
 			$args{'streamarg'} = "-i";
 			$pvsize = getsendsize($sourcehost,$origin,"$sourcefs\@$oldestsnap",$sourceisroot);
@@ -504,9 +509,9 @@ sub syncdataset {
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
 				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
-			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on',$zfssendcmd);
 
-			$sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+			$sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$oldestsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 			$pvsize = getsendsize($sourcehost,"$sourcefs\@$oldestsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 			$disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -536,7 +541,7 @@ sub syncdataset {
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
 				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
-			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);
+			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly,$zfssendcmd);
 		}
 	} else {
 		# resume interrupted receive if there is a valid resume $token
@@ -544,8 +549,8 @@ sub syncdataset {
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
 			$sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
-			my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
-			my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
+			my $sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions -t $receivetoken";
+			my $recvcmd = "$targetsudocmd $zfsrecvcmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 			my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
 			my $disp_pvsize = readablebytes($pvsize);
 			if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -595,9 +600,9 @@ sub syncdataset {
 			# dyking this functionality out for the time being due to buggy mount/unmount behavior
 			# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 		# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
-		# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
+		# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on',$zfssendcmd);
 
-		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
+		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,$zfsrecvcmd,'-p used');
 
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
@@ -605,7 +610,7 @@ sub syncdataset {
 		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
-			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot,$zfssendcmd);
 
 			# check for matching guid of source bookmark and target snapshot (oldest first)
 			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
@@ -631,7 +636,7 @@ sub syncdataset {
 					if ($targethost ne '') { $rcommand = "$sshcmd $targethost"; }
 					if (!$targetisroot) { $mysudocmd = $sudocmd; }
 
-					my $prunecmd = "$mysudocmd $zfscmd destroy -r $targetfsescaped; ";
+					my $prunecmd = "$mysudocmd $zfsrecvcmd destroy -r $targetfsescaped; ";
 					if ($targethost ne '') {
 						$prunecmd = escapeshellparam($prunecmd);
 					}
@@ -689,11 +694,11 @@ sub syncdataset {
 				}
 				if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
 				if ($targethost ne '') {
-					if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
-					system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
+					if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfsrecvcmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
+					system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfsrecvcmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
 				} else {
-					if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
-					system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
+					if ($debug) { print "$targetsudocmd $zfsrecvcmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
+					system ("$targetsudocmd $zfsrecvcmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
 				}
 			}
 
@@ -721,8 +726,8 @@ sub syncdataset {
 				$sendoptions = getoptionsline(\@sendoptions, ('L','c','e','w'));
 				if ($nextsnapshot) {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
-					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
+					my $sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
+					my $recvcmd = "$targetsudocmd $zfsrecvcmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
@@ -751,8 +756,8 @@ sub syncdataset {
 					$matchingsnap = $nextsnapshot;
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
-					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
-					my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
+					my $sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$newsyncsnapescaped";
+					my $recvcmd = "$targetsudocmd $zfsrecvcmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 					my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
@@ -789,8 +794,8 @@ sub syncdataset {
 				}
 
 				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
-				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
-				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
+				my $sendcmd = "$sourcesudocmd $zfssendcmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
+				my $recvcmd = "$targetsudocmd $zfsrecvcmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
 				my $disp_pvsize = readablebytes($pvsize);
 				if ($pvsize == 0) { $disp_pvsize = "UNKNOWN"; }
@@ -824,7 +829,7 @@ sub syncdataset {
 			# restore original readonly value to target after sync complete
 				# dyking this functionality out for the time being due to buggy mount/unmount behavior
 				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
-			#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);
+			#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly,$zfssendcmd);
 		}
 	}
 
@@ -832,9 +837,9 @@ sub syncdataset {
 		if (defined $args{'create-bookmark'}) {
 			my $bookmarkcmd;
 			if ($sourcehost ne '') {
-				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
+				$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfsrecvcmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped");
 			} else {
-				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
+				$bookmarkcmd = "$sourcesudocmd $zfsrecvcmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
 			}
 			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 			system($bookmarkcmd) == 0 or do {
@@ -845,9 +850,9 @@ sub syncdataset {
 				if (!$quiet) { print "INFO: bookmark creation failed, retrying with guid based suffix ($guid)...\n"; }
 
 				if ($sourcehost ne '') {
-					$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
+					$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfsrecvcmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
 				} else {
-					$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
+					$bookmarkcmd = "$sourcesudocmd $zfsrecvcmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
 				}
 				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 				system($bookmarkcmd) == 0 or do {
@@ -860,8 +865,8 @@ sub syncdataset {
 	} else {
 		if (!defined $args{'keep-sync-snap'}) {
 			# prune obsolete sync snaps on source and target (only if this run created ones).
-			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
-			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,$zfssendcmd,keys %{ $snaps{'source'}});
+			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,$zfsrecvcmd,keys %{ $snaps{'target'}});
 		}
 	}
 
@@ -1158,7 +1163,7 @@ sub getbinarypath {
 }
 
 sub setzfsvalue {
-	my ($rhost,$fs,$isroot,$property,$value) = @_;
+	my ($rhost,$fs,$isroot,$property,$value,$zfsbin) = @_;
 
 	my $fsescaped = escapeshellparam($fs);
 
@@ -1171,14 +1176,14 @@ sub setzfsvalue {
 	if ($debug) { print "DEBUG: setting $property to $value on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fsescaped\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fsescaped") == 0
-		or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fsescaped died: $?, proceeding anyway.\n";
+	if ($debug) { print "$rhost $mysudocmd $zfsbin set $property=$value $fsescaped\n"; }
+	system("$rhost $mysudocmd $zfsbin set $property=$value $fsescaped") == 0
+		or warn "WARNING: $rhost $mysudocmd $zfsbin set $property=$value $fsescaped died: $?, proceeding anyway.\n";
 	return;
 }
 
 sub getzfsvalue {
-	my ($rhost,$fs,$isroot,$property) = @_;
+	my ($rhost,$fs,$isroot,$zfsbin,$property) = @_;
 
 	my $fsescaped = escapeshellparam($fs);
 
@@ -1191,9 +1196,9 @@ sub getzfsvalue {
 	if ($debug) { print "DEBUG: getting current value of $property on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd get -H $property $fsescaped\n"; }
+	if ($debug) { print "$rhost $mysudocmd $zfsbin get -H $property $fsescaped\n"; }
 	my ($value, $error, $exit) = capture {
-		system("$rhost $mysudocmd $zfscmd get -H $property $fsescaped");
+		system("$rhost $mysudocmd $zfsbin get -H $property $fsescaped");
 	};
 
 	my @values = split(/\t/,$value);
@@ -1339,7 +1344,7 @@ sub buildsynccmd {
 }
 
 sub pruneoldsyncsnaps {
-	my ($rhost,$fs,$newsyncsnap,$isroot,@snaps) = @_;
+	my ($rhost,$fs,$newsyncsnap,$isroot,$zfsbin,@snaps) = @_;
 
 	my $fsescaped = escapeshellparam($fs);
 
@@ -1370,7 +1375,7 @@ sub pruneoldsyncsnaps {
 	my $prunecmd;
 	foreach my $snap(@prunesnaps) {
 		$counter ++;
-		$prunecmd .= "$mysudocmd $zfscmd destroy $fsescaped\@$snap; ";
+		$prunecmd .= "$mysudocmd $zfsbin destroy $fsescaped\@$snap; ";
 		if ($counter > $maxsnapspercmd) {
 			$prunecmd =~ s/\; $//;
 			if ($debug) { print "DEBUG: pruning up to $maxsnapspercmd obsolete sync snapshots...\n"; }
@@ -1413,7 +1418,7 @@ sub getmatchingsnapshot {
 }
 
 sub newsyncsnap {
-	my ($rhost,$fs,$isroot) = @_;
+	my ($rhost,$fs,$isroot,$zfsbin) = @_;
 	my $fsescaped = escapeshellparam($fs);
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
@@ -1425,7 +1430,7 @@ sub newsyncsnap {
 	my $hostid = hostname();
 	my %date = getdate();
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
-	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
+	my $snapcmd = "$rhost $mysudocmd $zfsbin snapshot $fsescaped\@$snapname\n";
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
 	system($snapcmd) == 0 or do {
 		warn "CRITICAL ERROR: $snapcmd failed: $?";
@@ -1437,7 +1442,7 @@ sub newsyncsnap {
 }
 
 sub targetexists {
-	my ($rhost,$fs,$isroot) = @_;
+	my ($rhost,$fs,$isroot,$zfsbin) = @_;
 	my $fsescaped = escapeshellparam($fs);
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
@@ -1446,7 +1451,7 @@ sub targetexists {
 	}
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	my $checktargetcmd = "$rhost $mysudocmd $zfscmd get -H name $fsescaped";
+	my $checktargetcmd = "$rhost $mysudocmd $zfsbin get -H name $fsescaped";
 	if ($debug) { print "DEBUG: checking to see if target filesystem exists using \"$checktargetcmd 2>&1 |\"...\n"; }
 	open FH, "$checktargetcmd 2>&1 |";
 	my $targetexists = <FH>;
@@ -1480,7 +1485,7 @@ sub getssh {
 		my $pool = $fs;
 		$pool =~ s%/.*$%%;
 		my ($pools, $error, $exit) = capture {
-			system("$zfscmd list -d0 -H -oname");
+			system("$zfssendcmd list -d0 -H -oname");
 		};
 		$rhost = $fs;
 		if ($exit != 0) {
@@ -1531,7 +1536,7 @@ sub dumphash() {
 }
 
 sub getsnaps() {
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my ($type,$rhost,$fs,$isroot,$zfsbin,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
@@ -1542,7 +1547,7 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+	my $getsnapcmd = "$rhost $mysudocmd $zfsbin get -Hpd 1 -t snapshot guid,creation $fsescaped";
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
 		print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n";
@@ -1553,7 +1558,7 @@ sub getsnaps() {
 	my @rawsnaps = <FH>;
 	close FH or do {
 		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhost,$fs,$isroot,%snaps);
+		return getsnapsfallback($type,$rhost,$fs,$isroot,$zfsbin,%snaps);
 	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
@@ -1607,7 +1612,7 @@ sub getsnaps() {
 
 sub getsnapsfallback() {
 	# fallback (solaris for example doesn't support the -t option)
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my ($type,$rhost,$fs,$isroot,$zfsbin,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
@@ -1618,7 +1623,7 @@ sub getsnapsfallback() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfsbin get -Hpd 1 type,guid,creation $fsescaped |";
 	warn "snapshot listing failed, trying fallback command";
 	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
@@ -1689,7 +1694,7 @@ sub getsnapsfallback() {
 }
 
 sub getbookmarks() {
-	my ($rhost,$fs,$isroot,%bookmarks) = @_;
+	my ($rhost,$fs,$isroot,$zfsbin,%bookmarks) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
@@ -1701,7 +1706,7 @@ sub getbookmarks() {
 	}
 
 	my $error = 0;
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfsbin get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
 	if ($debug) { print "DEBUG: getting list of bookmarks on $fs using $getbookmarkcmd...\n"; }
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
@@ -1782,7 +1787,7 @@ sub getsendsize {
 	} else {
 		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','w'));
 	}
-	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nvP $snaps";
+	my $getsendsizecmd = "$sourcessh $mysudocmd $zfssendcmd send $sendoptions -nvP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
 
 	open FH, "$getsendsizecmd 2>&1 |";
@@ -1939,7 +1944,7 @@ sub getoptionsline {
 }
 
 sub resetreceivestate {
-	my ($rhost,$fs,$isroot) = @_;
+	my ($rhost,$fs,$isroot,$zfsbin) = @_;
 
 	my $fsescaped = escapeshellparam($fs);
 
@@ -1952,7 +1957,7 @@ sub resetreceivestate {
 	if ($debug) { print "DEBUG: reset partial receive state of $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	my $resetcmd = "$rhost $mysudocmd $zfscmd receive -A $fsescaped";
+	my $resetcmd = "$rhost $mysudocmd $zfsrecvcmd receive -A $fsescaped";
 	if ($debug) { print "$resetcmd\n"; }
 	system("$resetcmd") == 0
 		or die "CRITICAL ERROR: $resetcmd failed: $?";
