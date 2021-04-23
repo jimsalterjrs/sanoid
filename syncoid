@@ -813,6 +813,36 @@ sub syncdataset {
 							if ($exitcode < 2) { $exitcode = 2; }
 							return 0;
 						}
+					} elsif ($args{'force-delete'} && $stdout =~ /\Qdestination already exists\E/) {
+						(my $existing) = $stdout =~ m/^cannot restore to ([^:]*): destination already exists$/g;
+						if ($existing eq "") {
+							warn "CRITICAL ERROR: $synccmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
+
+						if (!$quiet) { print "WARN: removing existing destination: $existing\n"; }
+						my $rcommand = '';
+						my $mysudocmd = '';
+						my $existingescaped = escapeshellparam($existing);
+
+						if ($targethost ne '') { $rcommand = "$sshcmd $targethost"; }
+						if (!$targetisroot) { $mysudocmd = $sudocmd; }
+
+						my $prunecmd = "$mysudocmd $zfscmd destroy $existingescaped; ";
+						if ($targethost ne '') {
+							$prunecmd = escapeshellparam($prunecmd);
+						}
+
+						my $ret = system("$rcommand $prunecmd");
+						if ($ret != 0) {
+							warn "CRITICAL ERROR: $rcommand $prunecmd failed: $?";
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						} else {
+							# redo sync and skip snapshot creation (already taken)
+							return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+						}
 					} else {
 						warn "CRITICAL ERROR: $synccmd failed: $?";
 						if ($exitcode < 2) { $exitcode = 2; }
@@ -1994,4 +2024,4 @@ Options:
   --no-clone-handling   Don't try to recreate clones on target
   --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation
 
-  --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks
+  --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks (also overwrites conflicting named snapshots)
