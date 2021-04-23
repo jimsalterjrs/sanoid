@@ -600,26 +600,30 @@ sub syncdataset {
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
 		my $bookmark = 0;
-		my $bookmarkcreation = 0;
+		my $bookmarkguid = 0;
+		my $bookmarksnap = 0;
+		my $usebookmark = 0;
 
 		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+
+		# find most recent matching bookmark
+		my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+
+		# check for matching guid of source bookmark and target snapshot (oldest first)
+		foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
+			my $guid = $snaps{'target'}{$snap}{'guid'};
+
+			if (defined $bookmarks{$guid}) {
+				# found a match
+				$bookmark = $bookmarks{$guid}{'name'};
+				$bookmarkguid = $guid;
+				$bookmarksnap = $snap;
+				last;
+			}
+		}
+
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
-			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
-
-			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
-				my $guid = $snaps{'target'}{$snap}{'guid'};
-
-				if (defined $bookmarks{$guid}) {
-					# found a match
-					$bookmark = $bookmarks{$guid}{'name'};
-					$bookmarkcreation = $bookmarks{$guid}{'creation'};
-					$matchingsnap = $snap;
-					last;
-				}
-			}
-
 			if (! $bookmark) {
 				if ($args{'force-delete'}) {
 					if (!$quiet) { print "Removing $targetfs because no matching snapshots were found\n"; }
@@ -665,8 +669,17 @@ sub syncdataset {
 
 				# return false now in case more child datasets need replication.
 				return 0;
+			} else {
+				# use bookmark as fallback
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
 			}
+		} elsif ($bookmark && $bookmarkguid ne $snaps{'source'}{$matchingsnap}{'guid'} && $bookmarks{$bookmarkguid}{'creation'} > substr($snaps{'source'}{$matchingsnap}{'creation'}, 0, -3)) {
+			if ($debug) { print "DEBUG: using bookmark $bookmark because it was created after latest matching snapshot $matchingsnap\n"; }
+			$matchingsnap = $bookmarksnap;
+			$usebookmark = 1;
 		}
+
 
 		# make sure target is (still) not currently in receive.
 		if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
@@ -699,7 +712,7 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if ($bookmark) {
+			if ($usebookmark) {
 				my $bookmarkescaped = escapeshellparam($bookmark);
 
 				if (!defined $args{'no-stream'}) {
@@ -707,7 +720,7 @@ sub syncdataset {
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
 					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
-						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+						if (substr($snaps{'source'}{$snap}{'creation'}, 0, -3) >= $bookmarks{$bookmarkguid}{'creation'}) {
 							$nextsnapshot = $snap;
 							last;
 						}
@@ -782,7 +795,7 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!$bookmark || $nextsnapshot) {
+			if (!$usebookmark || $nextsnapshot) {
 				if ($matchingsnap eq $newsyncsnap) {
 					# edge case: bookmark replication used the latest snapshot
 					return 0;
