@@ -323,6 +323,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --delete-target-snapshots
 
 	With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
+	Note that snapshot deletion is only done after a successful synchronization. If no new snapshots are found, no synchronization is done and no deletion either.
 
 + --no-clone-rollback
 
