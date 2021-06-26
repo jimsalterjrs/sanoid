@@ -160,17 +160,17 @@ sub monitor_snapshots {
 			my $typecrit = $type . '_crit';
 			my $warn = convertTimePeriod($config{$section}{$typewarn}, $smallerperiod);
 			my $crit = convertTimePeriod($config{$section}{$typecrit}, $smallerperiod);
-			my $elapsed = -1;
+			my $elapsed;
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
 				$elapsed = $snapsbytype{$path}{$type}{'newest'};
 			}
 			my $dispelapsed = displaytime($elapsed);
 			my $dispwarn = displaytime($warn);
 			my $dispcrit = displaytime($crit);
-			if ( $elapsed > $crit || $elapsed == -1) {
+			if ($elapsed > $crit || !defined($elapsed)) {
 				if ($crit > 0) {
 					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
-					if ($elapsed == -1) {
+					if (!defined($elapsed)) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
 						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
@@ -181,6 +181,10 @@ sub monitor_snapshots {
 					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
 					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
+			} elsif ($elapsed < 0) {
+				# The most recent snapshot is in the future!
+				if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
+				push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (in the future)";
 			} else {
 				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 			}
