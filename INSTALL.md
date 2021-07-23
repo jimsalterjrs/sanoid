@@ -171,6 +171,51 @@ For Alpine Linux this can be done with:
 
 `apk --no-cache add procps`
 
+## MacOS
+
+Install prerequisite software:
+
+```
+perl -MCPAN -e install Config::IniFiles
+```
+
+The crontab can be used as on a normal unix. To use launchd instead, this example config file can be use can be used. Modify it for your needs. In particular, adjust the sanoid path.
+It will start sanoid once per hour, at minute 51. Missed invocations due to standby will be merged into a single invocation at the next wakeup.
+
+```bash
+cat << "EOF" | sudo tee /Library/LaunchDaemons/net.openoid.Sanoid.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>net.openoid.Sanoid</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/sanoid/sanoid</string>
+		<string>--cron</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>TZ</key>
+		<string>UTC</string>
+		<key>PATH</key>
+		<string>/usr/local/zfs/bin:$PATH:/usr/local/bin</string>
+	</dict>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Minute</key>
+			<integer>51</integer>
+		</dict>
+	</array>
+</dict>
+</plist>
+EOF
+
+sudo launchctl load /Library/LaunchDaemons/net.openoid.Sanoid.plist
+```
+
 ## Other OSes
 
 **Sanoid** depends on the Perl module Config::IniFiles and will not operate without it. Config::IniFiles may be installed from CPAN, though the project strongly recommends using your distribution's repositories instead.
