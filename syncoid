@@ -608,7 +608,7 @@ sub syncdataset {
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
 			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
+			foreach my $snap ( sort { $snaps{'target'}{$b}{'createtxg'}<=>$snaps{'target'}{$a}{'createtxg'} } keys %{ $snaps{'target'} }) {
 				my $guid = $snaps{'target'}{$snap}{'guid'};
 
 				if (defined $bookmarks{$guid}) {
@@ -706,8 +706,8 @@ sub syncdataset {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
-					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
-						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+					foreach my $snap ( sort { $snaps{'source'}{$a}{'createtxg'}<=>$snaps{'source'}{$b}{'createtxg'} } keys %{ $snaps{'source'} }) {
+						if ($snaps{'source'}{$snap}{'createtxg'} >= $bookmarkcreation) {
 							$nextsnapshot = $snap;
 							last;
 						}
@@ -1210,7 +1210,7 @@ sub readablebytes {
 
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'createtxg'}<=>$snaps{'source'}{$b}{'createtxg'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -1224,7 +1224,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'createtxg'}<=>$snaps{'source'}{$a}{'createtxg'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		if (!$quiet) { print "NEWEST SNAPSHOT: $snap\n"; }
 		return $snap;
@@ -1385,7 +1385,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'createtxg'}<=>$snaps{'source'}{$a}{'createtxg'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -1526,7 +1526,7 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation,createtxg $fsescaped";
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
 		print "DEBUG: getting list of snapshots on $fs using $getsnapcmd...\n";
@@ -1586,6 +1586,18 @@ sub getsnaps() {
 		}
 	}
 
+	foreach my $line (@rawsnaps) {
+                # only import snap createtxg from the specified filesystem
+                if ($line =~ /\Q$fs\E\@.*createtxg/) {
+                        chomp $line;
+                        my $createtxg = $line;
+                        $createtxg =~ s/^.*\tcreatetxg\t*(\d*).*/$1/;
+                        my $snap = $line;
+                        $snap =~ s/^.*\@(.*)\tcreatetxg.*$/$1/;
+                        $snaps{$type}{$snap}{'createtxg'}=$createtxg;
+                }
+        }
+
 	return %snaps;
 }
 
@@ -1602,7 +1614,7 @@ sub getsnapsfallback() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation,createtxg $fsescaped |";
 	warn "snapshot listing failed, trying fallback command";
 	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
 	open FH, $getsnapcmd;
@@ -1664,6 +1676,17 @@ sub getsnapsfallback() {
 
 			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
 			$state = -1;
+		} elsif ($state eq 3) {
+			if ($line !~ /\Q$fs\E\@.*createtxg/) {
+                        	die "CRITICAL ERROR: snapshots couldn't be listed for $fs (createtxg parser error)";
+                        }
+
+                        chomp $line;
+                        my $createtxg = $line;
+                        $createtxg =~ s/^.*\tcreatetxg\t*(\d*).*/$1/;
+                        my $snap = $line;
+                        $snap =~ s/^.*\@(.*)\tcreatetxg.*$/$1/;
+                        $snaps{$type}{$snap}{'createtxg'}=$createtxg;
 		}
 
 		$state++;
