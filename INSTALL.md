@@ -22,28 +22,26 @@ Install prerequisite software:
 
 ```bash
 
-apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer build-essential
+apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer build-essential git
 
 ```
 
 Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
 
 ```bash
-# Download the repo as root to avoid changing permissions later
-sudo git clone https://github.com/jimsalterjrs/sanoid.git
+git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
 # checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
 git checkout $(git tag | grep "^v" | tail -n 1)
 ln -s packages/debian .
 dpkg-buildpackage -uc -us
-apt install ../sanoid_*_all.deb
+sudo apt install ../sanoid_*_all.deb
 ```
 
 Enable sanoid timer:
 ```bash
 # enable and start the sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
 ## CentOS
