@@ -1541,11 +1541,8 @@ sub getsnaps() {
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		}
-	}
-
-	foreach my $line (@rawsnaps) {
 		# only import snap creations from the specified filesystem
-		if ($line =~ /\Q$fs\E\@.*creation/) {
+		elsif ($line =~ /\Q$fs\E\@.*creation/) {
 			chomp $line;
 			my $creation = $line;
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
