@@ -25,8 +25,8 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
-                   or pod2usage(2);
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
+                   "include-snaps=s@", "exclude-snaps=s@") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -366,6 +366,16 @@ sub syncdataset {
 			if (!$newsyncsnap) {
 				# we already whined about the error
 				return 0;
+			}
+			# Don't send the sync snap if it's filtered out by --exclude-snaps or
+			# --include-snaps
+			if (!snapisincluded($newsyncsnap)) {
+				$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+				if ($newsyncsnap eq 0) {
+					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
+					if ($exitcode < 1) { $exitcode = 1; }
+					return 0;
+				}
 			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
@@ -798,7 +808,49 @@ sub syncfull {
 sub syncincremental {
 	my ($sourcehost, $sourcefs, $targethost, $targetfs, $fromsnap, $tosnap, $skipintermediate) = @_;
 
-	my $streamarg = ($skipintermediate == 1 ? '-i' : '-I');
+	my $streamarg = '-I';
+
+	if ($skipintermediate) {
+		$streamarg = '-i';
+	}
+
+	# If this is an -I sync but we're filtering snaps, then we should do a series
+	# of -i syncs instead.
+	if (!$skipintermediate) {
+		if (defined($args{'exclude-snaps'}) || defined($args{'include-snaps'})) {
+			writelog('INFO', '--no-stream is omitted but snaps are filtered. Simulating -I with filtered snaps');
+
+			# Get the snap names between $fromsnap and $tosnap
+			my @intsnaps = ();
+			my $inrange = 0;
+			foreach my $testsnap (sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+				if ($testsnap eq $fromsnap) { $inrange = 1; }
+
+				if ($inrange) { push(@intsnaps, $testsnap); }
+
+				if ($testsnap eq $tosnap) { last; }
+			}
+
+			# If we created a new sync snap, it won't be in @intsnaps yet
+			if ($intsnaps[-1] ne $tosnap) {
+				# Make sure that the sync snap isn't filtered out by --include-snaps or --exclude-snaps
+				if (snapisincluded($tosnap)) {
+					push(@intsnaps, $tosnap);
+				}
+			}
+
+			foreach my $i (0..(scalar(@intsnaps) - 2)) {
+				my $snapa = $intsnaps[$i];
+				my $snapb = $intsnaps[$i + 1];
+				writelog('INFO', "Performing an incremental sync between '$snapa' and '$snapb'");
+				syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $snapa, $snapb, 1) == 0 or return $?;
+			}
+
+			# Return after finishing the -i syncs so that we don't try to do another -I
+			return 0;
+		}
+	}
+
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $fromsnapescaped = escapeshellparam($fromsnap);
 	my $tosnapescaped = escapeshellparam($tosnap);
@@ -1532,6 +1584,11 @@ sub getsnaps() {
 	my %creationtimes=();
 
 	foreach my $line (@rawsnaps) {
+		$line =~ /\Q$fs\E\@(\S*)/;
+		my $snapname = $1;
+
+		if (!snapisincluded($snapname)) { next; }
+
 		# only import snap guids from the specified filesystem
 		if ($line =~ /\Q$fs\E\@.*guid/) {
 			chomp $line;
@@ -1944,6 +2001,37 @@ sub writelog {
 	}
 }
 
+sub snapisincluded {
+	my ($snapname) = @_;
+
+	# Return false if the snapshot matches an exclude-snaps pattern
+	if (defined $args{'exclude-snaps'}) {
+		my $excludes = $args{'exclude-snaps'};
+		foreach (@$excludes) {
+			if ($snapname =~ /$_/) {
+				writelog('DEBUG', "excluded $snapname because of exclude pattern /$_/");
+				return 0;
+			}
+		}
+	}
+
+	# Return true if the snapshot matches an include-snaps pattern
+	if (defined $args{'include-snaps'}) {
+		my $includes = $args{'include-snaps'};
+		foreach (@$includes) {
+			if ($snapname =~ /$_/) {
+				writelog('DEBUG', "included $snapname because of include pattern /$_/");
+				return 1;
+			}
+		}
+
+		# Return false if the snapshot didn't match any inclusion patterns
+		return 0;
+	}
+
+	return 1;
+}
+
 __END__
 
 =head1 NAME
@@ -1976,6 +2064,8 @@ Options:
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
+  --exclude-snaps=REGEX Exclude specific snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+  --include-snaps=REGEX Only include snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
   --sshkey=FILE         Specifies a ssh key to use to connect
