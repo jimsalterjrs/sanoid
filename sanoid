@@ -546,7 +546,7 @@ sub take_snapshots {
 			my @snapshots;
 
 			foreach my $type (@types) {
-				my $snapname = "autosnap_$datestamp{'sortable'}_$type";
+				my $snapname = "autosnap_${type}_UTC_$datestamp{'sortable'}";
 				push(@snapshots, $snapname);
 			}
 
@@ -827,11 +827,11 @@ sub getsnaps {
 	}
 
 	foreach my $snap (@rawsnaps) {
-		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\t*creation\t*(\d*)/);
+		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@([^\t]+)\t*creation\t*(\d*)/);
 
 		# avoid pissing off use warnings
 		if (defined $snapname) {
-			my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
+			my ($snaptype) = ($snapname =~ m/_(\w*ly)_/);
 			if ($snapname =~ /^autosnap/) {
 				$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 				$snaps{$fs}{$snapname}{'type'}=$snaptype;
