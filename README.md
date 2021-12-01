@@ -332,6 +332,14 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
 
++ --exclude-snaps=REGEX
+
+	Exclude specific snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+
++ --include-snaps=REGEX
+
+	Only include snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+
 + --no-resume
 
 	This argument tells syncoid to not use resumeable zfs send/receive streams.
