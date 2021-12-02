@@ -1674,6 +1674,7 @@ sub getsnapsfallback() {
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			if (!snapisincluded($snap)) { next; }
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		} elsif ($state eq 2) {
 			if ($line !~ /\Q$fs\E\@.*creation/) {
@@ -1685,6 +1686,7 @@ sub getsnapsfallback() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
+			if (!snapisincluded($snap)) { next; }
 
 			# the accuracy of the creation timestamp is only for a second, but
 			# snapshots in the same second are highly likely. The list command
