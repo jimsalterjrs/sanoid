@@ -26,9 +26,19 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "include-snaps=s@", "exclude-snaps=s@") or pod2usage(2);
+                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@") or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
+
+if (defined($args{'exclude'})) {
+	writelog('WARN', 'The --exclude option is deprecated, please use --exclude-datasets instead');
+
+	# If both --exclude and --exclude-datasets are provided, then ignore
+	# --exclude
+	if (!defined($args{'exclude-datasets'})) {
+		$args{'exclude-datasets'} = $args{'exclude'};
+	}
+}
 
 my @sendoptions = ();
 if (length $args{'sendoptions'}) {
@@ -256,8 +266,8 @@ sub getchilddatasets {
 
 		my ($dataset, $origin) = /^([^\t]+)\t([^\t]+)/;
 
-		if (defined $args{'exclude'}) {
-			my $excludes = $args{'exclude'};
+		if (defined $args{'exclude-datasets'}) {
+			my $excludes = $args{'exclude-datasets'};
 			foreach (@$excludes) {
 				if ($dataset =~ /$_/) {
 					writelog('DEBUG', "excluded $dataset because of $_");
@@ -2065,7 +2075,8 @@ Options:
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
-  --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
+  --exclude=REGEX       DEPRECATED. Equivalent to --exclude-datasets, but will be removed in a future release. Ignored if --exclude-datasets is also provided.
+  --exclude-datasets=REGEX Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --exclude-snaps=REGEX Exclude specific snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
   --include-snaps=REGEX Only include snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...

@@ -330,15 +330,21 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --exclude=REGEX
 
-	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
+	__DEPRECATION NOTICE:__ `--exclude` has been deprecated and will be removed in a future release. Please use `--exclude-datasets` instead.
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized. If both `--exclude` and `--exclude-datasets` are provided, then `--exclude` is ignored.
+
++ --exclude-datasets=REGEX
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized.
 
 + --exclude-snaps=REGEX
 
-	Exclude specific snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+	Exclude specific snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
 
 + --include-snaps=REGEX
 
-	Only include snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+	Only include snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
 
 + --no-resume
 
