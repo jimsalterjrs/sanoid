@@ -53,9 +53,11 @@ Install prerequisite software:
 ```bash
 # Install and enable epel if we don't already have it, and git too
 sudo yum install -y epel-release git
+# For Centos 8 you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
+sudo dnf config-manager --set-enabled powertools
 # Install the packages that Sanoid depends on:
 sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
-# if the perl dependencies can't be found in the configured repositories you can install them from CPAN manually:
+# if you don't want to enable the powertools repo, the perl dependencies can be installed from CPAN manually:
 sudo dnf install perl-CPAN perl-CPAN
 cpan # answer the questions and past the following lines
 # install Capture::Tiny
@@ -142,8 +144,7 @@ sudo systemctl daemon-reload
 # Enable sanoid-prune.service to allow it to be triggered by sanoid.service
 sudo systemctl enable sanoid-prune.service
 # Enable and start the Sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
 Now, proceed to configure [**Sanoid**](#configuration)
