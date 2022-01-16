@@ -1596,12 +1596,6 @@ sub getsnapsfallback() {
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
-	if ($rhost ne '') {
-		$rhost = "$sshcmd $rhost";
-		# double escaping needed
-		$fsescaped = escapeshellparam($fsescaped);
-	}
-
 	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
 	warn "snapshot listing failed, trying fallback command";
 	if ($debug) { print "DEBUG: FALLBACK, getting list of snapshots on $fs using $getsnapcmd...\n"; }
