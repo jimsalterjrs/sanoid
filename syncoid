@@ -1537,7 +1537,7 @@ sub getsnaps() {
 	my @rawsnaps = <FH>;
 	close FH or do {
 		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhost,$fs,$isroot,%snaps);
+		return getsnapsfallback($type,$rhost,$fs,$fsescaped,$isroot,%snaps);
 	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
@@ -1591,9 +1591,8 @@ sub getsnaps() {
 
 sub getsnapsfallback() {
 	# fallback (solaris for example doesn't support the -t option)
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my ($type,$rhost,$fs,$fsescaped,$isroot,%snaps) = @_;
 	my $mysudocmd;
-	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
