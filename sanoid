@@ -210,9 +210,9 @@ sub monitor_snapshots {
 
 	if (defined ($return_info)) {
 		# Called by monitor_metrics_json, so return the JSON
-		my $snapshot_info_json = encode_json \%snapshot_info;
+		# my $snapshot_info_json = encode_json \%snapshot_info;
 
-		return $snapshot_info_json;
+		return \%snapshot_info;
 
 	} else {
 		# A normal run of the subroutine, so we print the information
@@ -289,9 +289,22 @@ sub monitor_capacity {
 
 sub monitor_metrics_json {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
-	my $snapshots_info_json = monitor_snapshots($config, $snaps, $snapsbytype, $snapsbypath, 1);
+	my %metrics;
+	
+	# Set a schema version for the JSON in case we need to change it in a way that is
+	# not backwards compatible
+	# ${$snapshot_info}{"schema_version"} = 202201301;
+	$metrics{"schema_version"} = 202201301;
 
-	print "$snapshots_info_json\n";
+	# Add all the information about snapshots we need that would be returned from
+	# --monitor-snapshots (or that let people derive the same information)
+	my $snapshot_info = monitor_snapshots($config, $snaps, $snapsbytype, $snapsbypath, 1);
+	$metrics{"snapshot_info"} = $snapshot_info;
+
+	# my $snapshot_info_json = encode_json $snapshot_info;
+	my $metrics_json = encode_json \%metrics;
+
+	print "$metrics_json\n";
 }
 
 ####################################################################################
