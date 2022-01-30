@@ -13,6 +13,7 @@ use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
 use File::Path 'make_path';
 use Getopt::Long qw(:config auto_version auto_help);
+use JSON;			  # for monitor-metrics-json
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
@@ -25,8 +26,8 @@ my %args = (
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
-                   "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
-                   "monitor-capacity"
+                   "monitor-snapshots", "monitor-metrics-json", "take-snapshots", "prune-snapshots", 
+				   "force-prune", "monitor-capacity"
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
@@ -74,6 +75,7 @@ if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
 if ($args{'monitor-health'}) 	{ monitor_health(@params); }
 if ($args{'monitor-capacity'})  { monitor_capacity(@params); }
+if ($args{'monitor-metrics-json'})  { monitor_metrics_json(@params); }
 if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); }
 
 if ($args{'cron'}) {
@@ -128,12 +130,13 @@ sub monitor_snapshots {
 	# check_snapshot_date - test ZFS fs creation timestamp for recentness
 	# accepts arguments: $filesystem, $warn (in seconds elapsed), $crit (in seconds elapsed)
 
-	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
+	my ($config, $snaps, $snapsbytype, $snapsbypath, $return_info) = @_;
 	my %datestamp = get_date();
 	my $errorlevel = 0;
 	my $msg;
 	my @msgs;
 	my @paths;
+	my %snapshot_info;
 
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
@@ -164,38 +167,64 @@ sub monitor_snapshots {
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
 				$elapsed = $snapsbytype{$path}{$type}{'newest'};
 			}
-			my $dispelapsed = displaytime($elapsed);
-			my $dispwarn = displaytime($warn);
-			my $dispcrit = displaytime($crit);
-			if ( $elapsed > $crit || $elapsed == -1) {
-				if ($crit > 0) {
-					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
-					if ($elapsed == -1) {
-						push @msgs, "CRIT: $path has no $type snapshots at all!";
-					} else {
-						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
+			if (! defined $return_info) {
+				# A normal run, printing Nagios information
+				my $dispelapsed = displaytime($elapsed);
+				my $dispwarn = displaytime($warn);
+				my $dispcrit = displaytime($crit);
+				if ( $elapsed > $crit || $elapsed == -1) {
+					if ($crit > 0) {
+						if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
+						if ($elapsed == -1) {
+							push @msgs, "CRIT: $path has no $type snapshots at all!";
+						} else {
+							push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
+						}
 					}
+				} elsif ($elapsed > $warn) {
+					if ($warn > 0) {
+						if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
+						push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
+					}
+				} else {
+					# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 				}
-			 } elsif ($elapsed > $warn) {
-				if ($warn > 0) {
-					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
-					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
-				}
-			} else {
-				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
-			}
 
+			} else {
+				# $return_info has been defined, so export JSON instead of printing
+				$snapshot_info{$path}{$type}{"crit_age_seconds"} = $crit;
+				$snapshot_info{$path}{$type}{"warn_age_seconds"} = $warn;
+				$snapshot_info{$path}{$type}{"monitor_dont_crit"} = $config{$section}{'monitor_dont_crit'};
+				$snapshot_info{$path}{$type}{"monitor_dont_warn"} = $config{$section}{'monitor_dont_warn'};
+								
+				if ($elapsed == -1) {
+					# The $path has no $type snapshots
+					$snapshot_info{$path}{$type}{"has_snapshots"} = 0;
+				} else {
+					$snapshot_info{$path}{$type}{"has_snapshots"} = 1;
+					$snapshot_info{$path}{$type}{"newest_age_seconds"} = $elapsed;
+				}
+			}
 		}
 	}
 
-	my @sorted_msgs = sort { lc($a) cmp lc($b) } @msgs;
-	my @sorted_paths = sort { lc($a) cmp lc($b) } @paths;
-	$msg = join (", ", @sorted_msgs);
-	my $paths = join (", ", @sorted_paths);
+	if (defined ($return_info)) {
+		# Called by monitor_metrics_json, so return the JSON
+		my $snapshot_info_json = encode_json \%snapshot_info;
 
-	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
+		return $snapshot_info_json;
 
-	print "$msg\n";
+	} else {
+		# A normal run of the subroutine, so we print the information
+		my @sorted_msgs = sort { lc($a) cmp lc($b) } @msgs;
+		my @sorted_paths = sort { lc($a) cmp lc($b) } @paths;
+		$msg = join (", ", @sorted_msgs);
+		my $paths = join (", ", @sorted_paths);
+		
+		if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
+
+		print "$msg\n";
+	}
 	exit $errorlevel;
 }
 
@@ -258,6 +287,16 @@ sub monitor_capacity {
 ####################################################################################
 ####################################################################################
 
+sub monitor_metrics_json {
+	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
+	my $snapshots_info_json = monitor_snapshots($config, $snaps, $snapsbytype, $snapsbypath, 1);
+
+	print "$snapshots_info_json\n";
+}
+
+####################################################################################
+####################################################################################
+####################################################################################
 
 sub prune_snapshots {
 
