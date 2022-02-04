@@ -164,38 +164,43 @@ sub monitor_snapshots {
 			my $warn = convertTimePeriod($config{$section}{$typewarn}, $smallerperiod);
 			my $crit = convertTimePeriod($config{$section}{$typecrit}, $smallerperiod);
 			my $elapsed = -1;
+			
+			# $errorlevel tracks the overall error level for all snapshots, 
+			# snapshot_health_issues is specific to this path/type combination
+			my $snapshot_health_issues = 0; 
+			
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
 				$elapsed = $snapsbytype{$path}{$type}{'newest'};
 			}
-			if (! defined $return_info) {
-				# A normal run, printing Nagios information
-				my $dispelapsed = displaytime($elapsed);
-				my $dispwarn = displaytime($warn);
-				my $dispcrit = displaytime($crit);
-				if ( $elapsed > $crit || $elapsed == -1) {
-					if ($crit > 0) {
-						if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
-						if ($elapsed == -1) {
-							push @msgs, "CRIT: $path has no $type snapshots at all!";
-						} else {
-							push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
-						}
+			
+			my $dispelapsed = displaytime($elapsed);
+			my $dispwarn = displaytime($warn);
+			my $dispcrit = displaytime($crit);
+			if ( $elapsed > $crit || $elapsed == -1) {
+				if ($crit > 0) {
+					if (! $config{$section}{'monitor_dont_crit'}) { $snapshot_health_issues = 2; }
+					if ($elapsed == -1) {
+						push @msgs, "CRIT: $path has no $type snapshots at all!";
+					} else {
+						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
 					}
-				} elsif ($elapsed > $warn) {
-					if ($warn > 0) {
-						if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
-						push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
-					}
-				} else {
-					# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 				}
-
+			} elsif ($elapsed > $warn) {
+				if ($warn > 0) {
+					if (! $config{$section}{'monitor_dont_warn'} && ($snapshot_health_issues < 2) ) { $snapshot_health_issues = 1; }
+					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
+				}
 			} else {
+				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
+			}
+
+			if (defined $return_info) {
 				# $return_info has been defined, so export JSON instead of printing
 				$snapshot_info{$path}{$type}{"crit_age_seconds"} = $crit;
 				$snapshot_info{$path}{$type}{"warn_age_seconds"} = $warn;
 				$snapshot_info{$path}{$type}{"monitor_dont_crit"} = $config{$section}{'monitor_dont_crit'};
 				$snapshot_info{$path}{$type}{"monitor_dont_warn"} = $config{$section}{'monitor_dont_warn'};
+				$snapshot_info{$path}{$type}{"snapshot_health_issues"} = $snapshot_health_issues;
 								
 				if ($elapsed == -1) {
 					# The $path has no $type snapshots
@@ -205,12 +210,18 @@ sub monitor_snapshots {
 					$snapshot_info{$path}{$type}{"newest_age_seconds"} = $elapsed;
 				}
 			}
+
+			if ($snapshot_health_issues > $errorlevel){
+				# This path/type combination a warning or crit level higher than any we have seen so far, 
+				# so adjust the overall error level to match
+				$errorlevel = $snapshot_health_issues;
+			}
+
 		}
 	}
 
 	if (defined ($return_info)) {
 		# Called by monitor_metrics_json, so return the JSON
-		# my $snapshot_info_json = encode_json \%snapshot_info;
 
 		return \%snapshot_info;
 
@@ -291,10 +302,10 @@ sub monitor_metrics_json {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %metrics;
 	
-	# Set a schema version for the JSON in case we need to change it in a way that is
-	# not backwards compatible
-	# ${$snapshot_info}{"schema_version"} = 202201301;
-	$metrics{"schema_version"} = 202201301;
+	# Set a schema version for the JSON each time it changes in case any changes are
+	# not backwards compatible. Today's date backawards followed by an incrementing 
+	# digit (YYYYMMDDX)
+	$metrics{"schema_version"} = 202202041;
 
 	# Add all the information about snapshots we need that would be returned from
 	# --monitor-snapshots (or that let people derive the same information)
