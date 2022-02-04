@@ -1753,23 +1753,24 @@ Assumes --cron --verbose if no other arguments (other than configdir) are specif
 
 Options:
 
-  --configdir=DIR       Specify a directory to find config file sanoid.conf
-  --cache-dir=DIR       Specify a directory to store the zfs snapshot cache
-  --run-dir=DIR         Specify a directory for temporary files such as lock files
+  --configdir=DIR        Specify a directory to find config file sanoid.conf
+  --cache-dir=DIR        Specify a directory to store the zfs snapshot cache
+  --run-dir=DIR          Specify a directory for temporary files such as lock files
 
-  --cron                Creates snapshots and purges expired snapshots
-  --verbose             Prints out additional information during a sanoid run
-  --readonly            Simulates creation/deletion of snapshots
-  --quiet               Suppresses non-error output
-  --force-update        Clears out sanoid's zfs snapshot cache
+  --cron                 Creates snapshots and purges expired snapshots
+  --verbose              Prints out additional information during a sanoid run
+  --readonly             Simulates creation/deletion of snapshots
+  --quiet                Suppresses non-error output
+  --force-update         Clears out sanoid's zfs snapshot cache
 
-  --monitor-health      Reports on zpool "health", in a Nagios compatible format
-  --monitor-capacity    Reports on zpool capacity, in a Nagios compatible format
-  --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
-  --take-snapshots      Creates snapshots as specified in sanoid.conf
-  --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
-  --force-prune         Purges expired snapshots even if a send/recv is in progress
+  --monitor-health       Reports on zpool "health", in a Nagios compatible format
+  --monitor-capacity     Reports on zpool capacity, in a Nagios compatible format
+  --monitor-metrics-json Reports zpool and snapshot metrics in JSON format
+  --monitor-snapshots    Reports on snapshot "health", in a Nagios compatible format
+  --take-snapshots       Creates snapshots as specified in sanoid.conf
+  --prune-snapshots      Purges expired snapshots as specified in sanoid.conf
+  --force-prune          Purges expired snapshots even if a send/recv is in progress
 
-  --help                Prints this helptext
-  --version             Prints the version number
-  --debug               Prints out a lot of additional information during a sanoid run
+  --help                 Prints this helptext
+  --version              Prints the version number
+  --debug                Prints out a lot of additional information during a sanoid run
