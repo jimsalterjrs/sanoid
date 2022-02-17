@@ -167,6 +167,7 @@ sub monitor_snapshots {
 			
 			# $errorlevel tracks the overall error level for all snapshots, 
 			# snapshot_health_issues is specific to this path/type combination
+			# 0 = no issues, 1 = warn, 2 = critical
 			my $snapshot_health_issues = 0; 
 			
 			if (defined $snapsbytype{$path}{$type}{'newest'}) {
