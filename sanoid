@@ -138,6 +138,13 @@ sub monitor_snapshots {
 	my @paths;
 	my %snapshot_info;
 
+	# use Data::Dumper;
+	# print Dumper $config;
+	# print Dumper $snaps;
+	# print Dumper $snapsbytype;
+	# print Dumper $snapsbypath;
+	# print encode_json $snapsbytype;
+
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
 		if (! $config{$section}{'monitor'}) { next; }
@@ -209,6 +216,8 @@ sub monitor_snapshots {
 				} else {
 					$snapshot_info{$path}{$type}{"has_snapshots"} = 1;
 					$snapshot_info{$path}{$type}{"newest_age_seconds"} = $elapsed;
+					my $most_recent_snap_of_type_name = $snapsbytype{$path}{$type}{"newestname"};
+					$snapshot_info{$path}{$type}{"newest_snapshot_ctime_seconds"} = $snaps{$path}{$most_recent_snap_of_type_name}{"ctime"};
 				}
 			}
 
@@ -306,7 +315,7 @@ sub monitor_metrics_json {
 	# Set a schema version for the JSON each time it changes in case any changes are
 	# not backwards compatible. Today's date backawards followed by an incrementing 
 	# digit (YYYYMMDDX)
-	$metrics{"schema_version"} = 202202041;
+	$metrics{"schema_version"} = 202202181;
 
 	# Add all the information about snapshots we need that would be returned from
 	# --monitor-snapshots (or that let people derive the same information)
