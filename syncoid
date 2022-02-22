@@ -154,7 +154,7 @@ if (!defined $args{'recursive'}) {
 	if (!@datasets) {
 		warn "CRITICAL ERROR: no datasets found";
 		@datasets = ();
-		$exitcode = 2;
+		$exitcode = 3;
 	}
 
 	my @deferred;
@@ -386,7 +386,7 @@ sub syncdataset {
 			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 			if ($newsyncsnap eq 0) {
 				warn "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.\n";
-				if ($exitcode < 1) { $exitcode = 1; }
+				if ($exitcode < 3) { $exitcode = 3; }
 				return 0;
 			}
 		}
@@ -490,7 +490,7 @@ sub syncdataset {
 			}
 
 			warn "CRITICAL ERROR: $synccmd failed: $?";
-			if ($exitcode < 2) { $exitcode = 2; }
+			if ($exitcode < 3) { $exitcode = 3; }
 			return 0;
 		};
 
@@ -526,7 +526,7 @@ sub syncdataset {
 				my $ret = system($synccmd);
 				if ($ret != 0) {
 					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 1) { $exitcode = 1; }
+					if ($exitcode < 3) { $exitcode = 3; }
 					return 0;
 				}
 			} else {
@@ -578,7 +578,7 @@ sub syncdataset {
 					return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
 				} else {
 					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
+					if ($exitcode < 3) { $exitcode = 3; }
 					return 0;
 				}
 			};
@@ -646,7 +646,7 @@ sub syncdataset {
 				}
 
 				# if we got this far, we failed to find a matching snapshot/bookmark.
-				if ($exitcode < 2) { $exitcode = 2; }
+				if ($exitcode < 3) { $exitcode = 3; }
 
 				print "\n";
 				print "CRITICAL ERROR: Target $targetfs exists but has no snapshots matching with $sourcefs!\n";
@@ -738,12 +738,12 @@ sub syncdataset {
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
 								warn "CRITICAL ERROR: $synccmd failed: $?";
-								if ($exitcode < 2) { $exitcode = 2; }
+								if ($exitcode < 3) { $exitcode = 3; }
 								return 0;
 							}
 						} else {
 							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
+							if ($exitcode < 3) { $exitcode = 3; }
 							return 0;
 						}
 					};
@@ -768,12 +768,12 @@ sub syncdataset {
 							resetreceivestate($targethost,$targetfs,$targetisroot);
 							system("$synccmd") == 0 or do {
 								warn "CRITICAL ERROR: $synccmd failed: $?";
-								if ($exitcode < 2) { $exitcode = 2; }
+								if ($exitcode < 3) { $exitcode = 3; }
 								return 0;
 							}
 						} else {
 							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
+							if ($exitcode < 3) { $exitcode = 3; }
 							return 0;
 						}
 					};
@@ -810,12 +810,12 @@ sub syncdataset {
 						resetreceivestate($targethost,$targetfs,$targetisroot);
 						system("$synccmd") == 0 or do {
 							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
+							if ($exitcode < 3) { $exitcode = 3; }
 							return 0;
 						}
 					} else {
 						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
+						if ($exitcode < 3) { $exitcode = 3; }
 						return 0;
 					}
 				};
@@ -852,7 +852,7 @@ sub syncdataset {
 				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 				system($bookmarkcmd) == 0 or do {
 					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
+					if ($exitcode < 3) { $exitcode = 3; }
 					return 0;
 				}
 			};
@@ -1413,7 +1413,7 @@ sub newsyncsnap {
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
 	system($snapcmd) == 0 or do {
 		warn "CRITICAL ERROR: $snapcmd failed: $?";
-		if ($exitcode < 2) { $exitcode = 2; }
+		if ($exitcode < 3) { $exitcode = 3; }
 		return 0;
 	};
 
