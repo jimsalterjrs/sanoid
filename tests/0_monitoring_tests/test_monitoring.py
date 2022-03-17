@@ -51,7 +51,9 @@ class TestsWithZpool(unittest.TestCase):
     def tearDown(self):
         """Clean up on either passed or failed tests"""
         subprocess.run(["zpool", "export", pool_name1])
+        subprocess.run(["rm", "export", pool_disk_image1])
         subprocess.run(["zpool", "export", pool_name2])
+        subprocess.run(["rm", "export", pool_disk_image2])
 
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
