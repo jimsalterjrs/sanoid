@@ -7,6 +7,7 @@
 
 import os
 import subprocess
+from tabnanny import check
 import unittest
 
 
@@ -17,7 +18,10 @@ def monitor_snapshots_command():
     return_info = subprocess.run([sanoid_cmd,  "--monitor-snapshots"], capture_output=True)
     return return_info
     
-
+def run_sanoid_cron_command():
+    """Runs sanoid and returns a CompletedProcess instance"""
+    return_info = subprocess.run([sanoid_cmd,  "--cron", "--verbose"], capture_output=True, check=True)
+    return return_info
 
 
 class TestMonitoringOutput(unittest.TestCase):
@@ -28,8 +32,26 @@ class TestMonitoringOutput(unittest.TestCase):
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
         self.assertEqual(return_info.returncode, 2)
 
-    # def test_with_zpool_no_snapshots(self):
-    #     """Test what happens if there is a zpool at all"""
+    def test_with_zpool_no_snapshots(self):
+        """Test what happens if there is a zpool, but with no snapshots"""
+
+        # Make the zpool
+        if os.environ.get("POOL_TARGET") != "":
+            subprocess.run(["mkdir", "-p", os.environ.get("POOL_TARGET")], check=True)
+
+        subprocess.run(["truncate", "-s", "5120M", os.environ.get("POOL_TARGET") + "/zpool.img"], check=True)
+        subprocess.run(["zpool", "create", "-f", os.environ.get("POOL_NAME"), os.environ.get("POOL_TARGET") + "/zpool.img"], check=True)
+
+        # Run sanoid --monitor-snapshots before doing anything else
+        return_info = monitor_snapshots_command()
+        self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
+        self.assertEqual(return_info.returncode, 2)
+
+        # Run sanoid and test again
+        # run_sanoid_cron_command()
+        # return_info = monitor_snapshots_command()
+        # self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
+        # self.assertEqual(return_info.returncode, 2)
 
     #     return_info = monitor_snapshots_command()
     #     self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
