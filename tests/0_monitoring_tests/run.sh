@@ -24,11 +24,6 @@ checkEnvironment
 
 # timestamp=$START
 
-# mkdir -p "${POOL_TARGET}"
-# truncate -s 5120M "${POOL_TARGET}"/zpool.img
-
-# zpool create -f "${POOL_NAME}" "${POOL_TARGET}"/zpool.img
-
 function cleanUp {
   zpool export "${POOL_NAME}"
 }
