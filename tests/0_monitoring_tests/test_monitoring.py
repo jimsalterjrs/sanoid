@@ -5,8 +5,10 @@
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
 
-import unittest
 import os
+import subprocess
+import unittest
+
 
 sanoid_cmd = os.environ.get("SANOID")
 
