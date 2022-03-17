@@ -7,8 +7,8 @@ set -x
 
 . ../common/lib.sh
 
-POOL_NAME="sanoid-test-1"
-POOL_TARGET=""  # root
+# POOL_NAME="sanoid-test-1"
+# POOL_TARGET=""  # root
 
 # # UTC timestamp of start and end
 # START="1483225200"
@@ -24,11 +24,11 @@ checkEnvironment
 
 # timestamp=$START
 
-function cleanUp {
-  zpool export "${POOL_NAME}"
-}
+# function cleanUp {
+#   zpool export "${POOL_NAME}"
+# }
 
 # export pool in any case
-trap cleanUp EXIT
+# trap cleanUp EXIT
 
 python3 test_monitoring.py
