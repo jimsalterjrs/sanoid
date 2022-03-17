@@ -26,7 +26,7 @@ class TestMonitoringOutput(unittest.TestCase):
 
         return_info = monitor_snapshots_command()
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
-        self.assertEqual(return_info.returncode, 0)
+        self.assertEqual(return_info.returncode, 2)
 
     # def test_with_zpool_no_snapshots(self):
     #     """Test what happens if there is a zpool at all"""
