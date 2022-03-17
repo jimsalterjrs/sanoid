@@ -36,4 +36,4 @@ function cleanUp {
 # export pool in any case
 trap cleanUp EXIT
 
-
+python3 test_monitoring.py
