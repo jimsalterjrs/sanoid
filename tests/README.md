@@ -28,3 +28,10 @@ cp sanoid/sanoid.defaults.conf /etc/sanoid/
 cd sanoid/tests/
 ./run-tests.sh
 ```
+
+### Example using LXD VMs ###
+```
+VM_NAME=focal-sanoid-test
+lxc init ubuntu:focal $VM_NAME --vm -c limits.cpu=8 -c limits.memory=10GB
+
+```
