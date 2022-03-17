@@ -48,12 +48,15 @@ class TestsWithZpool(unittest.TestCase):
         subprocess.run(["truncate", "-s", "512M", pool_disk_image2], check=True)
         subprocess.run(["zpool", "create", "-f", pool_name2, pool_disk_image2], check=True)
 
+        # Clear the snapshot cache in between
+        subprocess.run(["rm", "-f", "/var/cache/sanoid/snapshots.txt"])
+
     def tearDown(self):
         """Clean up on either passed or failed tests"""
         subprocess.run(["zpool", "export", pool_name1])
-        subprocess.run(["rm", pool_disk_image1])
+        subprocess.run(["rm", "-f", pool_disk_image1])
         subprocess.run(["zpool", "export", pool_name2])
-        subprocess.run(["rm", pool_disk_image2])
+        subprocess.run(["rm", "-f", pool_disk_image2])
 
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
