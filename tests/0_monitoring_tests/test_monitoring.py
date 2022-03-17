@@ -39,6 +39,7 @@ class TestMonitoringOutput(unittest.TestCase):
         if os.environ.get("POOL_TARGET") == "":
             pool_disk_image = "/zpool.img"
         else:
+            print(os.environ.get("POOL_TARGET"))
             subprocess.run(["mkdir", "-p", os.environ.get("POOL_TARGET")], check=True)
             pool_disk_image = os.environ.get("POOL_TARGET") + "/zpool.img"
 
