@@ -51,9 +51,9 @@ class TestsWithZpool(unittest.TestCase):
     def tearDown(self):
         """Clean up on either passed or failed tests"""
         subprocess.run(["zpool", "export", pool_name1])
-        subprocess.run(["rm", "export", pool_disk_image1])
+        subprocess.run(["rm", pool_disk_image1])
         subprocess.run(["zpool", "export", pool_name2])
-        subprocess.run(["rm", "export", pool_disk_image2])
+        subprocess.run(["rm", pool_disk_image2])
 
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
@@ -63,11 +63,13 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
         self.assertEqual(return_info.returncode, 2)
 
-        # Run sanoid and test again
+    def test_immediately_after_running_sanoid(self):
+        """Test immediately after running sanoid --cron"""
+
         run_sanoid_cron_command()
         return_info = monitor_snapshots_command()
         self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
-        self.assertEqual(return_info.returncode, 2)
+        self.assertEqual(return_info.returncode, 0)
 
 
 if __name__ == '__main__':
