@@ -6,13 +6,23 @@
 
 
 import unittest
+import os
 
-class TestNothing(unittest.TestCase):
-    def test_nothing(self):
-        """Test"""
+sanoid_cmd = os.environ.get("SANOID")
 
-        # Test sanoid_snapshots_exist
-        self.assertEqual(1,2)
+def monitor_snapshots_command():
+    """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
+    return_info = subprocess.run([sanoid_cmd,  "--monitor-metrics"], check=True, capture_output=True)
+    return return_info
+    
+
+
+class TestMonitoringOutput(unittest.TestCase):
+    def test_no_zpool(self):
+        """Test what happens if there is no zpool at all"""
+
+        return_info = monitor_snapshots_command()
+        self.assertEqual(return_info.stdout, "chicken")
 
 
 if __name__ == '__main__':

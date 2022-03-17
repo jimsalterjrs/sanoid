@@ -10,24 +10,24 @@ set -x
 POOL_NAME="sanoid-test-1"
 POOL_TARGET=""  # root
 
-# UTC timestamp of start and end
-START="1483225200"
-END="1514761199"
+# # UTC timestamp of start and end
+# START="1483225200"
+# END="1514761199"
 
 # prepare
 setup
 checkEnvironment
-disableTimeSync
+# disableTimeSync
 
-# set timezone
-ln -sf /usr/share/zoneinfo/Europe/Vienna /etc/localtime
+# # set timezone
+# ln -sf /usr/share/zoneinfo/Europe/Vienna /etc/localtime
 
-timestamp=$START
+# timestamp=$START
 
-mkdir -p "${POOL_TARGET}"
-truncate -s 5120M "${POOL_TARGET}"/zpool.img
+# mkdir -p "${POOL_TARGET}"
+# truncate -s 5120M "${POOL_TARGET}"/zpool.img
 
-zpool create -f "${POOL_NAME}" "${POOL_TARGET}"/zpool.img
+# zpool create -f "${POOL_NAME}" "${POOL_TARGET}"/zpool.img
 
 function cleanUp {
   zpool export "${POOL_NAME}"
