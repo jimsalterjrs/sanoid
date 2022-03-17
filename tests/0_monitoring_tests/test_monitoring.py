@@ -12,7 +12,7 @@ class TestNothing(unittest.TestCase):
         """Test"""
 
         # Test sanoid_snapshots_exist
-        self.assertEqual(1,1)
+        self.assertEqual(1,2)
 
 
 if __name__ == '__main__':
