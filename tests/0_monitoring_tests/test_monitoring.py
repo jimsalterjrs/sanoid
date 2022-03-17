@@ -36,11 +36,14 @@ class TestMonitoringOutput(unittest.TestCase):
         """Test what happens if there is a zpool, but with no snapshots"""
 
         # Make the zpool
-        if os.environ.get("POOL_TARGET") != "":
+        if os.environ.get("POOL_TARGET") == "":
+            pool_disk_image = "/zpool.img"
+        else:
             subprocess.run(["mkdir", "-p", os.environ.get("POOL_TARGET")], check=True)
+            pool_disk_image = os.environ.get("POOL_TARGET") + "/zpool.img"
 
-        subprocess.run(["truncate", "-s", "5120M", os.environ.get("POOL_TARGET") + "/zpool.img"], check=True)
-        subprocess.run(["zpool", "create", "-f", os.environ.get("POOL_NAME"), os.environ.get("POOL_TARGET") + "/zpool.img"], check=True)
+        subprocess.run(["truncate", "-s", "5120M", pool_disk_image], check=True)
+        subprocess.run(["zpool", "create", "-f", os.environ.get("POOL_NAME"), pool_disk_image], check=True)
 
         # Run sanoid --monitor-snapshots before doing anything else
         return_info = monitor_snapshots_command()
