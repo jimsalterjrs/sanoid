@@ -36,10 +36,9 @@ class TestMonitoringOutput(unittest.TestCase):
         """Test what happens if there is a zpool, but with no snapshots"""
 
         # Make the zpool
-        if os.environ.get("POOL_TARGET") == "":
+        if not os.environ.get("POOL_TARGET"):
             pool_disk_image = "/zpool.img"
         else:
-            print(os.environ.get("POOL_TARGET"))
             subprocess.run(["mkdir", "-p", os.environ.get("POOL_TARGET")], check=True)
             pool_disk_image = os.environ.get("POOL_TARGET") + "/zpool.img"
 
