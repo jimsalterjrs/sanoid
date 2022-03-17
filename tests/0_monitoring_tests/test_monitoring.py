@@ -12,6 +12,11 @@ import unittest
 
 
 sanoid_cmd = os.environ.get("SANOID")
+pool_disk_image1 = "/zpool1.img"
+pool_name1 = "sanoid-test-1"
+pool_disk_image2 = "/zpool2.img"
+pool_name2 = "sanoid-test-2"
+
 
 def monitor_snapshots_command():
     """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
@@ -32,18 +37,24 @@ class TestMonitoringOutput(unittest.TestCase):
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
         self.assertEqual(return_info.returncode, 2)
 
+class TestsWithZpool(unittest.TestCase):
+    """Tests that require a test zpool"""
+
+    def setUp(self):
+        """Set up the zpool"""
+        subprocess.run(["truncate", "-s", "512M", pool_disk_image1], check=True)
+        subprocess.run(["zpool", "create", "-f", pool_name1, pool_disk_image1], check=True)
+
+        subprocess.run(["truncate", "-s", "512M", pool_disk_image2], check=True)
+        subprocess.run(["zpool", "create", "-f", pool_name2, pool_disk_image2], check=True)
+
+    def tearDown(self):
+        """Clean up on either passed or failed tests"""
+        subprocess.run(["zpool", "export", pool_name1])
+        subprocess.run(["zpool", "export", pool_name2])
+
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
-
-        # Make the zpool
-        if not os.environ.get("POOL_TARGET"):
-            pool_disk_image = "/zpool.img"
-        else:
-            subprocess.run(["mkdir", "-p", os.environ.get("POOL_TARGET")], check=True)
-            pool_disk_image = os.environ.get("POOL_TARGET") + "/zpool.img"
-
-        subprocess.run(["truncate", "-s", "5120M", pool_disk_image], check=True)
-        subprocess.run(["zpool", "create", "-f", os.environ.get("POOL_NAME"), pool_disk_image], check=True)
 
         # Run sanoid --monitor-snapshots before doing anything else
         return_info = monitor_snapshots_command()
