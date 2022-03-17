@@ -14,7 +14,7 @@ sanoid_cmd = os.environ.get("SANOID")
 
 def monitor_snapshots_command():
     """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
-    return_info = subprocess.run([sanoid_cmd,  "--monitor-metrics"], check=True, capture_output=True)
+    return_info = subprocess.run([sanoid_cmd,  "--monitor-snapshots"], check=True, capture_output=True)
     return return_info
     
 
