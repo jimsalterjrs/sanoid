@@ -95,7 +95,7 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.returncode, 0)
 
     def test_one_warning(self):
-        """Test one warning, no criticals"""
+        """Test one warning, no criticals, to check output and error status"""
 
         run_sanoid_cron_command()
         
@@ -105,10 +105,9 @@ class TestsWithZpool(unittest.TestCase):
         # Output should be something like 
         # WARN: sanoid-test-1 newest hourly snapshot is 1h 40m 0s old (should be < 1h 30m 0s)\n
         # But we cannot be sure about the exact time
-        print(return_info.stdout)
         self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
         self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
-        self.assertEqual(return_info.returncode, 0)
+        self.assertEqual(return_info.returncode, 1)
 
 
 if __name__ == '__main__':
