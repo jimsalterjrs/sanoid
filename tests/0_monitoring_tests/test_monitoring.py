@@ -153,10 +153,10 @@ class TestsWithZpool(unittest.TestCase):
         
         self.assertEqual(output_list[2][:48], b"WARN: sanoid-test-1 newest daily snapshot is 1d ")
         self.assertEqual(output_list[2][-31:], b"s old (should be < 1d 4h 0m 0s)")
-        self.assertEqual(output_list[3][:48], b"WARN: sanoid-test-2 newest daily snapshot is 1d ")
+        self.assertEqual(output_list[3][:48], b"WARN: sanoid-test-23 newest daily snapshot is 1d ")
         self.assertEqual(output_list[3][-32:], b"s old (should be < 1d 4h 0m 0s)\n")
 
-        self.assertEqual(return_info.returncode, 1)
+        self.assertEqual(return_info.returncode, 2)
 
 
 if __name__ == '__main__':
