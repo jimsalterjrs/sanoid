@@ -102,9 +102,27 @@ class TestsWithZpool(unittest.TestCase):
         # Advance 100 mins to trigger the hourly warning on sanoid-test-1 but nothing else
         advance_time(100 * 60)
         return_info = monitor_snapshots_command()
-        # Output should be something like 
+        # Output should be something like: 
         # WARN: sanoid-test-1 newest hourly snapshot is 1h 40m 0s old (should be < 1h 30m 0s)\n
-        # But we cannot be sure about the exact time
+        # But we cannot be sure about the exact time as test execution could be different on
+        # different machines, so ignore the bits that may be different.
+        self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
+        self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
+        self.assertEqual(return_info.returncode, 1)
+
+    def test_two_criticals(self):
+        """Test two criticals, to check output and error status"""
+
+        run_sanoid_cron_command()
+        
+        # Advance 360 mins to trigger the hourly critical on both sanoid-test-1 and sanoid-test-2
+        advance_time(360 * 60)
+        return_info = monitor_snapshots_command()
+        print(return_info.stdout)
+        # Output should be something like: 
+        # WARN: sanoid-test-1 newest hourly snapshot is 1h 40m 0s old (should be < 1h 30m 0s)\n
+        # But we cannot be sure about the exact time as test execution could be different on
+        # different machines, so ignore the bits that may be different.
         self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
         self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
         self.assertEqual(return_info.returncode, 1)
