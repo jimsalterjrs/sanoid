@@ -68,7 +68,7 @@ class TestsWithZpool(unittest.TestCase):
         subprocess.run(["zpool", "create", "-f", pool_name2, pool_disk_image2], check=True)
 
         # Clear the snapshot cache in between
-        subprocess.run(["rm", "-f", "/var/cache/sanoid/snapshots.txt"])
+        subprocess.run([sanoid_cmd, "--force-update"])
 
     def tearDown(self):
         """Clean up on either passed or failed tests"""
