@@ -98,6 +98,7 @@ class TestsWithZpool(unittest.TestCase):
         # Advance 100 mins to trigger the hourly warning on sanoid-test-1 but nothing else
         advance_time(100 * 60)
         return_info = monitor_snapshots_command()
+        print(return_info.stdout)
         self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
         self.assertEqual(return_info.returncode, 0)
 
