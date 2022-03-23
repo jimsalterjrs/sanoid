@@ -37,14 +37,14 @@ def advance_time(seconds):
     # Get the current time
     clk_id = time.CLOCK_REALTIME
     time_seconds = time.clock_gettime(clk_id)
-    print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
+    # print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
     
     # Set the clock to the current time plus seconds
     time.clock_settime(clk_id, time_seconds + seconds)
 
     # Print the new time
     time_seconds = time.clock_gettime(clk_id)
-    print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
+    # print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
     return time_seconds
 
 
@@ -115,8 +115,8 @@ class TestsWithZpool(unittest.TestCase):
 
         run_sanoid_cron_command()
         
-        # Advance 360 mins to trigger the hourly critical on both sanoid-test-1 and sanoid-test-2
-        advance_time(360 * 60)
+        # Advance 390 mins to trigger the hourly critical on both sanoid-test-1 and sanoid-test-2
+        advance_time(390 * 60)
         return_info = monitor_snapshots_command()
         print(return_info.stdout)
         # Output should be something like: 
