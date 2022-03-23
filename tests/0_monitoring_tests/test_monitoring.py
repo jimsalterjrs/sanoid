@@ -7,7 +7,7 @@
 
 import os
 import subprocess
-from tabnanny import check
+import time
 import unittest
 
 
@@ -27,6 +27,22 @@ def run_sanoid_cron_command():
     """Runs sanoid and returns a CompletedProcess instance"""
     return_info = subprocess.run([sanoid_cmd,  "--cron", "--verbose"], capture_output=True, check=True)
     return return_info
+
+def advance_time(seconds):
+    """Advances the system clock by seconds"""
+    
+    # Get the current time
+    clk_id = time.CLOCK_REALTIME
+    time_seconds = time.clock_gettime(clk_id)
+    print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
+    
+    # Set the clock to the current time plus seconds
+    time.clock_settime(clk_id, time_seconds + seconds)
+
+    # Print the new time
+    time_seconds = time.clock_gettime(clk_id)
+    print("Current unix time is", time_seconds, "or", time.asctime(time.gmtime(time_seconds)), "in GMT")
+    return time_seconds
 
 
 class TestMonitoringOutput(unittest.TestCase):
@@ -70,6 +86,17 @@ class TestsWithZpool(unittest.TestCase):
         """Test immediately after running sanoid --cron"""
 
         run_sanoid_cron_command()
+        return_info = monitor_snapshots_command()
+        self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
+        self.assertEqual(return_info.returncode, 0)
+
+    def test_one_warning(self):
+        """Test one warning, no criticals"""
+
+        run_sanoid_cron_command()
+        
+        # Advance 100 mins to trigger the hourly warning on sanoid-test-1 but nothing else
+        advance_time(100 * 60)
         return_info = monitor_snapshots_command()
         self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
         self.assertEqual(return_info.returncode, 0)

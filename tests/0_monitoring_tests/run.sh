@@ -17,10 +17,10 @@ set -x
 # prepare
 setup
 checkEnvironment
-# disableTimeSync
+disableTimeSync
 
-# # set timezone
-# ln -sf /usr/share/zoneinfo/Europe/Vienna /etc/localtime
+# set timezone
+ln -sf /usr/share/zoneinfo/Europe/Vienna /etc/localtime
 
 # timestamp=$START
 
