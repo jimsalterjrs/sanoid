@@ -128,7 +128,7 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.stdout[comma_location - 28:comma_location], b"s old (should be < 6h 0m 0s)")
         self.assertEqual(return_info.stdout[comma_location:comma_location + 51], b", CRIT: sanoid-test-2 newest hourly snapshot is 6h ")
         self.assertEqual(return_info.stdout[-29:], b"s old (should be < 6h 0m 0s)\n")
-        self.assertEqual(return_info.returncode, 1)
+        self.assertEqual(return_info.returncode, 2)
 
 
 if __name__ == '__main__':
