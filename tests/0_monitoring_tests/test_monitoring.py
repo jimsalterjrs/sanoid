@@ -94,8 +94,8 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
         self.assertEqual(return_info.returncode, 0)
 
-    def test_one_warning(self):
-        """Test one warning, no criticals, to check output and error status"""
+    def test_one_warning_hourly(self):
+        """Test one warning on hourly snapshots, no critical warnings, to check output and error status"""
 
         run_sanoid_cron_command()
         
@@ -110,19 +110,40 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.stdout[-30:], b"s old (should be < 1h 30m 0s)\n")
         self.assertEqual(return_info.returncode, 1)
 
-    def test_two_criticals(self):
-        """Test two criticals, to check output and error status"""
+    def test_two_criticals_hourly(self):
+        """Test two criticals (hourly), to check output and error status"""
 
         run_sanoid_cron_command()
         
         # Advance 390 mins to trigger the hourly critical on both sanoid-test-1 and sanoid-test-2
         advance_time(390 * 60)
         return_info = monitor_snapshots_command()
-        print(return_info.stdout)
+
         # Output should be something like: 
         # CRIT: sanoid-test-1 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s), CRIT: sanoid-test-2 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s)\n
         # But we cannot be sure about the exact time as test execution could be different on
         # different machines, so ignore the bits that may be different.
+        comma_location = return_info.stdout.find(b",")
+        self.assertEqual(return_info.stdout[:49], b"CRIT: sanoid-test-1 newest hourly snapshot is 6h ")
+        self.assertEqual(return_info.stdout[comma_location - 28:comma_location], b"s old (should be < 6h 0m 0s)")
+        self.assertEqual(return_info.stdout[comma_location:comma_location + 51], b", CRIT: sanoid-test-2 newest hourly snapshot is 6h ")
+        self.assertEqual(return_info.stdout[-29:], b"s old (should be < 6h 0m 0s)\n")
+        self.assertEqual(return_info.returncode, 2)
+
+    def test_two_warnings_daily(self):
+        """Test two warnings (daily), to check output and error status"""
+
+        run_sanoid_cron_command()
+        
+        # Advance more than 28 hours to trigger the daily warning on both sanoid-test-1 and sanoid-test-2
+        advance_time(29 * 60 * 60)
+        return_info = monitor_snapshots_command()
+
+        # Output should be something like: 
+        # CRIT: sanoid-test-1 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s), CRIT: sanoid-test-2 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s)\n
+        # But we cannot be sure about the exact time as test execution could be different on
+        # different machines, so ignore the bits that may be different.
+        print(return_info.stdout)
         comma_location = return_info.stdout.find(b",")
         self.assertEqual(return_info.stdout[:49], b"CRIT: sanoid-test-1 newest hourly snapshot is 6h ")
         self.assertEqual(return_info.stdout[comma_location - 28:comma_location], b"s old (should be < 6h 0m 0s)")
