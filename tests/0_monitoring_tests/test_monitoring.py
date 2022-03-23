@@ -17,6 +17,9 @@ pool_name1 = "sanoid-test-1"
 pool_disk_image2 = "/zpool2.img"
 pool_name2 = "sanoid-test-2"
 
+clk_id = time.CLOCK_REALTIME
+starting_time = time.clock_gettime(clk_id)
+
 
 def monitor_snapshots_command():
     """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
@@ -73,6 +76,7 @@ class TestsWithZpool(unittest.TestCase):
         subprocess.run(["rm", "-f", pool_disk_image1])
         subprocess.run(["zpool", "export", pool_name2])
         subprocess.run(["rm", "-f", pool_disk_image2])
+        time.clock_settime(clk_id, starting_time)
 
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
@@ -98,8 +102,12 @@ class TestsWithZpool(unittest.TestCase):
         # Advance 100 mins to trigger the hourly warning on sanoid-test-1 but nothing else
         advance_time(100 * 60)
         return_info = monitor_snapshots_command()
+        # Output should be something like 
+        # WARN: sanoid-test-1 newest hourly snapshot is 1h 40m 0s old (should be < 1h 30m 0s)\n
+        # But we cannot be sure about the exact time
         print(return_info.stdout)
-        self.assertEqual(return_info.stdout, b"OK: all monitored datasets (sanoid-test-1, sanoid-test-2) have fresh snapshots\n")
+        self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
+        self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
         self.assertEqual(return_info.returncode, 0)
 
 
