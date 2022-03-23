@@ -107,7 +107,7 @@ class TestsWithZpool(unittest.TestCase):
         # But we cannot be sure about the exact time as test execution could be different on
         # different machines, so ignore the bits that may be different.
         self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
-        self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
+        self.assertEqual(return_info.stdout[-31:], b"s old (should be < 1h 30m 0s)\n")
         self.assertEqual(return_info.returncode, 1)
 
     def test_two_criticals(self):
@@ -120,11 +120,14 @@ class TestsWithZpool(unittest.TestCase):
         return_info = monitor_snapshots_command()
         print(return_info.stdout)
         # Output should be something like: 
-        # WARN: sanoid-test-1 newest hourly snapshot is 1h 40m 0s old (should be < 1h 30m 0s)\n
+        # CRIT: sanoid-test-1 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s), CRIT: sanoid-test-2 newest hourly snapshot is 6h 30m 1s old (should be < 6h 0m 0s)\n
         # But we cannot be sure about the exact time as test execution could be different on
         # different machines, so ignore the bits that may be different.
-        self.assertEqual(return_info.stdout[:49], b"WARN: sanoid-test-1 newest hourly snapshot is 1h ")
-        self.assertEqual(return_info.stdout[54:], b"s old (should be < 1h 30m 0s)\n")
+        comma_location = return_info.stdout.find(b",")
+        self.assertEqual(return_info.stdout[:49], b"CRIT: sanoid-test-1 newest hourly snapshot is 6h ")
+        self.assertEqual(return_info.stdout[comma_location - 28:comma_location], b"s old (should be < 6h 0m 0s)")
+        self.assertEqual(return_info.stdout[comma_location:comma_location + 51], b", CRIT: sanoid-test-2 newest hourly snapshot is 6h ")
+        self.assertEqual(return_info.stdout[-29:], b"s old (should be < 6h 0m 0s)")
         self.assertEqual(return_info.returncode, 1)
 
 
