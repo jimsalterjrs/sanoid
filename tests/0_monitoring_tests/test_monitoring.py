@@ -130,8 +130,8 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(return_info.stdout[-29:], b"s old (should be < 6h 0m 0s)\n")
         self.assertEqual(return_info.returncode, 2)
 
-    def test_two_warnings_daily(self):
-        """Test two warnings (daily), to check output and error status"""
+    def test_two_criticals_hourly_two_warnings_daily(self):
+        """Test two criticals (hourly) and two warnings (daily), to check output and error status"""
 
         run_sanoid_cron_command()
         
