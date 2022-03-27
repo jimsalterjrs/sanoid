@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# run's all the available tests
+# runs all the available tests
 
 for test in */; do
     if [ ! -x "${test}/run.sh" ]; then
