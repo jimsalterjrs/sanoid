@@ -1,7 +1,7 @@
 ### Requirements ###
 Tests must be run inside a virtual machine. This is for your own safety, as the tests may create and destroy zpools etc.
 
-A VM with 35GB of storage and 8 cores completes the tests in about 5 hours.  
+A VM with 35GB of storage and 8 cores running Ubuntu 20.04 completes the tests in about 5 hours.  
 
 #### Packages ####
 The tests require the following packages to be installed in the VM (Ubuntu 20.04 package names are used, translate as appropriate):
