@@ -77,7 +77,7 @@ class TestMonitoringOutput(unittest.TestCase):
         # 'daily': {'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0, 'crit_age_seconds': 115200, 'warn_age_seconds': 100800, 'monitor_dont_warn': '0'}, 
         # 'monthly': {'crit_age_seconds': 3456000, 'warn_age_seconds': 2764800, 'monitor_dont_warn': '0', 'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0}}, 'sanoid-test-2': {'daily': {'crit_age_seconds': 172800, 'monitor_dont_warn': '0', 'warn_age_seconds': 100800, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0}, 'monthly': {'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0, 'crit_age_seconds': 3456000, 'monitor_dont_warn': '0', 'warn_age_seconds': 2764800}, 'hourly': {'has_snapshots': 0, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'warn_age_seconds': 17400, 'monitor_dont_warn': '0', 'crit_age_seconds': 21600}}}
 
-        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["crit_age_seconds"], 2) # 21600
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["crit_age_seconds"], 21600)
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["has_snapshots"], 2) # 0
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_crit"], 2) # 0
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_warn"], 2) # 0
