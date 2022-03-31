@@ -73,8 +73,33 @@ class TestMonitoringOutput(unittest.TestCase):
 
         # Test relevant parts of JSON output
         snapshot_json = get_snapshot_json()
-        print(snapshot_json)
-        self.assertEqual(return_info.stdout, 2)
+        # {'sanoid-test-1': {'hourly': {'crit_age_seconds': 21600, 'monitor_dont_warn': '0', 'warn_age_seconds': 5400, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0}, 
+        # 'daily': {'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0, 'crit_age_seconds': 115200, 'warn_age_seconds': 100800, 'monitor_dont_warn': '0'}, 
+        # 'monthly': {'crit_age_seconds': 3456000, 'warn_age_seconds': 2764800, 'monitor_dont_warn': '0', 'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0}}, 'sanoid-test-2': {'daily': {'crit_age_seconds': 172800, 'monitor_dont_warn': '0', 'warn_age_seconds': 100800, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0}, 'monthly': {'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0, 'crit_age_seconds': 3456000, 'monitor_dont_warn': '0', 'warn_age_seconds': 2764800}, 'hourly': {'has_snapshots': 0, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'warn_age_seconds': 17400, 'monitor_dont_warn': '0', 'crit_age_seconds': 21600}}}
+
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["crit_age_seconds"], 2) # 21600
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["has_snapshots"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_crit"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_warn"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["snapshot_health_issues"], 0) # 2
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["warn_age_seconds"], 2) # 5400
+
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["crit_age_seconds"], 2) # 115200
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["has_snapshots"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["monitor_dont_crit"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["monitor_dont_warn"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["snapshot_health_issues"], 0) # 2
+        self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["warn_age_seconds"], 2) # 100800
+
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["crit_age_seconds"], 2) # 3456000
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["has_snapshots"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_crit"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_warn"], 2) # 0
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["snapshot_health_issues"], 0) # 2
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], 2) # 2764800
+        
+
+
 
 class TestsWithZpool(unittest.TestCase):
     """Tests that require a test zpool"""
