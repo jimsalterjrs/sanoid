@@ -2,7 +2,8 @@
 
 # runs all the available tests
 
-for test in */; do
+# for test in */; do
+for test in 3*/; do
     if [ ! -x "${test}/run.sh" ]; then
         continue
     fi
