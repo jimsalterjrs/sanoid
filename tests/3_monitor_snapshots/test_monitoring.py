@@ -5,6 +5,7 @@
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
 
+import json
 import os
 import subprocess
 import time
@@ -21,9 +22,22 @@ clk_id = time.CLOCK_REALTIME
 starting_time = time.clock_gettime(clk_id)
 
 
+def get_snapshot_json():
+    """Runs sanoid --monitor-metrics-json and returns the snapshot component of the JSON"""
+    return_info = subprocess.run([sanoid_cmd,  "--monitor-metrics-json"], capture_output=True, check=True)
+    print(return_info.stdout)
+    sanoid_metrics = json.loads(return_info.stdout)
+    snapshot_metrics = sanoid_metrics["snapshot_info"]
+    return snapshot_metrics
+
 def monitor_snapshots_command():
     """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
     return_info = subprocess.run([sanoid_cmd,  "--monitor-snapshots"], capture_output=True)
+    return return_info
+
+def monitor_metrics_json_command():
+    """Runs sanoid --monitor-metrics-json and returns a CompletedProcess instance"""
+    return_info = subprocess.run([sanoid_cmd,  "--monitor-metrics-json"], capture_output=True, check=True)
     return return_info
     
 def run_sanoid_cron_command():
@@ -52,9 +66,15 @@ class TestMonitoringOutput(unittest.TestCase):
     def test_no_zpool(self):
         """Test what happens if there is no zpool at all"""
 
+        # Test regular (Nagios) output
         return_info = monitor_snapshots_command()
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
         self.assertEqual(return_info.returncode, 2)
+
+        # Test relevant parts of JSON output
+        snapshot_json = get_snapshot_json()
+        print(snapshot_json)
+        self.assertEqual(return_info.stdout, 2)
 
 class TestsWithZpool(unittest.TestCase):
     """Tests that require a test zpool"""
