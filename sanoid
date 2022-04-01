@@ -206,6 +206,11 @@ sub monitor_snapshots {
 				# $return_info has been defined, so export JSON instead of printing
 				$snapshot_info{$path}{$type}{"crit_age_seconds"} = $crit;
 				$snapshot_info{$path}{$type}{"warn_age_seconds"} = $warn;
+				
+				# Ensure that monitor_dont_crit and warn are dumped as numbers not strings
+				$config{$section}{'monitor_dont_crit'} += 0;
+				$config{$section}{'monitor_dont_warn'} += 0;
+				
 				$snapshot_info{$path}{$type}{"monitor_dont_crit"} = $config{$section}{'monitor_dont_crit'};
 				$snapshot_info{$path}{$type}{"monitor_dont_warn"} = $config{$section}{'monitor_dont_warn'};
 				$snapshot_info{$path}{$type}{"snapshot_health_issues"} = $snapshot_health_issues;
