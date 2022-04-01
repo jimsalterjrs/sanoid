@@ -91,12 +91,12 @@ class TestMonitoringOutput(unittest.TestCase):
         self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["snapshot_health_issues"], 2)
         self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["warn_age_seconds"], 100800)
 
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["crit_age_seconds"], 2) # 3456000
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["has_snapshots"], 2) # 0
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_crit"], 2) # 0
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_warn"], 2) # 0
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["snapshot_health_issues"], 0) # 2
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], 2) # 2764800
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["crit_age_seconds"], 3456000)
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["has_snapshots"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_crit"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_warn"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["snapshot_health_issues"], 2)
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], 2764800)
         
 
 
