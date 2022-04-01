@@ -82,7 +82,7 @@ class TestMonitoringOutput(unittest.TestCase):
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_crit"], 0)
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["monitor_dont_warn"], 0)
         self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["snapshot_health_issues"], 2)
-        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["warn_age_seconds"], 2) # 5400
+        self.assertEqual(snapshot_json["sanoid-test-1"]["hourly"]["warn_age_seconds"], 5400) 
 
         self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["crit_age_seconds"], 2) # 115200
         self.assertEqual(snapshot_json["sanoid-test-1"]["daily"]["has_snapshots"], 2) # 0
