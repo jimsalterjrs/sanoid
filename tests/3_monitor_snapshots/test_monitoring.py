@@ -99,8 +99,6 @@ class TestMonitoringOutput(unittest.TestCase):
         self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], 2764800)
         
 
-
-
 class TestsWithZpool(unittest.TestCase):
     """Tests that require a test zpool"""
 
