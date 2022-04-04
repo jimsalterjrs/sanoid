@@ -22,13 +22,12 @@ clk_id = time.CLOCK_REALTIME
 starting_time = time.clock_gettime(clk_id)
 
 
-def get_snapshot_json():
+def get_sanoid_json():
     """Runs sanoid --monitor-metrics-json and returns the snapshot component of the JSON"""
     return_info = subprocess.run([sanoid_cmd,  "--monitor-metrics-json"], capture_output=True, check=True)
     # print(return_info.stdout)
     sanoid_metrics = json.loads(return_info.stdout)
-    snapshot_metrics = sanoid_metrics["snapshot_info"]
-    return snapshot_metrics
+    return sanoid_metrics
 
 def monitor_snapshots_command():
     """Runs sanoid --monitor-snapshots and returns a CompletedProcess instance"""
@@ -69,10 +68,15 @@ class TestMonitoringOutput(unittest.TestCase):
         # Test regular (Nagios) output
         return_info = monitor_snapshots_command()
         self.assertEqual(return_info.stdout, b"CRIT: sanoid-test-1 has no daily snapshots at all!, CRIT: sanoid-test-1 has no hourly snapshots at all!, CRIT: sanoid-test-1 has no monthly snapshots at all!, CRIT: sanoid-test-2 has no daily snapshots at all!, CRIT: sanoid-test-2 has no hourly snapshots at all!, CRIT: sanoid-test-2 has no monthly snapshots at all!\n")
-        self.assertEqual(return_info.returncode, 2)
+        
+        nagios_return_code = return_info.returncode
+        self.assertEqual(nagios_return_code, 2)
 
+        sanoid_json = get_sanoid_json()
+        self.assertEqual(sanoid_json["overall_snapshot_health_issues"], nagios_return_code)
+
+        snapshot_json = sanoid_json["snapshot_info"]
         # Test relevant parts of JSON output
-        snapshot_json = get_snapshot_json()
         # {'sanoid-test-1': {'hourly': {'crit_age_seconds': 21600, 'monitor_dont_warn': '0', 'warn_age_seconds': 5400, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0}, 
         # 'daily': {'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0, 'crit_age_seconds': 115200, 'warn_age_seconds': 100800, 'monitor_dont_warn': '0'}, 
         # 'monthly': {'crit_age_seconds': 3456000, 'warn_age_seconds': 2764800, 'monitor_dont_warn': '0', 'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0}}, 'sanoid-test-2': {'daily': {'crit_age_seconds': 172800, 'monitor_dont_warn': '0', 'warn_age_seconds': 100800, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'has_snapshots': 0}, 'monthly': {'monitor_dont_crit': '0', 'snapshot_health_issues': 2, 'has_snapshots': 0, 'crit_age_seconds': 3456000, 'monitor_dont_warn': '0', 'warn_age_seconds': 2764800}, 'hourly': {'has_snapshots': 0, 'snapshot_health_issues': 2, 'monitor_dont_crit': '0', 'warn_age_seconds': 17400, 'monitor_dont_warn': '0', 'crit_age_seconds': 21600}}}

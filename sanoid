@@ -238,7 +238,7 @@ sub monitor_snapshots {
 	if (defined ($return_info)) {
 		# Called by monitor_metrics_json, so return the JSON
 
-		return \%snapshot_info;
+		return \%snapshot_info, $errorlevel;
 
 	} else {
 		# A normal run of the subroutine, so we print the information
@@ -320,12 +320,13 @@ sub monitor_metrics_json {
 	# Set a schema version for the JSON each time it changes in case any changes are
 	# not backwards compatible. Today's date backawards followed by an incrementing 
 	# digit (YYYYMMDDX)
-	$metrics{"schema_version"} = 202202181;
+	$metrics{"schema_version"} = 202204041;
 
 	# Add all the information about snapshots we need that would be returned from
 	# --monitor-snapshots (or that let people derive the same information)
-	my $snapshot_info = monitor_snapshots($config, $snaps, $snapsbytype, $snapsbypath, 1);
+	my ($snapshot_info, $overall_snapshot_health) = monitor_snapshots($config, $snaps, $snapsbytype, $snapsbypath, 1);
 	$metrics{"snapshot_info"} = $snapshot_info;
+	$metrics{"overall_snapshot_health_issues"} = $overall_snapshot_health;
 
 	# my $snapshot_info_json = encode_json $snapshot_info;
 	my $metrics_json = encode_json \%metrics;
