@@ -340,7 +340,10 @@ sub syncdataset {
 
 	my $receiveextraargs = "";
 	my $receivetoken;
-	if ($resume) {
+
+	# we need to make sure this isn't a local-only replication before trying to use resume tokens.
+	# trying to receive using -s on a stream sent from another dataset on the same host produces ZFS errors. (Discovered on 2022-04-08 on an Ubuntu 20.04 system)
+	if ($resume && ($sourcehost ne $targethost)) {
 		# save state of interrupted receive stream
 		$receiveextraargs = "-s";
 
