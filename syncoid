@@ -1471,7 +1471,7 @@ sub getssh {
 	if ($rhost ne "") {
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$rhost-" . time();
+		$socket = "/tmp/syncoid-$rhost-" . time() . "-" . int(rand(10000));
 
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
