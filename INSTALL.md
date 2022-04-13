@@ -36,7 +36,7 @@ cd sanoid
 git checkout $(git tag | grep "^v" | tail -n 1)
 ln -s packages/debian .
 dpkg-buildpackage -uc -us
-apt install ../sanoid_*_all.deb
+sudo apt install ../sanoid_*_all.deb
 ```
 
 Enable sanoid timer:
