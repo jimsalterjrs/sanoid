@@ -24,9 +24,9 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-clone-rollback", "no-rollback",
-                   "create-bookmark", "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize",
-                   "mbuffer-size=s" => \$mbuffer_size) or pod2usage(2);
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
+                   or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -291,11 +291,8 @@ sub syncdataset {
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
-	# if no rollbacks are allowed, disable forced receive
+	# keep forcedrecv as a variable to allow us to disable it with an optional argument later if necessary
 	my $forcedrecv = "-F";
-	if (defined $args{'no-rollback'}) {
-		$forcedrecv = "";
-	}
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
@@ -343,6 +340,7 @@ sub syncdataset {
 
 	my $receiveextraargs = "";
 	my $receivetoken;
+
 	if ($resume) {
 		# save state of interrupted receive stream
 		$receiveextraargs = "-s";
@@ -684,21 +682,6 @@ sub syncdataset {
 			return 0;
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
-			# rollback target to matchingsnap
-			if (!defined $args{'no-rollback'}) {
-				my $rollbacktype = "-R";
-				if (defined $args{'no-clone-rollback'}) {
-					$rollbacktype = "-r";
-				}
-				if ($debug) { print "DEBUG: rolling back target to $targetfs\@$matchingsnap...\n"; }
-				if ($targethost ne '') {
-					if ($debug) { print "$sshcmd $targethost $targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
-					system ("$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped"));
-				} else {
-					if ($debug) { print "$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped\n"; }
-					system ("$targetsudocmd $zfscmd rollback $rollbacktype $targetfsescaped\@$matchingsnapescaped");
-				}
-			}
 
 			my $nextsnapshot = 0;
 
@@ -1491,7 +1474,7 @@ sub getssh {
 	if ($rhost ne "") {
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$rhost-" . time();
+		$socket = "/tmp/syncoid-$rhost-" . time() . "-" . int(rand(10000));
 
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
@@ -1976,8 +1959,6 @@ Options:
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --preserve-recordsize Preserves the recordsize on initial sends to the target
-  --no-clone-rollback   Does not rollback clones on target
-  --no-rollback         Does not rollback clones or snapshots on target (it probably requires a readonly target)
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
