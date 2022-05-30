@@ -24,7 +24,7 @@ my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", "dryrun",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
                    or pod2usage(2);
 
@@ -84,6 +84,7 @@ my $rawsourcefs = $args{'source'};
 my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
+my $dryrun = $args{'dryrun'};
 my $resume = !$args{'no-resume'};
 
 # for compatibility reasons, older versions used hardcoded command paths
@@ -480,17 +481,19 @@ sub syncdataset {
 			if ($exitcode < 1) { $exitcode = 1; }
 			return 0;
 		}
-		system($synccmd) == 0 or do {
-			if (defined $origin) {
-				print "INFO: clone creation failed, trying ordinary replication as fallback\n";
-				syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
-				return 0;
-			}
+        if (!$args{"dryrun"}) {
+            system($synccmd) == 0 or do {
+                if (defined $origin) {
+                    print "INFO: clone creation failed, trying ordinary replication as fallback\n";
+                    syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+                    return 0;
+                }
 
-			warn "CRITICAL ERROR: $synccmd failed: $?";
-			if ($exitcode < 2) { $exitcode = 2; }
-			return 0;
-		};
+                warn "CRITICAL ERROR: $synccmd failed: $?";
+                if ($exitcode < 2) { $exitcode = 2; }
+                return 0;
+            };
+        }
 
 		# now do an -I to the new sync snapshot, assuming there were any snapshots
 		# other than the new sync snapshot to begin with, of course - and that we
@@ -521,11 +524,13 @@ sub syncdataset {
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
 			if ($oldestsnap ne $newsyncsnap) {
-				my $ret = system($synccmd);
-				if ($ret != 0) {
-					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 1) { $exitcode = 1; }
-					return 0;
+                if (!$args{'dryrun'}) {
+                    my $ret = system($synccmd);
+                    if ($ret != 0) {
+                        warn "CRITICAL ERROR: $synccmd failed: $?";
+                        if ($exitcode < 1) { $exitcode = 1; }
+                        return 0;
+                    }
 				}
 			} else {
 				if (!$quiet) { print "INFO: no incremental sync needed; $oldestsnap is already the newest available snapshot.\n"; }
@@ -552,34 +557,36 @@ sub syncdataset {
 			if (!$quiet) { print "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):\n"; }
 			if ($debug) { print "DEBUG: $synccmd\n"; }
 
-			if ($pvsize == 0) {
-				# we need to capture the error of zfs send, this will render pv useless but in this case
-				# it doesn't matter because we don't know the estimated send size (probably because
-				# the initial snapshot used for resumed send doesn't exist anymore)
-				($stdout, $exit) = tee_stderr {
-					system("$synccmd")
-				};
-			} else {
-				($stdout, $exit) = tee_stdout {
-					system("$synccmd")
-				};
-			}
+            if (!$args{'dryrun'}) {
+                if ($pvsize == 0) {
+                    # we need to capture the error of zfs send, this will render pv useless but in this case
+                    # it doesn't matter because we don't know the estimated send size (probably because
+                    # the initial snapshot used for resumed send doesn't exist anymore)
+                    ($stdout, $exit) = tee_stderr {
+                        system("$synccmd")
+                    };
+                } else {
+                    ($stdout, $exit) = tee_stdout {
+                        system("$synccmd")
+                    };
+                }
 
-			$exit == 0 or do {
-				if (
-					$stdout =~ /\Qused in the initial send no longer exists\E/ ||
-					$stdout =~ /incremental source [0-9xa-f]+ no longer exists/
-				) {
-					if (!$quiet) { print "WARN: resetting partially receive state because the snapshot source no longer exists\n"; }
-					resetreceivestate($targethost,$targetfs,$targetisroot);
-					# do an normal sync cycle
-					return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
-				} else {
-					warn "CRITICAL ERROR: $synccmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
-				}
-			};
+                $exit == 0 or do {
+                    if (
+                        $stdout =~ /\Qused in the initial send no longer exists\E/ ||
+                        $stdout =~ /incremental source [0-9xa-f]+ no longer exists/
+                        ) {
+                        if (!$quiet) { print "WARN: resetting partially receive state because the snapshot source no longer exists\n"; }
+                        resetreceivestate($targethost,$targetfs,$targetisroot);
+                        # do an normal sync cycle
+                        return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
+                    } else {
+                        warn "CRITICAL ERROR: $synccmd failed: $?";
+                        if ($exitcode < 2) { $exitcode = 2; }
+                        return 0;
+                    }
+                };
+            }
 
 			# a resumed transfer will only be done to the next snapshot,
 			# so do an normal sync cycle
@@ -634,13 +641,18 @@ sub syncdataset {
 						$prunecmd = escapeshellparam($prunecmd);
 					}
 
-					my $ret = system("$rcommand $prunecmd");
-					if ($ret != 0) {
-						warn "WARNING: $rcommand $prunecmd failed: $?";
-					} else {
-						# redo sync and skip snapshot creation (already taken)
-						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
-					}
+                    if ($args{"dryrun"}) {
+                        # redo sync and skip snapshot creation (already taken)
+                        return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+                    } else {
+                        my $ret = system("$rcommand $prunecmd");
+                        if ($ret != 0) {
+                            warn "WARNING: $rcommand $prunecmd failed: $?";
+                        } else {
+                            # redo sync and skip snapshot creation (already taken)
+                            return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+                        }
+                    }
 				}
 
 				# if we got this far, we failed to find a matching snapshot/bookmark.
@@ -711,26 +723,27 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $nextsnapshot (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					($stdout, $exit) = tee_stdout {
-						system("$synccmd")
-					};
+                    if (!$args{'dryrun'}) {
+                        ($stdout, $exit) = tee_stdout {
+                            system("$synccmd")
+                        };
 
-					$exit == 0 or do {
-						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
-							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
-							resetreceivestate($targethost,$targetfs,$targetisroot);
-							system("$synccmd") == 0 or do {
-								warn "CRITICAL ERROR: $synccmd failed: $?";
-								if ($exitcode < 2) { $exitcode = 2; }
-								return 0;
-							}
-						} else {
-							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
-							return 0;
-						}
-					};
-
+                        $exit == 0 or do {
+                            if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
+                                if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+                                resetreceivestate($targethost,$targetfs,$targetisroot);
+                                system("$synccmd") == 0 or do {
+                                    warn "CRITICAL ERROR: $synccmd failed: $?";
+                                    if ($exitcode < 2) { $exitcode = 2; }
+                                    return 0;
+                                }
+                            } else {
+                                warn "CRITICAL ERROR: $synccmd failed: $?";
+                                if ($exitcode < 2) { $exitcode = 2; }
+                                return 0;
+                            }
+                        };
+                    }
 					$matchingsnap = $nextsnapshot;
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
@@ -741,25 +754,28 @@ sub syncdataset {
 					if (!$quiet) { print "Sending incremental $sourcefs#$bookmarkescaped ... $newsyncsnap (~ $disp_pvsize):\n"; }
 					if ($debug) { print "DEBUG: $synccmd\n"; }
 
-					($stdout, $exit) = tee_stdout {
-						system("$synccmd")
-					};
+                    if (!$args{'dryrun'}) {
 
-					$exit == 0 or do {
-						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
-							if (!$quiet) { print "WARN: resetting partially receive state\n"; }
-							resetreceivestate($targethost,$targetfs,$targetisroot);
-							system("$synccmd") == 0 or do {
-								warn "CRITICAL ERROR: $synccmd failed: $?";
-								if ($exitcode < 2) { $exitcode = 2; }
-								return 0;
-							}
-						} else {
-							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
-							return 0;
-						}
-					};
+                        ($stdout, $exit) = tee_stdout {
+                            system("$synccmd")
+                        };
+
+                        $exit == 0 or do {
+                            if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
+                                if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+                                resetreceivestate($targethost,$targetfs,$targetisroot);
+                                system("$synccmd") == 0 or do {
+                                    warn "CRITICAL ERROR: $synccmd failed: $?";
+                                    if ($exitcode < 2) { $exitcode = 2; }
+                                    return 0;
+                                }
+                            } else {
+                                warn "CRITICAL ERROR: $synccmd failed: $?";
+                                if ($exitcode < 2) { $exitcode = 2; }
+                                return 0;
+                            }
+                        };
+                    }
 				}
 			}
 
@@ -782,26 +798,28 @@ sub syncdataset {
 				if (!$quiet) { print "Sending incremental $sourcefs\@$matchingsnap ... $newsyncsnap (~ $disp_pvsize):\n"; }
 				if ($debug) { print "DEBUG: $synccmd\n"; }
 
-				($stdout, $exit) = tee_stdout {
-					system("$synccmd")
-				};
+                if (!$args{'dryrun'}) {
+                    ($stdout, $exit) = tee_stdout {
+                        system("$synccmd")
+                    };
 
-				$exit == 0 or do {
-					# FreeBSD reports "dataset is busy" instead of "contains partially-complete state"
-					if (!$resume && ($stdout =~ /\Qcontains partially-complete state\E/ || $stdout =~ /\Qdataset is busy\E/)) {
-						if (!$quiet) { print "WARN: resetting partially receive state\n"; }
-						resetreceivestate($targethost,$targetfs,$targetisroot);
-						system("$synccmd") == 0 or do {
-							warn "CRITICAL ERROR: $synccmd failed: $?";
-							if ($exitcode < 2) { $exitcode = 2; }
-							return 0;
-						}
-					} else {
-						warn "CRITICAL ERROR: $synccmd failed: $?";
-						if ($exitcode < 2) { $exitcode = 2; }
-						return 0;
-					}
-				};
+                    $exit == 0 or do {
+                        # FreeBSD reports "dataset is busy" instead of "contains partially-complete state"
+                        if (!$resume && ($stdout =~ /\Qcontains partially-complete state\E/ || $stdout =~ /\Qdataset is busy\E/)) {
+                            if (!$quiet) { print "WARN: resetting partially receive state\n"; }
+                            resetreceivestate($targethost,$targetfs,$targetisroot);
+                            system("$synccmd") == 0 or do {
+                                warn "CRITICAL ERROR: $synccmd failed: $?";
+                                if ($exitcode < 2) { $exitcode = 2; }
+                                return 0;
+                            }
+                        } else {
+                            warn "CRITICAL ERROR: $synccmd failed: $?";
+                            if ($exitcode < 2) { $exitcode = 2; }
+                            return 0;
+                        }
+                    };
+                }
 			}
 
 			# restore original readonly value to target after sync complete
@@ -820,25 +838,27 @@ sub syncdataset {
 				$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped";
 			}
 			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
-			system($bookmarkcmd) == 0 or do {
-				# fallback: assume nameing conflict and try again with guid based suffix
-				my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
-				$guid = substr($guid, 0, 6);
+            if (!$args{'dryrun'}) {
+                system($bookmarkcmd) == 0 or do {
+                    # fallback: assume nameing conflict and try again with guid based suffix
+                    my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
+                    $guid = substr($guid, 0, 6);
 
-				if (!$quiet) { print "INFO: bookmark creation failed, retrying with guid based suffix ($guid)...\n"; }
+                    if (!$quiet) { print "INFO: bookmark creation failed, retrying with guid based suffix ($guid)...\n"; }
 
-				if ($sourcehost ne '') {
-					$bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
-				} else {
-					$bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
-				}
-				if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
-				system($bookmarkcmd) == 0 or do {
-					warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
-				}
-			};
+                    if ($sourcehost ne '') {
+                        $bookmarkcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid");
+                    } else {
+                        $bookmarkcmd = "$sourcesudocmd $zfscmd bookmark $sourcefsescaped\@$newsyncsnapescaped $sourcefsescaped\#$newsyncsnapescaped$guid";
+                    }
+                    if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
+                    system($bookmarkcmd) == 0 or do {
+                        warn "CRITICAL ERROR: $bookmarkcmd failed: $?";
+                        if ($exitcode < 2) { $exitcode = 2; }
+                        return 0;
+                    }
+                };
+            }
 		}
 	} else {
 		if (!defined $args{'keep-sync-snap'}) {
@@ -1139,8 +1159,10 @@ sub setzfsvalue {
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	if ($debug) { print "$rhost $mysudocmd $zfscmd set $property=$value $fsescaped\n"; }
-	system("$rhost $mysudocmd $zfscmd set $property=$value $fsescaped") == 0
-		or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fsescaped died: $?, proceeding anyway.\n";
+    if (!$args{'dryrun'}) {
+        system("$rhost $mysudocmd $zfscmd set $property=$value $fsescaped") == 0
+            or warn "WARNING: $rhost $mysudocmd $zfscmd set $property=$value $fsescaped died: $?, proceeding anyway.\n";
+    }
 	return;
 }
 
@@ -1345,8 +1367,10 @@ sub pruneoldsyncsnaps {
 			if ($rhost ne '') {
 				$prunecmd = escapeshellparam($prunecmd);
 			}
-			system("$rhost $prunecmd") == 0
-				or warn "WARNING: $rhost $prunecmd failed: $?";
+            if (!$args{'dryrun'}) {
+                system("$rhost $prunecmd") == 0
+                    or warn "WARNING: $rhost $prunecmd failed: $?";
+            }
 			$prunecmd = '';
 			$counter = 0;
 		}
@@ -1360,8 +1384,10 @@ sub pruneoldsyncsnaps {
 		if ($rhost ne '') {
 			$prunecmd = escapeshellparam($prunecmd);
 		}
-		system("$rhost $prunecmd") == 0
-			or warn "WARNING: $rhost $prunecmd failed: $?";
+        if (!$args{'dryrun'}) {
+            system("$rhost $prunecmd") == 0
+                or warn "WARNING: $rhost $prunecmd failed: $?";
+        }
 	}
 	return;
 }
@@ -1394,12 +1420,13 @@ sub newsyncsnap {
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	if ($debug) { print "DEBUG: creating sync snapshot using \"$snapcmd\"...\n"; }
-	system($snapcmd) == 0 or do {
-		warn "CRITICAL ERROR: $snapcmd failed: $?";
-		if ($exitcode < 2) { $exitcode = 2; }
-		return 0;
-	};
-
+    if (!$args{'dryrun'}) {
+        system($snapcmd) == 0 or do {
+            warn "CRITICAL ERROR: $snapcmd failed: $?";
+            if ($exitcode < 2) { $exitcode = 2; }
+            return 0;
+        };
+    }
 	return $snapname;
 }
 
@@ -1921,8 +1948,10 @@ sub resetreceivestate {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $resetcmd = "$rhost $mysudocmd $zfscmd receive -A $fsescaped";
 	if ($debug) { print "$resetcmd\n"; }
-	system("$resetcmd") == 0
-		or die "CRITICAL ERROR: $resetcmd failed: $?";
+    if (!$args{'dryrun'}) {
+        system("$resetcmd") == 0
+            or die "CRITICAL ERROR: $resetcmd failed: $?";
+    }
 }
 
 __END__
