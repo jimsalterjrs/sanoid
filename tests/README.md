@@ -9,9 +9,10 @@ The tests require the following packages to be installed in the VM (Ubuntu 20.04
 zfsutils-linux
 libconfig-inifiles-perl
 libcapture-tiny-perl
+libjson-perl
 ```
 ```
-apt install zfsutils-linux libconfig-inifiles-perl libcapture-tiny-perl
+apt install zfsutils-linux libconfig-inifiles-perl libcapture-tiny-perl libjson-perl
 ```
 
 #### Install sanoid within the VM ####
