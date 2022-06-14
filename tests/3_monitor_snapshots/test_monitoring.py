@@ -153,7 +153,25 @@ class TestsWithZpool(unittest.TestCase):
         self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["crit_age_seconds"], SANOID_TEST_1_MONTHLY_CRIT)
         self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_crit"], 0)
         self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["monitor_dont_warn"], 0)
-        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], SANOID_TEST_1_MONTHLY_WARN)        
+        self.assertEqual(snapshot_json["sanoid-test-1"]["monthly"]["warn_age_seconds"], SANOID_TEST_1_MONTHLY_WARN)    
+
+        # sanoid-test-2 hourly
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["crit_age_seconds"], SANOID_TEST_2_HOURLY_CRIT)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["monitor_dont_crit"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["monitor_dont_warn"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["warn_age_seconds"], SANOID_TEST_2_HOURLY_WARN) 
+
+        # sanoid-test-2 daily
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["crit_age_seconds"], SANOID_TEST_2_DAILY_CRIT)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["monitor_dont_crit"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["monitor_dont_warn"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["warn_age_seconds"], SANOID_TEST_2_DAILY_WARN)
+
+        # sanoid-test-2 monthly
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["crit_age_seconds"], SANOID_TEST_2_MONTHLY_CRIT)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["monitor_dont_crit"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["monitor_dont_warn"], 0)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["warn_age_seconds"], SANOID_TEST_2_MONTHLY_WARN)    
 
     def test_with_zpool_no_snapshots(self):
         """Test what happens if there is a zpool, but with no snapshots"""
@@ -229,53 +247,35 @@ class TestsWithZpool(unittest.TestCase):
         self.assertLess(snapshot_json["sanoid-test-1"]["monthly"]["newest_age_seconds"], snapshot_json["sanoid-test-1"]["monthly"]["crit_age_seconds"])
         self.assertAlmostEqual(snapshot_json["sanoid-test-1"]["monthly"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)
 
-        # {'snapshot_info': 
-        # {'sanoid-test-2': 
-        # {'daily': {'monitor_dont_crit': 0, 'newest_snapshot_ctime_seconds': '1649104952', 'newest_age_seconds': 1, 'crit_age_seconds': 172800, 'monitor_dont_warn': 0, 'has_snapshots': 1, 'snapshot_health_issues': 0, 'warn_age_seconds': 100800}, 
-        # 'monthly': {'has_snapshots': 1, 'snapshot_health_issues': 0, 'warn_age_seconds': 2764800, 'monitor_dont_warn': 0, 'crit_age_seconds': 3456000, 'newest_snapshot_ctime_seconds': '1649104952', 'newest_age_seconds': 1, 'monitor_dont_crit': 0}, 
-        # 'hourly': {'warn_age_seconds': 17400, 'snapshot_health_issues': 0, 'monitor_dont_crit': 0, 'crit_age_seconds': 21600, 'newest_snapshot_ctime_seconds': '1649104952', 'newest_age_seconds': 1}}, 
+        # sanoid-test-2 hourly
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["has_snapshots"], 1)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["snapshot_health_issues"], 0)
 
-        # # sanoid-test-2 hourly
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["crit_age_seconds"], 21600)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["has_snapshots"], 1)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["monitor_dont_crit"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["monitor_dont_warn"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["snapshot_health_issues"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["hourly"]["warn_age_seconds"], 17400)
+        # newest_age_seconds should only be a second or two, as the snapshot has just been created
+        self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], 600)
+        self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["hourly"]["warn_age_seconds"])
+        self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["hourly"]["crit_age_seconds"])
+        self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["hourly"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)
 
-        # # newest_age_seconds should only be a second or two, as the snapshot has just been created
-        # self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], 600)
-        # self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["hourly"]["warn_age_seconds"])
-        # self.assertLess(snapshot_json["sanoid-test-2"]["hourly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["hourly"]["crit_age_seconds"])
-        # self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["hourly"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)
+        # sanoid-test-2 daily
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["has_snapshots"], 1)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["snapshot_health_issues"], 0)
 
-        # # sanoid-test-2 daily
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["crit_age_seconds"], 115200)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["has_snapshots"], 1)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["monitor_dont_crit"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["monitor_dont_warn"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["snapshot_health_issues"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["daily"]["warn_age_seconds"], 100800)
+        # newest_age_seconds should only be a second or two, as the snapshot has just been created
+        self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], 600)
+        self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["daily"]["warn_age_seconds"])
+        self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["daily"]["crit_age_seconds"])
+        self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["daily"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)        
 
-        # # newest_age_seconds should only be a second or two, as the snapshot has just been created
-        # self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], 600)
-        # self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["daily"]["warn_age_seconds"])
-        # self.assertLess(snapshot_json["sanoid-test-2"]["daily"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["daily"]["crit_age_seconds"])
-        # self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["daily"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)        
+        # sanoid-test-2 monthly
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["has_snapshots"], 1)
+        self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["snapshot_health_issues"], 0)
 
-        # # sanoid-test-2 monthly
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["crit_age_seconds"], 3456000)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["has_snapshots"], 1)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["monitor_dont_crit"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["monitor_dont_warn"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["snapshot_health_issues"], 0)
-        # self.assertEqual(snapshot_json["sanoid-test-2"]["monthly"]["warn_age_seconds"], 2764800)
-
-        # # newest_age_seconds should only be a second or two, as the snapshot has just been created
-        # self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], 600)
-        # self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["monthly"]["warn_age_seconds"])
-        # self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["monthly"]["crit_age_seconds"])
-        # self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["monthly"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)
+        # newest_age_seconds should only be a second or two, as the snapshot has just been created
+        self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], 600)
+        self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["monthly"]["warn_age_seconds"])
+        self.assertLess(snapshot_json["sanoid-test-2"]["monthly"]["newest_age_seconds"], snapshot_json["sanoid-test-2"]["monthly"]["crit_age_seconds"])
+        self.assertAlmostEqual(snapshot_json["sanoid-test-2"]["monthly"]['newest_snapshot_ctime_seconds'], unix_time_now, delta=600)
 
     def test_one_warning_hourly(self):
         """Test one warning on hourly snapshots, no critical warnings, to check output and error status"""
