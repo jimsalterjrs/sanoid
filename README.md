@@ -320,13 +320,9 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to set the recordsize on the target before writing any data to it matching the one set on the replication src. This only applies to initial sends.
 
-+ --no-clone-rollback
++ --no-forced-receive
 
-	Do not rollback clones on target
-
-+ --no-rollback
-
-	Do not rollback anything (clones or snapshots) on target host
+	This argument tells syncoid to not force a receive (-F flag) on the target dataset. This will prevent snapshots that do not exist on the source from being destroyed on the target before performing the receive operation.
 
 + --exclude=REGEX
 

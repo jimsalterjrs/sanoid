@@ -24,8 +24,8 @@ my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", "no-forced-receive",
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size)
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -288,8 +288,10 @@ sub syncdataset {
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
-	# keep forcedrecv as a variable to allow us to disable it with an optional argument later if necessary
 	my $forcedrecv = "-F";
+  if (defined $args{'no-forced-receive'}) {
+    $forcedrecv = "";
+  }
 
 	if ($debug) { print "DEBUG: syncing source $sourcefs to target $targetfs.\n"; }
 
@@ -1955,6 +1957,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --no-forced-receive   Do not force a receive on the target dataset
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
