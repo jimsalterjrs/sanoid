@@ -10,7 +10,9 @@ use strict;
 use warnings;
 use Data::Dumper;
 use Getopt::Long qw(:config auto_version auto_help);
+use JSON::PP;
 use Pod::Usage;
+use Time::HiRes;
 use Time::Local;
 use Sys::Hostname;
 use Capture::Tiny ':all';
@@ -22,7 +24,7 @@ my $pvoptions = "-p -t -e -r -b";
 # TODO: Merge into a single "sshflags" option?
 my %args = ('sshkey' => '', 'sshport' => '', 'sshcipher' => '', 'sshoption' => [], 'target-bwlimit' => '', 'source-bwlimit' => '');
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
-                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
+                   "source-bwlimit=s", "target-bwlimit=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@", "syncstats=s",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "create-bookmark", 
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
@@ -85,6 +87,7 @@ my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
 my $resume = !$args{'no-resume'};
+my $syncstats = {};
 
 # for compatibility reasons, older versions used hardcoded command paths
 $ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/usr/bin:/sbin";
@@ -208,6 +211,14 @@ if (!defined $args{'recursive'}) {
 	}
 }
 
+# print syncstats to file if requested
+if (length $args{'syncstats'}) {
+	my $j = JSON::PP->new->utf8->pretty->allow_nonref;
+	open my $fp, ">", $args{'syncstats'};
+	print $fp $j->encode($syncstats);
+	close $fp;
+}
+
 # close SSH sockets for master connections as applicable
 if ($sourcehost ne '') {
 	open FH, "$sshcmd $sourcehost -O exit 2>&1 |";
@@ -281,6 +292,9 @@ sub getchilddatasets {
 sub syncdataset {
 
 	my ($sourcehost, $sourcefs, $targethost, $targetfs, $origin, $skipsnapshot) = @_;
+
+	my $start_time_s = Time::HiRes::time();
+	$syncstats->{$sourcefs}->{"sync_duration_s"} = 0;  # will be overwritten if we actually do anything
 
 	my $stdout;
 	my $exit;
@@ -847,6 +861,11 @@ sub syncdataset {
 			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
 		}
 	}
+
+	# stash some syncstats
+	my $sync_duration_s = Time::HiRes::time() - $start_time_s;
+	if ($debug) { print "DEBUG: sync_duration_s = $sync_duration_s\n"; }
+	$syncstats->{$sourcefs}->{"sync_duration_s"} = $sync_duration_s;
 
 } # end syncdataset()
 
@@ -1963,6 +1982,7 @@ Options:
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+  --syncstats=STATSFILE Specify a file to print per-dataset syncstats to (in json format)
 
   --help                Prints this helptext
   --version             Prints the version number
