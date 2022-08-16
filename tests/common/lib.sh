@@ -10,10 +10,11 @@ function setup {
     export SANOID="../../sanoid"
 
     # make sure that there is no cache file
-    rm -f /var/cache/sanoidsnapshots.txt
+    rm -f /var/cache/sanoid/snapshots.txt
 
     # install needed sanoid configuration files
-    [ -f sanoid.conf ] && cp sanoid.conf /etc/sanoid/sanoid.conf
+    mkdir /etc/sanoid
+    [ -f sanoid.conf ] && cp sanoid.conf /etc/sanoid/sanoid.conf    
     cp ../../sanoid.defaults.conf /etc/sanoid/sanoid.defaults.conf
 }
 
