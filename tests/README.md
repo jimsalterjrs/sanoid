@@ -15,18 +15,22 @@ libjson-perl
 apt install zfsutils-linux libconfig-inifiles-perl libcapture-tiny-perl libjson-perl
 ```
 
-#### Install sanoid within the VM ####
-Install sanoid within the VM, for example
+#### Clone the sanoid repo into the VM ####
+Clone the sanoid repo (or your fork of it) within the VM, for example:
 ```
 apt install git
 git clone https://github.com/jimsalterjrs/sanoid.git
-mkdir /etc/sanoid/
-cp sanoid/sanoid.defaults.conf /etc/sanoid/
+cd sanoid
 ```
+Switch to the branch you are working in, e.g.:
+```
+git checkout my_feature_branch
+```
+
 
 ### Run the tests ##
 This requires root/sudo privileges.
 ```
-cd sanoid/tests/
+cd tests/
 ./run-tests.sh
 ```
