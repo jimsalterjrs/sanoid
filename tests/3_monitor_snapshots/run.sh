@@ -4,6 +4,8 @@ set -x
 # this test will create pools in a number of states
 # and check the output text and return code of 
 # sanoid --monitor-snapshots
+# and the JSON data created by
+# sanoid --monitor-metrics-json
 
 . ../common/lib.sh
 
