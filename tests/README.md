@@ -1,7 +1,14 @@
 ### Requirements ###
-Tests must be run inside a virtual machine. This is for your own safety, as the tests may create and destroy zpools etc.
+Tests must be run inside a virtual machine. This is for your own safety, as the tests may create and destroy zpools etc. 
+The tests require a reasonable amount of storage space, so create a VM with 35GB or more of disk. 
 
-A VM with 35GB of storage and 8 cores running Ubuntu 20.04 completes the tests in about 5 hours.  
+You can create a suitable VM with LXD and go straight to a shell to start testing as follows:
+```
+lxc init ubuntu:focal sanoid-test --vm -c limits.cpu=8 -c limits.memory=4GB
+lxc start sanoid-test
+lxc exec sanoid-test /bin/bash
+```
+One of the tests traverses an entire year running Sanoid every hour, which takes a long time. The tests can take over 5 hours to complete.
 
 #### Packages ####
 The tests require the following packages to be installed in the VM (Ubuntu 20.04 package names are used, translate as appropriate):
