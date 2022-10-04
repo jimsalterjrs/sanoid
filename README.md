@@ -342,7 +342,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-clone-handling
 
-	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+	This argument tells syncoid to not recreate clones on the target on initial sync, and do a normal replication instead.
 
 + --dumpsnaps
 
