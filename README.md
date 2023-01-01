@@ -232,7 +232,7 @@ syncoid root@remotehost:data/images/vm backup/images/vm
 Which would pull-replicate the filesystem from the remote host to the local system over an SSH tunnel.
 
 Syncoid supports recursive replication (replication of a dataset and all its child datasets) and uses mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
-If ZFS supports resumeable send/receive streams on both the source and target those will be enabled as default.
+If ZFS supports resumable send/receive streams on both the source and target those will be enabled as default.
 
 As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
 
@@ -334,7 +334,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-resume
 
-	This argument tells syncoid to not use resumeable zfs send/receive streams.
+	This argument tells syncoid to not use resumable zfs send/receive streams.
 
 + --force-delete
 
