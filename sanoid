@@ -889,7 +889,7 @@ sub init {
 		# for sections directly when they've already been defined recursively, without starting them over from scratch.
 		if (! defined ($config{$section}{'initialized'})) {
 			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
-			# set default values from %defaults, which can then be overriden by template
+			# set default values from %defaults, which can then be overridden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
 				if (! ($key =~ /template|recursive|children_only/)) {
