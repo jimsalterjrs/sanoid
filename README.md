@@ -125,7 +125,7 @@ Will be executed before the snapshot(s) of a single dataset are taken. The follo
 | -----------------  | -----------                                                                                                                                          |
 | `SANOID_SCRIPT`    | The type of script being executed, one of `pre`, `post`, or `prune`.  Allows for one script to be used for multiple tasks                            |
 | `SANOID_TARGET`    | **DEPRECATED** The dataset about to be snapshot (only the first dataset will be provided)                                                            |
-| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshoted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
+| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshotted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
 | `SANOID_SNAPNAME`  | **DEPRECATED** The name of the snapshot that will be taken (only the first name will be provided, does not include the dataset name)                 |
 | `SANOID_SNAPNAMES` | Comma separated list of all snapshot names that will be taken (does not include the dataset name)                                                    |
 | `SANOID_TYPES`     | Comma separated list of all snapshot types to be taken (yearly, monthly, weekly, daily, hourly, frequently)                                          |
