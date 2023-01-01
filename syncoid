@@ -821,7 +821,7 @@ sub syncdataset {
 			}
 			if ($debug) { print "DEBUG: $bookmarkcmd\n"; }
 			system($bookmarkcmd) == 0 or do {
-				# fallback: assume nameing conflict and try again with guid based suffix
+				# fallback: assume naming conflict and try again with guid based suffix
 				my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
 				$guid = substr($guid, 0, 6);
 
