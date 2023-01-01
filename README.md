@@ -95,7 +95,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --verbose
 
@@ -370,7 +370,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --debug
 
