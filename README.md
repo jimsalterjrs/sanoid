@@ -103,7 +103,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
 
 + --readonly
 
@@ -374,7 +374,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
 
 + --help
 
