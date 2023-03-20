@@ -46,20 +46,28 @@ sudo systemctl enable sanoid.timer
 sudo systemctl start sanoid.timer
 ```
 
-## CentOS
+## CentOS/RHEL
 
 Install prerequisite software:
 
 ```bash
-# Install and enable epel if we don't already have it, and git too
+# Install and enable EPEL if we don't already have it, and git too:
+# (Note that on RHEL we cannot enable EPEL with the epel-release
+# package, so you should follow the instructions on the main EPEL site.)
 sudo yum install -y epel-release git
+# On CentOS, we also need to enable the PowerTools repo:
+sudo yum config-manager --set-enabled powertools
+# On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
+sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
 # Install the packages that Sanoid depends on:
-sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
-# if the perl dependencies can't be found in the configured repositories you can install them from CPAN manually:
+sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny perl-Getopt-Long lzop mbuffer mhash pv
+# The repositories above should contain all the relevant Perl modules, but if you
+# still cannot find them then you can install them from CPAN manually:
 sudo dnf install perl-CPAN perl-CPAN
-cpan # answer the questions and past the following lines
+cpan # answer the questions and paste the following lines:
 # install Capture::Tiny
 # install Config::IniFiles
+# install Getopt::Long
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:
