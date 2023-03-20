@@ -259,3 +259,12 @@ Adapt the timer interval to the lowest configured snapshot interval.
 Take a look at the files `sanoid.defaults.conf` and `sanoid.conf` for all possible configuration options.
 
 Also have a look at the README.md for a simpler suggestion for `sanoid.conf`.
+
+## Syncoid
+If you are pushing or pulling from a remote host, create an user with privldeges to `ssh` as well as `sudo`. To ensure that `zfs send/recieve` can execute, adjust the privileges of the user to execute `sudo` **without** a password for only the `zfs` binary. Modify `/etc/sudoers` by running `# visudo`. Add the following line for your user.
+
+```
+...
+<user> ALL=NOPASSWD: /usr/local/sbin/zfs
+...
+```
