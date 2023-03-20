@@ -55,6 +55,8 @@ Install prerequisite software:
 sudo yum install -y epel-release git
 # On CentOS, we also need to enable the PowerTools repo:
 sudo yum config-manager --set-enabled powertools
+# For Centos 8 you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
+sudo dnf config-manager --set-enabled powertools
 # On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
 sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
 # Install the packages that Sanoid depends on:
@@ -148,8 +150,7 @@ sudo systemctl daemon-reload
 # Enable sanoid-prune.service to allow it to be triggered by sanoid.service
 sudo systemctl enable sanoid-prune.service
 # Enable and start the Sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
 Now, proceed to configure [**Sanoid**](#configuration)
