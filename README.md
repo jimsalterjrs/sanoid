@@ -338,11 +338,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --force-delete
 
-	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks.
+	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks. Also removes conflicting snapshots if the replication would fail because of a snapshot which has the same name between source and target but different contents.
 
 + --no-clone-handling
 
-	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+	This argument tells syncoid to not recreate clones on the target on initial sync and doing a normal replication instead.
 
 + --dumpsnaps
 
