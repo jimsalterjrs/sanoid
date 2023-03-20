@@ -1742,7 +1742,7 @@ sub getbookmarks() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation;
+			$bookmarks{$lastguid}{'creation'}=$creation . "000";
 		}
 	}
 
