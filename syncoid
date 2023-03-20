@@ -1536,6 +1536,8 @@ sub getsnaps() {
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
+	my $rhostOriginal = $rhost;
+
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
 		# double escaping needed
@@ -1553,7 +1555,7 @@ sub getsnaps() {
 	my @rawsnaps = <FH>;
 	close FH or do {
 		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhost,$fs,$isroot,%snaps);
+		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,%snaps);
 	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
