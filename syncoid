@@ -141,6 +141,8 @@ my %avail = checkcommands();
 my %snaps;
 my $exitcode = 0;
 
+my $replicationCount = 0;
+
 ## break here to call replication individually so that we ##
 ## can loop across children separately, for recursive     ##
 ## replication                                            ##
@@ -300,7 +302,7 @@ sub syncdataset {
 
 	if (!defined $sync) {
 		# zfs already printed the corresponding error
-		if ($error =~ /\bdataset does not exist\b/) {
+		if ($error =~ /\bdataset does not exist\b/ && $replicationCount > 0) {
 			if (!$quiet) { print "WARN Skipping dataset (dataset no longer exists): $sourcefs...\n"; }
 			return 0;
 		}
@@ -843,6 +845,8 @@ sub syncdataset {
 			#setzfsvalue($targethost,$targetfs,$targetisroot,'readonly',$originaltargetreadonly);
 		}
 	}
+
+	$replicationCount++;
 
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
