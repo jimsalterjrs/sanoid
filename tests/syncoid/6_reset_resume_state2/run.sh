@@ -47,6 +47,9 @@ sleep 1
 
 zfs destroy "${POOL_NAME}"/src@big
 ../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst # | grep "reset partial receive state of syncoid"
+
+sleep 1
+
 ../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
 exit $?
