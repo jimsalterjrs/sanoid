@@ -1,8 +1,8 @@
 2.1.0  [overall]   documentation updates, small fixes (@HavardLine, @croadfeldt, @jimsalterjrs, @jim-perkins, @kr4z33, @phreaker0)
        [syncoid]   do not require user to be specified for syncoid (@aerusso)
        [syncoid]   implemented option for keeping sync snaps (@phreaker0)
-       [syncoid]   use sudo if neccessary for checking pool capabilities regarding resumeable send (@phreaker0)
-       [syncoid]   catch another case were the resume state isn't availabe anymore (@phreaker0)
+       [syncoid]   use sudo if necessary for checking pool capabilities regarding resumable send (@phreaker0)
+       [syncoid]   catch another case were the resume state isn't available anymore (@phreaker0)
        [syncoid]   check for an invalid argument combination (@phreaker0)
        [syncoid]   fix iszfsbusy check for similar dataset names (@phreaker0)
        [syncoid]   append timezone offset to the syncoid snapshot name to fix DST collisions (@phreaker0)
@@ -29,7 +29,7 @@
 2.0.2  [overall]   documentation updates, new dependencies, small fixes, more warnings (@benyanke, @matveevandrey, @RulerOf, @klemens-u, @johnramsden, @danielewood, @g-a-c, @hartzell, @fryfrog, @phreaker0)
        [sanoid]    changed and simplified DST handling (@shodanshok)
        [syncoid]   reset partially resume state automatically (@phreaker0)
-       [syncoid]   handle some zfs erros automatically by parsing the stderr outputs (@phreaker0)
+       [syncoid]   handle some zfs errors automatically by parsing the stderr outputs (@phreaker0)
        [syncoid]   fixed ordering of snapshots with the same creation timestamp (@phreaker0)
        [syncoid]   don't use hardcoded paths (@phreaker0)
        [syncoid]   fix for special setup with listsnapshots=on (@phreaker0)
@@ -84,7 +84,7 @@
        [sanoid]    implemented monitor-capacity flag for checking zpool capacity limits (@phreaker0)
        [syncoid]   Added support for ZStandard compression.(@danielewood)
        [syncoid]   implemented support for excluding datasets from replication with regular expressions (@phreaker0)
-       [syncoid]   correctly parse zfs column output, fixes resumeable send with datasets containing spaces (@phreaker0)
+       [syncoid]   correctly parse zfs column output, fixes resumable send with datasets containing spaces (@phreaker0)
        [syncoid]   added option for using extra identification in the snapshot name for replication to multiple targets (@phreaker0)
        [syncoid]   added option for skipping the parent dataset in recursive replication (@phreaker0)
        [syncoid]   typos (@UnlawfulMonad, @jsavikko, @phreaker0)
@@ -118,12 +118,12 @@
        replicating to target/parent/child2.  This could still use some cleanup TBH; syncoid SHOULD exit 3
        if any of these errors happen (to assist detection of errors in scripting) but now would exit 0.
 
-1.4.12 Sanoid now strips trailing whitespace in template definitions in sanoid.conf, per Github #61
+1.4.12 Sanoid now strips trailing whitespace in template definitions in sanoid.conf, per GitHub #61
 
 1.4.11 enhanced Syncoid to use zfs `guid` property rather than `creation` property to ensure snapshots on source
        and target actually match. This immediately prevents conflicts due to timezone differences on source and target,
        and also paves the way in the future for Syncoid to find matching snapshots even after `zfs rename` on source
-       or target. Thank you Github user @mailinglists35 for the idea!
+       or target. Thank you GitHub user @mailinglists35 for the idea!
 
 1.4.10 added --compress=pigz-fast and --compress=pigz-slow. On a Xeon E3-1231v3, pigz-fast is equivalent compression
        to --compress=gzip but with compressed throughput of 75.2 MiB/s instead of 18.1 MiB/s. pigz-slow is around 5%
@@ -241,4 +241,4 @@
 
 1.0.1 ported slightly modified iszfsbusy sub from syncoid to sanoid (to keep from thinning snapshots during replications)
 
-1.0.0 initial commit to Github
+1.0.0 initial commit to GitHub

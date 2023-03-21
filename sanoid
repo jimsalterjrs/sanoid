@@ -130,7 +130,7 @@ sub monitor_snapshots {
 
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %datestamp = get_date();
-	my $errorlevel = 0;
+	my $errlevel = 0;
 	my $msg;
 	my @msgs;
 	my @paths;
@@ -169,7 +169,7 @@ sub monitor_snapshots {
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) {
 				if ($crit > 0) {
-					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
+					if (! $config{$section}{'monitor_dont_crit'}) { $errlevel = 2; }
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
@@ -178,7 +178,7 @@ sub monitor_snapshots {
 				}
 			 } elsif ($elapsed > $warn) {
 				if ($warn > 0) {
-					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
+					if (! $config{$section}{'monitor_dont_warn'} && ($errlevel < 2) ) { $errlevel = 1; }
 					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
 			} else {
@@ -196,7 +196,7 @@ sub monitor_snapshots {
 	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
 
 	print "$msg\n";
-	exit $errorlevel;
+	exit $errlevel;
 }
 
 
@@ -319,6 +319,25 @@ sub prune_snapshots {
 					if (checklock('sanoid_pruning')) {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
+							my $dataset = (split '@', $snap)[0];
+							my $snapname = (split '@', $snap)[1];
+
+							if (! $args{'readonly'} && $config{$dataset}{'pre_pruning_script'}) {
+								$ENV{'SANOID_TARGET'} = $dataset;
+								$ENV{'SANOID_SNAPNAME'} = $snapname;
+								if ($args{'verbose'}) { print "executing pre_pruning_script '".$config{$dataset}{'pre_pruning_script'}."' on dataset '$dataset'\n"; }
+								my $ret = runscript('pre_pruning_script', $dataset);
+
+								delete $ENV{'SANOID_TARGET'};
+								delete $ENV{'SANOID_SNAPNAME'};
+
+								if ($ret != 0) {
+									# warning was already thrown by runscript function
+									# skip pruning if pre snapshot script returns non zero exit code
+									next;
+								}
+							}
+
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 							if (!$args{'force-prune'} && iszfsbusy($path)) {
 								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
@@ -326,8 +345,6 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
-										my $dataset = (split '@', $snap)[0];
-										my $snapname = (split '@', $snap)[1];
 										if ($config{$dataset}{'pruning_script'}) {
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
@@ -881,6 +898,13 @@ sub init {
 			if (! defined ($defaults{'template_default'}{$key})) {
 				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
 			}
+
+			# in case of duplicate lines we will end up with an array of all values
+			my $value = $ini{$section}{$key};
+			if (ref($value) eq 'ARRAY') {
+				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
+				$ini{$section}{$key} = $value->[0];
+			}
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
@@ -889,7 +913,7 @@ sub init {
 		# for sections directly when they've already been defined recursively, without starting them over from scratch.
 		if (! defined ($config{$section}{'initialized'})) {
 			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
-			# set default values from %defaults, which can then be overriden by template
+			# set default values from %defaults, which can then be overridden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
 				if (! ($key =~ /template|recursive|children_only/)) {
@@ -1137,7 +1161,7 @@ sub check_zpool() {
 		}
 	}
 
-	# Tony: Debuging
+	# Tony: Debugging
 	# print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
 
 	close(STAT);
@@ -1239,7 +1263,7 @@ sub check_zpool() {
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
-			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE")) {
+			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL")) {
 				# check for io/checksum errors
 
 				my @vdeverr = ();

@@ -22,44 +22,52 @@ Install prerequisite software:
 
 ```bash
 
-apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer build-essential
+apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer build-essential git
 
 ```
 
 Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
 
 ```bash
-# Download the repo as root to avoid changing permissions later
-sudo git clone https://github.com/jimsalterjrs/sanoid.git
+git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
 # checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
 git checkout $(git tag | grep "^v" | tail -n 1)
 ln -s packages/debian .
 dpkg-buildpackage -uc -us
-apt install ../sanoid_*_all.deb
+sudo apt install ../sanoid_*_all.deb
 ```
 
 Enable sanoid timer:
 ```bash
 # enable and start the sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
-## CentOS
+## CentOS/RHEL
 
 Install prerequisite software:
 
 ```bash
-# Install and enable epel if we don't already have it, and git too
+# Install and enable EPEL if we don't already have it, and git too:
+# (Note that on RHEL we cannot enable EPEL with the epel-release
+# package, so you should follow the instructions on the main EPEL site.)
 sudo yum install -y epel-release git
+# On CentOS, we also need to enable the PowerTools repo:
+sudo yum config-manager --set-enabled powertools
+# For Centos 8 you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
+sudo dnf config-manager --set-enabled powertools
+# On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
+sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
 # Install the packages that Sanoid depends on:
-sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny lzop mbuffer mhash pv
-# if the perl dependencies can't be found in the configured repositories you can install them from CPAN manually:
+sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny perl-Getopt-Long lzop mbuffer mhash pv
+# The repositories above should contain all the relevant Perl modules, but if you
+# still cannot find them then you can install them from CPAN manually:
 sudo dnf install perl-CPAN perl-CPAN
-cpan # answer the questions and past the following lines
+cpan # answer the questions and paste the following lines:
 # install Capture::Tiny
 # install Config::IniFiles
+# install Getopt::Long
 ```
 
 Clone this repo, then put the executables and config files into the appropriate directories:
@@ -142,8 +150,7 @@ sudo systemctl daemon-reload
 # Enable sanoid-prune.service to allow it to be triggered by sanoid.service
 sudo systemctl enable sanoid-prune.service
 # Enable and start the Sanoid timer
-sudo systemctl enable sanoid.timer
-sudo systemctl start sanoid.timer
+sudo systemctl enable --now sanoid.timer
 ```
 
 Now, proceed to configure [**Sanoid**](#configuration)
@@ -170,6 +177,51 @@ The busybox implementation of ps is lacking needed arguments so a proper ps prog
 For Alpine Linux this can be done with:
 
 `apk --no-cache add procps`
+
+## MacOS
+
+Install prerequisite software:
+
+```
+perl -MCPAN -e install Config::IniFiles
+```
+
+The crontab can be used as on a normal unix. To use launchd instead, this example config file can be use can be used. Modify it for your needs. In particular, adjust the sanoid path.
+It will start sanoid once per hour, at minute 51. Missed invocations due to standby will be merged into a single invocation at the next wakeup.
+
+```bash
+cat << "EOF" | sudo tee /Library/LaunchDaemons/net.openoid.Sanoid.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>net.openoid.Sanoid</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/sanoid/sanoid</string>
+		<string>--cron</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>TZ</key>
+		<string>UTC</string>
+		<key>PATH</key>
+		<string>/usr/local/zfs/bin:$PATH:/usr/local/bin</string>
+	</dict>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Minute</key>
+			<integer>51</integer>
+		</dict>
+	</array>
+</dict>
+</plist>
+EOF
+
+sudo launchctl load /Library/LaunchDaemons/net.openoid.Sanoid.plist
+```
 
 ## Other OSes
 
@@ -206,3 +258,12 @@ Adapt the timer interval to the lowest configured snapshot interval.
 Take a look at the files `sanoid.defaults.conf` and `sanoid.conf` for all possible configuration options.
 
 Also have a look at the README.md for a simpler suggestion for `sanoid.conf`.
+
+## Syncoid
+If you are pushing or pulling from a remote host, create a user with privileges to `ssh` as well as `sudo`. To ensure that `zfs send/receive` can execute, adjust the privileges of the user to execute `sudo` **without** a password for only the `zfs` binary (run `which zfs` to find the path of the `zfs` binary). Modify `/etc/sudoers` by running `# visudo`. Add the following line for your user.
+
+```
+...
+<user> ALL=NOPASSWD: <path of zfs binary>
+...
+```
