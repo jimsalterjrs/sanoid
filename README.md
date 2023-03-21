@@ -1,15 +1,15 @@
 <p align="center"><img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo"></p>
 
-<img src="http://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="http://openoid.net/transcend" target="_blank">functionally immortal</a>.  
+<img src="http://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="http://openoid.net/transcend" target="_blank">functionally immortal</a>.
 
 <p align="center"><a href="https://youtu.be/ZgowLNBsu00" target="_blank"><img src="http://www.openoid.net/sanoid_video_launcher.png" alt="sanoid rollback demo" title="sanoid rollback demo"></a><br clear="all"><sup>(Real time demo: rolling back a full-scale cryptomalware infection in seconds!)</sup></p>
 
-More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md fore more details:
+More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md for more details:
 ```
 * * * * * TZ=UTC /usr/local/bin/sanoid --cron
 ```
 
-`Note`: Using UTC as timezone is recommend to prevent problems with daylight saving times
+`Note`: Using UTC as timezone is recommended to prevent problems with daylight saving times
 
 And its /etc/sanoid/sanoid.conf might look something like this:
 
@@ -95,7 +95,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --verbose
 
@@ -103,7 +103,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
 
 + --readonly
 
@@ -125,7 +125,7 @@ Will be executed before the snapshot(s) of a single dataset are taken. The follo
 | -----------------  | -----------                                                                                                                                          |
 | `SANOID_SCRIPT`    | The type of script being executed, one of `pre`, `post`, or `prune`.  Allows for one script to be used for multiple tasks                            |
 | `SANOID_TARGET`    | **DEPRECATED** The dataset about to be snapshot (only the first dataset will be provided)                                                            |
-| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshoted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
+| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshotted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
 | `SANOID_SNAPNAME`  | **DEPRECATED** The name of the snapshot that will be taken (only the first name will be provided, does not include the dataset name)                 |
 | `SANOID_SNAPNAMES` | Comma separated list of all snapshot names that will be taken (does not include the dataset name)                                                    |
 | `SANOID_TYPES`     | Comma separated list of all snapshot types to be taken (yearly, monthly, weekly, daily, hourly, frequently)                                          |
@@ -232,7 +232,7 @@ syncoid root@remotehost:data/images/vm backup/images/vm
 Which would pull-replicate the filesystem from the remote host to the local system over an SSH tunnel.
 
 Syncoid supports recursive replication (replication of a dataset and all its child datasets) and uses mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
-If ZFS supports resumeable send/receive streams on both the source and target those will be enabled as default.
+If ZFS supports resumable send/receive streams on both the source and target those will be enabled as default.
 
 As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
 
@@ -286,7 +286,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --compress <compression type>
 
-	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Compression method to use for network transfer. Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -294,7 +294,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --target-bwlimit <limit t|g|m|k>
 
-	This is the bandwidth limit in bytes (kbytes, mbytesm etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
+	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
 
 + --no-command-checks
 
@@ -334,15 +334,15 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --no-resume
 
-	This argument tells syncoid to not use resumeable zfs send/receive streams.
+	This argument tells syncoid to not use resumable zfs send/receive streams.
 
 + --force-delete
 
-	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks.
+	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks. Also removes conflicting snapshots if the replication would fail because of a snapshot which has the same name between source and target but different contents.
 
 + --no-clone-handling
 
-	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+	This argument tells syncoid to not recreate clones on the target on initial sync, and do a normal replication instead.
 
 + --dumpsnaps
 
@@ -370,11 +370,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
 
 + --help
 

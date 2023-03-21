@@ -34,7 +34,7 @@ function checkEnvironment {
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "you should be running this test in a"
         echo "dedicated vm, as it will mess with your system!"
-        echo "Are you sure you wan't to continue? (y)"
+        echo "Are you sure you want to continue? (y)"
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         set -x
 
