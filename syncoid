@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size)
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1729,6 +1729,7 @@ sub getbookmarks() {
 	# as though each were an entirely separate get command.
 
 	my $lastguid;
+	my %creationtimes=();
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
@@ -1745,7 +1746,24 @@ sub getbookmarks() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation . "000";
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# bookmarks in the same second are possible. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for bookmarks with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
 		}
 	}
 
