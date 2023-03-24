@@ -4,16 +4,26 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
+$::VERSION = '2.1.0';
 
 use strict;
 use warnings;
+use Getopt::Long qw(:config auto_version auto_help);
+use Pod::Usage;
 
 my $zfs = 'zfs';
-my %args = getargs(@ARGV);
+my %args = ('path' => '');
+GetOptions(\%args, "path=s") or pod2usage(2);
 
-my $progversion = '1.4.7';
-
-if ($args{'version'}) { print "$progversion\n"; exit 0; }
+if ($args{'path'} eq '') {
+	if (scalar(@ARGV) < 1) {
+		warn "file path missing!\n";
+		pod2usage(2);
+		exit 127;
+	} else {
+		$args{'path'} = $ARGV[0];
+	}
+}
 
 my $dataset = getdataset($args{'path'});
 
@@ -136,62 +146,21 @@ sub getdataset {
 	return $bestmatch;
 }
 
-sub getargs {
-	my @args = @_;
-	my %args;
+__END__
 
-	my %novaluearg;
-	my %validarg;
-	push my @validargs, ('debug','version');
-	foreach my $item (@validargs) { $validarg{$item} = 1; }
-	push my @novalueargs, ('debug','version');
-	foreach my $item (@novalueargs) { $novaluearg{$item} = 1; }
+=head1 NAME
 
-	while (my $rawarg = shift(@args)) {
-		my $arg = $rawarg;
-		my $argvalue;
-		if ($rawarg =~ /=/) {
-			# user specified the value for a CLI argument with =
-			# instead of with blank space. separate appropriately.
-			$argvalue = $arg;
-			$arg =~ s/=.*$//;
-			$argvalue =~ s/^.*=//;
-		}
-		if ($rawarg =~ /^--/) {
-			# doubledash arg
-			$arg =~ s/^--//;
-			if (! $validarg{$arg}) { die "ERROR: don't understand argument $rawarg.\n"; }
-			if ($novaluearg{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} elsif ($arg =~ /^-/) {
-			# singledash arg
-			$arg =~ s/^-//;
-			if (! $validarg{$arg}) { die "ERROR: don't understand argument $rawarg.\n"; }
-			if ($novaluearg{$arg}) {
-				$args{$arg} = 1;
-			} else {
-				# if this CLI arg takes a user-specified value and
-				# we don't already have it, then the user must have
-				# specified with a space, so pull in the next value
-				# from the array as this value rather than as the
-				# next argument.
-				if ($argvalue eq '') { $argvalue = shift(@args); }
-				$args{$arg} = $argvalue;
-			}
-		} else {
-			# bare arg
-			$args{'path'} = $arg;
-		}
-	}
+findoid - ZFS file version listing tool
 
-	return %args;
-}
+=head1 SYNOPSIS
+
+ findoid [options] FILE
+
+ FILE                	local path to file for version listing
+
+Options:
+
+  --path=FILE         	alternative to specify file path to list versions for
+
+  --help                Prints this helptext
+  --version             Prints the version number
