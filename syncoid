@@ -890,8 +890,14 @@ sub syncdataset {
 	}
 
 	if (defined $args{'delete-target-snapshots'}) {
-		my $snaps = join ',', grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
-		if ($snaps ne '') {
+		# Find the snapshots that exist on the target, filter with
+		# those that exist on the source. Remaining are the snapshots
+		# that are only on the target. Then sort by creation date, as
+		# to remove the oldest snapshots first.
+		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		while (@to_delete) {
+			# Create batch of snapshots to remove
+			my $snaps = join ',', splice(@to_delete, 0, 50);
 			my $command;
 			if ($targethost ne '') {
 				$command = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps");
