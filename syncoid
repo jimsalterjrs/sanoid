@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size, "no-skip-clone") 
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size, "no-full-clone") 
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -184,12 +184,15 @@ if (!defined $args{'recursive'}) {
 
 			if ($found == 0) {
 				# clone source is not replicated, do a full replication
-				if (defined $args{'no-skip-clone'}) {
-					# In case a clone is missing because its transfer was interrupted
-					# we dont want a full clone. We want to be able to finish the
+				if (defined $args{'no-full-clone'}) {
+					# In case a clone origin is missing because its transfer was interrupted
+					# we may not want a full clone. We want to be able to finish the
 					# interrupted transfer and then do the clone.
-					# Also, it is unclear why a clone origin could be missing
-					# for a good reason. 
+					# Example worst case scenario: 
+					# A 1TB dataset has 500 identical clones. Overall it uses just 1 TB storage space.
+					# Assume the recursive transfer is started and the origin dataset transfer 
+					# ends up failing. The recursive transfer proceeeds to next and because origin
+					# is missing, each clone becomes a full clone and we end up trying to transfer 500TB !
 					print("SKIPPING: $dataset because origin clone is missing. Retry running syncoid.\n");
 					next;
 				}
@@ -2027,5 +2030,6 @@ Options:
   --no-resume           Don't use the ZFS resume feature if available
   --no-clone-handling   Don't try to recreate clones on target
   --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation
+  --no-full-clone       Don't convert a clone into a full clone if the clone's origin is missing at destination 
 
   --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks (also overwrites conflicting named snapshots)
