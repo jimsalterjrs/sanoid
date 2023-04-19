@@ -25,7 +25,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size) 
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size, "no-skip-clone") 
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -184,6 +184,15 @@ if (!defined $args{'recursive'}) {
 
 			if ($found == 0) {
 				# clone source is not replicated, do a full replication
+				if (defined $args{'no-skip-clone'}) {
+					# In case a clone is missing because its transfer was interrupted
+					# we dont want a full clone. We want to be able to finish the
+					# interrupted transfer and then do the clone.
+					# Also, it is unclear why a clone origin could be missing
+					# for a good reason. 
+					print("SKIPPING: $dataset because origin clone is missing. Retry running syncoid.\n");
+					next;
+				}
 				$origin = undef;
 			} else {
 				# clone source is replicated, defer until all non clones are replicated
