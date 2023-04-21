@@ -183,19 +183,11 @@ if (!defined $args{'recursive'}) {
 			}
 
 			if ($found == 0) {
-				# clone source is not replicated, do a full replication
 				if (defined $args{'no-full-clone'}) {
-					# In case a clone origin is missing because its transfer was interrupted
-					# we may not want a full clone. We want to be able to finish the
-					# interrupted transfer and then do the clone.
-					# Example worst case scenario: 
-					# A 1TB dataset has 500 identical clones. Overall it uses just 1 TB storage space.
-					# Assume the recursive transfer is started and the origin dataset transfer 
-					# ends up failing. The recursive transfer proceeeds to next and because origin
-					# is missing, each clone becomes a full clone and we end up trying to transfer 500TB !
 					print("SKIPPING: $dataset because origin clone is missing. Retry running syncoid.\n");
 					next;
 				}
+				# clone source is not replicated, do a full replication
 				$origin = undef;
 			} else {
 				# clone source is replicated, defer until all non clones are replicated
@@ -503,15 +495,7 @@ sub syncdataset {
 		system($synccmd) == 0 or do {
 			if (defined $origin) {
 				print "INFO: clone creation failed, trying ordinary replication as fallback\n";
-				if (defined $args{'no-full-clone'}) {
-                    # In case a clone origin is missing because its transfer was interrupted                                        
-                    # we may not want a full clone. We want to be able to finish the                                                
-                    # interrupted transfer and then do the clone.                                                                   
-                    # Example worst case scenario:                                                                                  
-                    # A 1TB dataset has 500 identical clones. Overall it uses just 1 TB storage space.                              
-                    # Assume the recursive transfer is started and the origin dataset transfer                                      
-                    # ends up failing. The recursive transfer proceeeds to next and because origin                                  
-					# is missing, each clone becomes a full clone and we end up trying to transfer 500TB !                          
+				if (defined $args{'no-full-clone'}) {                  
 					print("SKIPPING: $synccmd because origin clone is missing. Retry running syncoid.\n");
 					# Fall through to normal error                                                                                  
 				} else {

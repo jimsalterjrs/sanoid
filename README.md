@@ -344,6 +344,18 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to not recreate clones on the target on initial sync, and do a normal replication instead.
 
++ --no-full-clone
+	Only applies to recursive transfer when clone handling is active.
+	In case a clone origin is missing (on destination) because its transfer was interrupted                                        
+    don't switch to a full clone sync.                                                                    
+    Example worst case scenario this may help prevent:                                                                                  
+    A 1TB dataset has 500 identical clones. Overall it uses just 1 TB storage space at the source, because
+	all clone share the storage with origin.                              
+    Assume a recursive transfer is started that needs to send all datasets (origin and 500 clones). 
+	Assume also the origin dataset transfer ends up failing. Without selecting this option, the recursive 
+	transfer proceeds to next recursive dataset, and because origin is missing (receive not completed), 
+	each clone becomes a full clone and we end up trying to transfer 500TB !
+
 + --dumpsnaps
 
 	This prints a list of snapshots during the run.
