@@ -1816,8 +1816,8 @@ sub getsnaps {
 	}
 
 	my $getsnapcmd = $use_fallback
-		? "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped"
-		: "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+		? "$rhost $mysudocmd $zfscmd get -Hpd 1 all $fsescaped"
+		: "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot all $fsescaped";
 
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
@@ -1841,8 +1841,13 @@ sub getsnaps {
 	for my $line (@rawsnaps) {
 		chomp $line;
 		my ($dataset, $property, $value) = split /\t/, $line;
-		my ($fs, $snap) = split /@/, $dataset;
-		if (!snapisincluded($snap)) { next; }
+		die "CRITICAL ERROR: Unexpected line format in $line" unless defined $value;
+
+		my (undef, $snap) = split /@/, $dataset;
+		die "CRITICAL ERROR: Unexpected dataset format in $line" unless $snap;
+
+        if (!snapisincluded($snap)) { next; }
+
 		$snap_data{$snap}{$property} = $value;
 
 		# the accuracy of the creation timestamp is only for a second, but
@@ -1868,6 +1873,7 @@ sub getsnaps {
 	for my $snap (keys %snap_data) {
 		if (!$use_fallback || $snap_data{$snap}{'type'} eq 'snapshot') {
 			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
+			$snaps{$type}{$snap}{'createtxg'} = $snap_data{$snap}{'createtxg'};
 			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
 		}
 	}
