@@ -415,10 +415,10 @@ sub syncdataset {
 	if (!defined($receivetoken)) {
 		# build hashes of the snaps on the source and target filesystems.
 
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
 
 		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
 		}
@@ -1803,13 +1803,11 @@ sub dumphash() {
 	writelog('INFO', Dumper($hash));
 }
 
-sub getsnaps() {
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+sub getsnaps {
+	my ($type,$rhost,$fs,$isroot,$use_fallback,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-
-	my $rhostOriginal = $rhost;
 
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
@@ -1817,7 +1815,10 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+	my $getsnapcmd = $use_fallback
+		? "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped"
+		: "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
 		writelog('DEBUG', "getting list of snapshots on $fs using $getsnapcmd...");
@@ -1827,141 +1828,48 @@ sub getsnaps() {
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
 	close FH or do {
-		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,%snaps);
+		if (!$use_fallback) {
+			writelog('WARN', "snapshot listing failed, trying fallback command");
+			return getsnaps($type, $rhost, $fs, $isroot, 1, %snaps);
+		}
+		die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 	};
 
-	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
-	# as though each were an entirely separate get command.
+	my %snap_data;
+	my %creationtimes;
 
-	my %creationtimes=();
+	for my $line (@rawsnaps) {
+		chomp $line;
+		my ($dataset, $property, $value) = split /\t/, $line;
+		my ($fs, $snap) = split /@/, $dataset;
+		if (!snapisincluded($snap)) { next; }
+		$snap_data{$snap}{$property} = $value;
 
-	foreach my $line (@rawsnaps) {
-		$line =~ /\Q$fs\E\@(\S*)/;
-		my $snapname = $1;
-
-		if (!snapisincluded($snapname)) { next; }
-
-		# only import snap guids from the specified filesystem
-		if ($line =~ /\Q$fs\E\@.*\tguid/) {
-			chomp $line;
-			my $guid = $line;
-			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			$snaps{$type}{$snap}{'guid'}=$guid;
-		}
-		# only import snap creations from the specified filesystem
-		elsif ($line =~ /\Q$fs\E\@.*\tcreation/) {
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
-
-			# the accuracy of the creation timestamp is only for a second, but
-			# snapshots in the same second are highly likely. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for snapshot with the same creation timestamp
+		# the accuracy of the creation timestamp is only for a second, but
+		# snapshots in the same second are highly likely. The list command
+		# has an ordered output so we append another three digit running number
+		# to the creation timestamp and make sure those are ordered correctly
+		# for snapshot with the same creation timestamp
+		if ($property eq 'creation') {
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				$creationsuffix = sprintf("%s%03d", $value, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-
-			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			$snap_data{$snap}{'creation'} = $creationsuffix;
 		}
 	}
 
-	return %snaps;
-}
-
-sub getsnapsfallback() {
-	# fallback (solaris for example doesn't support the -t option)
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
-	my $mysudocmd;
-	my $fsescaped = escapeshellparam($fs);
-	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-
-	if ($rhost ne '') {
-		$rhost = "$sshcmd $rhost";
-		# double escaping needed
-		$fsescaped = escapeshellparam($fsescaped);
-	}
-
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
-	writelog('WARN', "snapshot listing failed, trying fallback command");
-	writelog('DEBUG', "FALLBACK, getting list of snapshots on $fs using $getsnapcmd...");
-	open FH, $getsnapcmd;
-	my @rawsnaps = <FH>;
-	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
-
-	my %creationtimes=();
-
-	my $state = 0;
-	foreach my $line (@rawsnaps) {
-		if ($state < 0) {
-			$state++;
-			next;
+	for my $snap (keys %snap_data) {
+		if (!$use_fallback || $snap_data{$snap}{'type'} eq 'snapshot') {
+			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
+			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
 		}
-
-		if ($state eq 0) {
-			if ($line !~ /\Q$fs\E\@.*\ttype\s*snapshot/) {
-				# skip non snapshot type object
-				$state = -2;
-				next;
-			}
-		} elsif ($state eq 1) {
-			if ($line !~ /\Q$fs\E\@.*\tguid/) {
-				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
-			}
-
-			chomp $line;
-			my $guid = $line;
-			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
-			$snaps{$type}{$snap}{'guid'}=$guid;
-		} elsif ($state eq 2) {
-			if ($line !~ /\Q$fs\E\@.*\tcreation/) {
-				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
-			}
-
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
-
-			# the accuracy of the creation timestamp is only for a second, but
-			# snapshots in the same second are highly likely. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for snapshot with the same creation timestamp
-			my $counter = 0;
-			my $creationsuffix;
-			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
-				if (!defined $creationtimes{$creationsuffix}) {
-					$creationtimes{$creationsuffix} = 1;
-					last;
-				}
-				$counter += 1;
-			}
-
-			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
-			$state = -1;
-		}
-
-		$state++;
 	}
 
 	return %snaps;
