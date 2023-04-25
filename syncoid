@@ -438,7 +438,7 @@ sub syncdataset {
 			# Don't send the sync snap if it's filtered out by --exclude-snaps or
 			# --include-snaps
 			if (!snapisincluded($newsyncsnap)) {
-				$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+				$newsyncsnap = getnewestsnapshot(\%snaps);
 				if ($newsyncsnap eq 0) {
 					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 					if ($exitcode < 1) { $exitcode = 1; }
@@ -447,7 +447,7 @@ sub syncdataset {
 			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
-			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+			$newsyncsnap = getnewestsnapshot(\%snaps);
 			if ($newsyncsnap eq 0) {
 				writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 				if ($exitcode < 1) { $exitcode = 1; }
@@ -584,8 +584,7 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my $bookmark = 0;
-		my $bookmarkcreation = 0;
+		my %bookmark = ();
 
 		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
@@ -593,19 +592,18 @@ sub syncdataset {
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
 			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
+			foreach my $snap ( sort { sortsnapshots(\%snaps, $b, $a) } keys %{ $snaps{'target'} }) {
 				my $guid = $snaps{'target'}{$snap}{'guid'};
 
 				if (defined $bookmarks{$guid}) {
 					# found a match
-					$bookmark = $bookmarks{$guid}{'name'};
-					$bookmarkcreation = $bookmarks{$guid}{'creation'};
+					%bookmark = %{ $bookmarks{$guid} };
 					$matchingsnap = $snap;
 					last;
 				}
 			}
 
-			if (! $bookmark) {
+			if (! %bookmark) {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
 					writelog('INFO', "Removing $targetfs because no matching snapshots were found");
@@ -678,15 +676,18 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if ($bookmark) {
-				my $bookmarkescaped = escapeshellparam($bookmark);
+			if (%bookmark) {
 
 				if (!defined $args{'no-stream'}) {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
-					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
-						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
+					foreach my $snap ( sort { sortsnapshots(\%snaps, $a, $b) } keys %{ $snaps{'source'} }) {
+						my $comparisonkey = 'creation';
+						if (defined $snaps{'source'}{$snap}{'createtxg'} && defined $bookmark{'createtxg'}) {
+							$comparisonkey = 'createtxg';
+						}
+						if ($snaps{'source'}{$snap}{$comparisonkey} >= $bookmark{$comparisonkey}) {
 							$nextsnapshot = $snap;
 							last;
 						}
@@ -694,13 +695,13 @@ sub syncdataset {
 				}
 
 				if ($nextsnapshot) {
-					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $nextsnapshot);
+					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $nextsnapshot);
 
 					$exit == 0 or do {
 						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							writelog('WARN', "resetting partially receive state");
 							resetreceivestate($targethost,$targetfs,$targetisroot);
-							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $nextsnapshot);
+							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $nextsnapshot);
 							$ret == 0 or do {
 								if ($exitcode < 2) { $exitcode = 2; }
 								return 0;
@@ -714,13 +715,13 @@ sub syncdataset {
 					$matchingsnap = $nextsnapshot;
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
-					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $newsyncsnap);
+					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $newsyncsnap);
 
 					$exit == 0 or do {
 						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							writelog('WARN', "resetting partially receive state");
 							resetreceivestate($targethost,$targetfs,$targetisroot);
-							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $newsyncsnap);
+							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $newsyncsnap);
 							$ret == 0 or do {
 								if ($exitcode < 2) { $exitcode = 2; }
 								return 0;
@@ -735,7 +736,7 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!$bookmark || $nextsnapshot) {
+			if (!%bookmark || $nextsnapshot) {
 				if ($matchingsnap eq $newsyncsnap) {
 					# edge case: bookmark replication used the latest snapshot
 					return 0;
@@ -1902,7 +1903,7 @@ sub getbookmarks() {
 	}
 
 	my $error = 0;
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark all $fsescaped 2>&1 |";
 	writelog('DEBUG', "getting list of bookmarks on $fs using $getbookmarkcmd...");
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
@@ -1917,46 +1918,44 @@ sub getbookmarks() {
 		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
 	}
 
-	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
-	# as though each were an entirely separate get command.
+	my %bookmark_data;
+	my %creationtimes;
 
-	my $lastguid;
-	my %creationtimes=();
+	for my $line (@rawbookmarks) {
+		chomp $line;
+		my ($dataset, $property, $value) = split /\t/, $line;
+		die "CRITICAL ERROR: Unexpected line format in $line" unless defined $value;
 
-	foreach my $line (@rawbookmarks) {
-		# only import bookmark guids, creation from the specified filesystem
-		if ($line =~ /\Q$fs\E\#.*\tguid/) {
-			chomp $line;
-			$lastguid = $line;
-			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $bookmark = $line;
-			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
-			$bookmarks{$lastguid}{'name'}=$bookmark;
-		} elsif ($line =~ /\Q$fs\E\#.*\tcreation/) {
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $bookmark = $line;
-			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
+		my (undef, $bookmark) = split /#/, $dataset;
+		die "CRITICAL ERROR: Unexpected dataset format in $line" unless $bookmark;
 
-			# the accuracy of the creation timestamp is only for a second, but
-			# bookmarks in the same second are possible. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for bookmarks with the same creation timestamp
+		$bookmark_data{$bookmark}{$property} = $value;
+
+		# the accuracy of the creation timestamp is only for a second, but
+		# bookmarks in the same second are possible. The list command
+		# has an ordered output so we append another three digit running number
+		# to the creation timestamp and make sure those are ordered correctly
+		# for bookmarks with the same creation timestamp
+		if ($property eq 'creation') {
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				$creationsuffix = sprintf("%s%03d", $value, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-
-			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
+			$bookmark_data{$bookmark}{'creation'} = $creationsuffix;
 		}
+	}
+
+	for my $bookmark (keys %bookmark_data) {
+		my $guid = $bookmark_data{$bookmark}{'guid'};
+		$bookmarks{$guid}{'name'} = $bookmark;
+		$bookmarks{$guid}{'creation'} = $bookmark_data{$bookmark}{'creation'};
+		$bookmarks{$guid}{'createtxg'} = $bookmark_data{$bookmark}{'createtxg'};
 	}
 
 	return %bookmarks;
