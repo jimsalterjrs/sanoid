@@ -25,7 +25,8 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
-                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size)
+                   "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
+                   "delete-target-snapshots")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -97,7 +98,7 @@ my $pscmd = 'ps';
 my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
 my $sudocmd = 'sudo';
-my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
+my $mbufferoptions = "-q -s 128k -m $mbuffer_size";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
 # being present on remote machines.
 my $checkcmd = 'command -v';
@@ -922,6 +923,29 @@ sub syncdataset {
 			# prune obsolete sync snaps on source and target (only if this run created ones).
 			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+		}
+	}
+
+	if (defined $args{'delete-target-snapshots'}) {
+		# Find the snapshots that exist on the target, filter with
+		# those that exist on the source. Remaining are the snapshots
+		# that are only on the target. Then sort by creation date, as
+		# to remove the oldest snapshots first.
+		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		while (@to_delete) {
+			# Create batch of snapshots to remove
+			my $snaps = join ',', splice(@to_delete, 0, 50);
+			my $command;
+			if ($targethost ne '') {
+				$command = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps");
+			} else {
+				$command = "$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps";
+			}
+			if ($debug) { print "$command\n"; }
+			my ($stdout, $stderr, $result) = capture { system $command; };
+			if ($result != 0 && !$quiet) {
+				warn "$command failed: $stderr";
+			}
 		}
 	}
 
@@ -1766,6 +1790,7 @@ sub getbookmarks() {
 	# as though each were an entirely separate get command.
 
 	my $lastguid;
+	my %creationtimes=();
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
@@ -1782,7 +1807,24 @@ sub getbookmarks() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation . "000";
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# bookmarks in the same second are possible. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for bookmarks with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
 		}
 	}
 
@@ -2037,6 +2079,7 @@ Options:
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
+  --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...
