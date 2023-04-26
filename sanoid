@@ -30,7 +30,7 @@ GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
-if (keys %args < 2) {
+if (keys %args < 4) {
 	$args{'cron'} = 1;
 	$args{'verbose'} = 1;
 }
