@@ -98,7 +98,7 @@ my $pscmd = 'ps';
 my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
 my $sudocmd = 'sudo';
-my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
+my $mbufferoptions = "-q -s 128k -m $mbuffer_size";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
 # being present on remote machines.
 my $checkcmd = 'command -v';
