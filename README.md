@@ -274,7 +274,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --identifier=
 
-	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
+	Adds the given identifier to the snapshot and hold name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
 
 + -r --recursive
 
@@ -315,6 +315,9 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --create-bookmark
 
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
+
++ --use-hold
+	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next succesful replication. Setting a hold prevents the snapshots from being destroyed. The hold name incldues the identifier if set. This allows for separate holds in case of replication to multiple targets.
 
 + --preserve-recordsize
 

@@ -24,7 +24,7 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots")
                    or pod2usage(2);
@@ -362,6 +362,7 @@ sub syncdataset {
 	}
 
 	my $newsyncsnap;
+	my $matchingsnap;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -609,7 +610,7 @@ sub syncdataset {
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
 
-		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
@@ -852,6 +853,42 @@ sub syncdataset {
 
 	$replicationCount++;
 
+	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
+	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
+	if (defined $args{'use-hold'}) {
+		my $holdcmd;
+		my $holdreleasecmd;
+		my $hostid = hostname();
+		my $matchingsnapescaped = escapeshellparam($matchingsnap);
+		my $holdname = "syncoid\_$identifier$hostid";
+		if ($sourcehost ne '') {
+			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped";
+			$holdreleasecmd = "$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped";
+		}
+		if ($debug) { print "DEBUG: Set new hold on source: $holdcmd\n"; }
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on source: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+		if ($targethost ne '') {
+			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped";				$holdreleasecmd = "$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped";
+		}
+		if ($debug) { print "DEBUG: Set new hold on target: $holdcmd\n"; }
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on target: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+	}
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
 			my $bookmarkcmd;
@@ -2039,6 +2076,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
   --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
