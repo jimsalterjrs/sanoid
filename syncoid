@@ -24,9 +24,9 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "insecure-direct-connection=s")
+                   "delete-target-snapshots", "insecure-direct-connection=s")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -99,7 +99,7 @@ my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
 my $socatcmd = 'socat';
 my $sudocmd = 'sudo';
-my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
+my $mbufferoptions = "-q -s 128k -m $mbuffer_size";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
 # being present on remote machines.
 my $checkcmd = 'command -v';
@@ -403,6 +403,7 @@ sub syncdataset {
 	}
 
 	my $newsyncsnap;
+	my $matchingsnap;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -650,7 +651,7 @@ sub syncdataset {
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
 
-		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
@@ -893,6 +894,42 @@ sub syncdataset {
 
 	$replicationCount++;
 
+	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
+	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
+	if (defined $args{'use-hold'}) {
+		my $holdcmd;
+		my $holdreleasecmd;
+		my $hostid = hostname();
+		my $matchingsnapescaped = escapeshellparam($matchingsnap);
+		my $holdname = "syncoid\_$identifier$hostid";
+		if ($sourcehost ne '') {
+			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped";
+			$holdreleasecmd = "$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped";
+		}
+		if ($debug) { print "DEBUG: Set new hold on source: $holdcmd\n"; }
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on source: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+		if ($targethost ne '') {
+			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped";				$holdreleasecmd = "$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped";
+		}
+		if ($debug) { print "DEBUG: Set new hold on target: $holdcmd\n"; }
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			if ($debug) { print "DEBUG: Release old hold on target: $holdreleasecmd\n"; }
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+	}
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
 			my $bookmarkcmd;
@@ -927,6 +964,29 @@ sub syncdataset {
 			# prune obsolete sync snaps on source and target (only if this run created ones).
 			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+		}
+	}
+
+	if (defined $args{'delete-target-snapshots'}) {
+		# Find the snapshots that exist on the target, filter with
+		# those that exist on the source. Remaining are the snapshots
+		# that are only on the target. Then sort by creation date, as
+		# to remove the oldest snapshots first.
+		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		while (@to_delete) {
+			# Create batch of snapshots to remove
+			my $snaps = join ',', splice(@to_delete, 0, 50);
+			my $command;
+			if ($targethost ne '') {
+				$command = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps");
+			} else {
+				$command = "$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps";
+			}
+			if ($debug) { print "$command\n"; }
+			my ($stdout, $stderr, $result) = capture { system $command; };
+			if ($result != 0 && !$quiet) {
+				warn "$command failed: $stderr";
+			}
 		}
 	}
 
@@ -1805,6 +1865,7 @@ sub getbookmarks() {
 	# as though each were an entirely separate get command.
 
 	my $lastguid;
+	my %creationtimes=();
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
@@ -1821,7 +1882,24 @@ sub getbookmarks() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation . "000";
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# bookmarks in the same second are possible. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for bookmarks with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
 		}
 	}
 
@@ -2073,8 +2151,10 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
+  --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --sendoptions=OPTIONS Use advanced options for zfs send (the arguments are filtered as needed), e.g. syncoid --sendoptions="Lc e" sets zfs send -L -c -e ...
   --recvoptions=OPTIONS Use advanced options for zfs receive (the arguments are filtered as needed), e.g. syncoid --recvoptions="ux recordsize o compression=lz4" sets zfs receive -u -x recordsize -o compression=lz4 ...

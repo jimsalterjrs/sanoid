@@ -45,6 +45,9 @@ wait
 sleep 1
 
 ../../../syncoid --debug --compress=none --no-resume "${POOL_NAME}"/src "${POOL_NAME}"/dst | grep "reset partial receive state of syncoid"
+
+sleep 1
+
 ../../../syncoid --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
 exit $?
