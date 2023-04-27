@@ -26,7 +26,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "delete-target-snapshots")
+                   "delete-target-snapshots", "insecure-direct-connection=s")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -97,6 +97,7 @@ my $pscmd = 'ps';
 
 my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
+my $socatcmd = 'socat';
 my $sudocmd = 'sudo';
 my $mbufferoptions = "-q -s 128k -m $mbuffer_size";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
@@ -136,6 +137,46 @@ my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
 my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
 my $targetsudocmd = $targetisroot ? '' : $sudocmd;
+
+if (!defined $sourcehost) { $sourcehost = ''; }
+if (!defined $targethost) { $targethost = ''; }
+
+# handle insecure direct connection arguments
+my $directconnect = "";
+my $directlisten = "";
+my $directtimeout = 60;
+my $directmbuffer = 0;
+
+if (length $args{'insecure-direct-connection'}) {
+	if ($sourcehost ne '' && $targethost ne '') {
+		print("CRITICAL: relaying between remote hosts is not supported with insecure direct connection!\n");
+		pod2usage(2);
+		exit 127;
+	}
+
+	my @parts = split(',', $args{'insecure-direct-connection'});
+	if (scalar @parts > 4) {
+		print("CRITICAL: invalid insecure-direct-connection argument!\n");
+		pod2usage(2);
+		exit 127;
+	} elsif (scalar @parts >= 2) {
+		$directconnect = $parts[0];
+		$directlisten = $parts[1];
+	} else {
+		$directconnect = $args{'insecure-direct-connection'};
+		$directlisten = $args{'insecure-direct-connection'};
+	}
+
+	if (scalar @parts == 3) {
+		$directtimeout = $parts[2];
+	}
+
+	if (scalar @parts == 4) {
+		if ($parts[3] eq "mbuffer") {
+			$directmbuffer = 1;
+		}
+	}
+}
 
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
@@ -1046,9 +1087,6 @@ sub checkcommands {
 		return %avail;
 	}
 
-	if (!defined $sourcehost) { $sourcehost = ''; }
-	if (!defined $targethost) { $targethost = ''; }
-
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; } else { $targetssh = ''; }
 
@@ -1114,6 +1152,22 @@ sub checkcommands {
 		$avail{'compress'} = 0;
 	}
 
+	if (length $args{'insecure-direct-connection'}) {
+		if ($debug) { print "DEBUG: checking availability of $socatcmd on source...\n"; }
+		my $socatAvailable = `$sourcessh $checkcmd $socatcmd 2>/dev/null`;
+		if ($socatAvailable eq '') {
+			die "CRIT: $socatcmd is needed on source for insecure direct connection!\n";
+		}
+
+		if (!$directmbuffer) {
+			if ($debug) { print "DEBUG: checking availability of busybox (for nc) on target...\n"; }
+			my $busyboxAvailable = `$targetssh $checkcmd busybox 2>/dev/null`;
+			if ($busyboxAvailable eq '') {
+				die "CRIT: busybox is needed on target for insecure direct connection!\n";
+			}
+		}
+	}
+
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on source...\n"; }
 	$avail{'sourcembuffer'} = `$sourcessh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
@@ -1126,6 +1180,9 @@ sub checkcommands {
 	if ($debug) { print "DEBUG: checking availability of $mbuffercmd on target...\n"; }
 	$avail{'targetmbuffer'} = `$targetssh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
+		if ($directmbuffer) {
+			die "CRIT: $mbuffercmd is needed on target for insecure direct connection!\n";
+		}
 		if (!$quiet) { print "WARN: $mbuffercmd not available on target $t - sync will continue without target buffering.\n"; }
 		$avail{'targetmbuffer'} = 0;
 	} else {
@@ -1357,10 +1414,19 @@ sub buildsynccmd {
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
+		if (length $directconnect) {
+			$synccmd .= " $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1 |";
+		}
 		$synccmd .= " $sshcmd $targethost ";
 
 		my $remotecmd = "";
-		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($directmbuffer) {
+			$remotecmd .= " $mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
+		} elsif (length $directlisten) {
+			$remotecmd .= " busybox nc -l " . $directlisten . " -w $directtimeout |";
+		}
+
+		if ($avail{'targetmbuffer'} && !$directmbuffer) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
 		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
 		$remotecmd .= " $recvcmd";
 
@@ -1372,10 +1438,19 @@ sub buildsynccmd {
 		my $remotecmd = $sendcmd;
 		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
 		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		if (length $directconnect) {
+			$remotecmd .= " | $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1";
+		}
 
 		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
 		$synccmd .= " | ";
-		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+		if ($directmbuffer) {
+			$synccmd .= "$mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions | ";
+		} elsif (length $directlisten) {
+			$synccmd .= " busybox nc -l " . $directlisten . " -w $directtimeout | ";
+		}
+
+		if ($avail{'targetmbuffer'} && !$directmbuffer) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
@@ -2088,6 +2163,7 @@ Options:
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+  --insecure-direct-connection=IP:PORT[,IP:PORT]  WARNING: DATA IS NOT ENCRYPTED. First address pair is for connecting to the target and the second for listening at the target
 
   --help                Prints this helptext
   --version             Prints the version number
