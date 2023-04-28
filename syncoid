@@ -862,9 +862,9 @@ sub syncdataset {
 	if (defined $args{'delete-target-snapshots'}) {
 		# Find the snapshots that exist on the target, filter with
 		# those that exist on the source. Remaining are the snapshots
-		# that are only on the target. Then sort by creation date, as
-		# to remove the oldest snapshots first.
-		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		# that are only on the target. Then sort to remove the oldest
+		# snapshots first.
+		my @to_delete = sort { sortsnapshots(\%snaps, $a, $b) } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
 			# Create batch of snapshots to remove
 			my $snaps = join ',', splice(@to_delete, 0, 50);
@@ -1480,9 +1480,17 @@ sub readablebytes {
 	return $disp;
 }
 
+sub sortsnapshots {
+	my ($snaps, $left, $right) = @_;
+	if (defined $snaps->{'source'}{$left}{'createtxg'} && defined $snaps->{'source'}{$right}{'createtxg'}) {
+		return $snaps->{'source'}{$left}{'createtxg'} <=> $snaps->{'source'}{$right}{'createtxg'};
+	}
+	return $snaps->{'source'}{$left}{'creation'} <=> $snaps->{'source'}{$right}{'creation'};
+}
+
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps, $a, $b) } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -1496,7 +1504,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		writelog('INFO', "NEWEST SNAPSHOT: $snap");
 		return $snap;
@@ -1675,7 +1683,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
