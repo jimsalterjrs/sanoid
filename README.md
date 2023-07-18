@@ -323,6 +323,10 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to set the recordsize on the target before writing any data to it matching the one set on the replication src. This only applies to initial sends.
 
++ --preserve-properties
+
+	This argument tells syncoid to get all locally set dataset properties from the source and apply all supported ones on the target before writing any data. It's similar to the '-p' flag for zfs send but also works for encrypted datasets in non raw sends. This only applies to initial sends.
+
 + --delete-target-snapshots
 
 	With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
