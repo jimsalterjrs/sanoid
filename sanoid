@@ -905,6 +905,8 @@ sub init {
 				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
 				$ini{$section}{$key} = $value->[0];
 			}
+			# trim
+			$ini{$section}{$key} =~ s/^\s+|\s+$//g;
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
