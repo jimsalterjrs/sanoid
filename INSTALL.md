@@ -160,7 +160,7 @@ Now, proceed to configure [**Sanoid**](#configuration)
 Install prerequisite software:
 
 ```bash
-pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop
+pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop sanoid
 ```
 
 **Additional notes:**
