@@ -391,7 +391,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --debug
 
-	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a syncoid run, and is normally not needed.
 
 + --help
 
