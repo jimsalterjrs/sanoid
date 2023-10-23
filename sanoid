@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.2.0';
+$::VERSION = '2.2.1';
 my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
@@ -33,6 +33,14 @@ GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
 if (keys %args < 4) {
 	$args{'cron'} = 1;
 	$args{'verbose'} = 1;
+}
+my $no_need_for_cache_update = 0;
+# Do not update the snapshot cache file if _only_ "--monitor-*" action commands are given (ignore "--verbose", "--configdir" etc)
+if (($args{'monitor-snapshots'} || $args{'monitor-health'} || $args{'monitor-capacity'}) && ! ($args{'cron'} || $args{'force-update'} || $args{'take-snapshots'} || $args{'prune-snapshots'} || $args{'force-prune'})) {
+	# The command combination above must not assert true for any command that takes or prunes snapshots
+	# As long as no snapshots are taken, no conflict with the $forcecacheupdate variable below should occur
+	$no_need_for_cache_update = 1;
+	if ($args{'debug'}) { print "DEBUG: command combo means that the cache file (provided it exists) will not be updated regardless of age.\n"; }
 }
 
 # for compatibility reasons, older versions used hardcoded command paths
@@ -813,31 +821,42 @@ sub getsnaps {
 	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
 
 	if ( $forcecacheupdate || ! -f $cache || (time() - $mtime) > $cacheTTL ) {
-		if (checklock('sanoid_cacheupdate')) {
-			writelock('sanoid_cacheupdate');
-			if ($args{'verbose'}) {
-				if ($args{'force-update'}) {
-					print "INFO: cache forcibly expired - updating from zfs list.\n";
-				} else {
-					print "INFO: cache expired - updating from zfs list.\n";
-				}
-			}
-			open FH, "$zfs get -Hrpt snapshot creation |";
-			@rawsnaps = <FH>;
-			close FH;
-
-			open FH, "> $cache" or die 'Could not write to $cache!\n';
-			print FH @rawsnaps;
-			close FH;
-			removelock('sanoid_cacheupdate');
-		} else {
-			if ($args{'verbose'}) { print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n"; }
+		if ( -f $cache && ! $forcecacheupdate && $no_need_for_cache_update ) {
+			# Even though $forcecacheupdate and $no_need_for_cache_update should never be true at the same time, let $forcecacheupdate take precedence
+			if ($args{'debug'}) { print "DEBUG: no need to update cache even though it's expired, so don't.\n"; }
 			open FH, "< $cache";
 			@rawsnaps = <FH>;
 			close FH;
+		} else {
+			if (checklock('sanoid_cacheupdate')) {
+				writelock('sanoid_cacheupdate');
+				if ($args{'verbose'}) {
+					if ($args{'force-update'}) {
+						print "INFO: cache forcibly expired - updating from zfs list.\n";
+					} else {
+						print "INFO: cache expired - updating from zfs list.\n";
+					}
+				}
+				open FH, "$zfs get -Hrpt snapshot creation |";
+				@rawsnaps = <FH>;
+				close FH;
+
+				open FH, "> $cache" or die 'Could not write to $cache!\n';
+				print FH @rawsnaps;
+				close FH;
+				removelock('sanoid_cacheupdate');
+			} else {
+				if ($args{'verbose'}) { print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n"; }
+				open FH, "< $cache";
+				@rawsnaps = <FH>;
+				close FH;
+			}
 		}
 	} else {
 		# if ($args{'debug'}) { print "DEBUG: cache not expired (" . (time() - $mtime) . " seconds old with TTL of $cacheTTL): pulling snapshot list from cache.\n"; }
+		if ( $no_need_for_cache_update ) {
+			if ($args{'debug'}) { print "DEBUG: cache has not expired, so will not update it, but wouldn't have even if it had.\n"; }
+		}
 		open FH, "< $cache";
 		@rawsnaps = <FH>;
 		close FH;
