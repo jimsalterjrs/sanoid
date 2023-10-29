@@ -1765,7 +1765,7 @@ sub getsnaps() {
 
 	foreach my $line (@rawsnaps) {
 		# only import snap guids from the specified filesystem
-		if ($line =~ /\Q$fs\E\@.*guid/) {
+		if ($line =~ /\Q$fs\E\@.*\tguid/) {
 			chomp $line;
 			my $guid = $line;
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
@@ -1777,7 +1777,7 @@ sub getsnaps() {
 
 	foreach my $line (@rawsnaps) {
 		# only import snap creations from the specified filesystem
-		if ($line =~ /\Q$fs\E\@.*creation/) {
+		if ($line =~ /\Q$fs\E\@.*\tcreation/) {
 			chomp $line;
 			my $creation = $line;
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
@@ -1837,13 +1837,13 @@ sub getsnapsfallback() {
 		}
 
 		if ($state eq 0) {
-			if ($line !~ /\Q$fs\E\@.*type\s*snapshot/) {
+			if ($line !~ /\Q$fs\E\@.*\ttype\s*snapshot/) {
 				# skip non snapshot type object
 				$state = -2;
 				next;
 			}
 		} elsif ($state eq 1) {
-			if ($line !~ /\Q$fs\E\@.*guid/) {
+			if ($line !~ /\Q$fs\E\@.*\tguid/) {
 				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
 			}
 
@@ -1854,7 +1854,7 @@ sub getsnapsfallback() {
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		} elsif ($state eq 2) {
-			if ($line !~ /\Q$fs\E\@.*creation/) {
+			if ($line !~ /\Q$fs\E\@.*\tcreation/) {
 				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
 			}
 
@@ -1926,14 +1926,14 @@ sub getbookmarks() {
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
-		if ($line =~ /\Q$fs\E\#.*guid/) {
+		if ($line =~ /\Q$fs\E\#.*\tguid/) {
 			chomp $line;
 			$lastguid = $line;
 			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
 			$bookmarks{$lastguid}{'name'}=$bookmark;
-		} elsif ($line =~ /\Q$fs\E\#.*creation/) {
+		} elsif ($line =~ /\Q$fs\E\#.*\tcreation/) {
 			chomp $line;
 			my $creation = $line;
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
