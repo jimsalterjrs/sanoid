@@ -17,6 +17,7 @@ use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 my $pvoptions = "-p -t -e -r -b";
+my $filter_regexp;
 
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
@@ -26,7 +27,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties")
+                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties", "filter=s" => \$filter_regexp)
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -1771,6 +1772,12 @@ sub getsnaps() {
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			if(defined($filter_regexp) and $snap !~ /$filter_regexp/) {
+				if ($debug) {
+					print "DEBUG: skipping snap $snap\n";
+				}
+				next;
+			}
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		}
 	}
@@ -1799,6 +1806,7 @@ sub getsnaps() {
 				}
 				$counter += 1;
 			}
+			next if(defined($filter_regexp) and $snap !~ /$filter_regexp/);
 
 			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
 		}
@@ -1852,6 +1860,7 @@ sub getsnapsfallback() {
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			next if(defined($filter_regexp) and $snap !~ /$filter_regexp/);
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		} elsif ($state eq 2) {
 			if ($line !~ /\Q$fs\E\@.*creation/) {
@@ -1880,6 +1889,7 @@ sub getsnapsfallback() {
 				$counter += 1;
 			}
 
+			next if(defined($filter_regexp) and $snap !~ /$filter_regexp/);
 			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
 			$state = -1;
 		}
@@ -1932,6 +1942,7 @@ sub getbookmarks() {
 			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
+			next if(defined($filter_regexp) and $bookmark !~ /$filter_regexp/);
 			$bookmarks{$lastguid}{'name'}=$bookmark;
 		} elsif ($line =~ /\Q$fs\E\#.*creation/) {
 			chomp $line;
@@ -1956,6 +1967,7 @@ sub getbookmarks() {
 				$counter += 1;
 			}
 
+			next if(defined($filter_regexp) and $bookmark !~ /$filter_regexp/);
 			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
 		}
 	}
