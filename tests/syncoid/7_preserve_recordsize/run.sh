@@ -32,17 +32,17 @@ zfs create -o recordsize=32k "${POOL_NAME}"/src/32
 zfs create -o recordsize=128k "${POOL_NAME}"/src/128
 ../../../syncoid --preserve-recordsize --recursive --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
-zfs get recordsize -t filesystem -r "${POOL_NAME}"/dst
-zfs get volblocksize -t volume -r "${POOL_NAME}"/dst
+zfs get -t filesystem -r recordsize "${POOL_NAME}"/dst
+zfs get -t volume -r volblocksize "${POOL_NAME}"/dst
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/16)" != "16K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/16)" != "16K" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/32)" != "32K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/32)" != "32K" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/128)" != "128K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/128)" != "128K" ]; then
 	exit 1
 fi

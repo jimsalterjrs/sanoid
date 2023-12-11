@@ -1357,9 +1357,9 @@ sub getlocalzfsvalues {
 	if ($debug) { print "DEBUG: getting locally set values of properties on $fs...\n"; }
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	if ($debug) { print "$rhost $mysudocmd $zfscmd get all -s local -H $fsescaped\n"; }
+	if ($debug) { print "$rhost $mysudocmd $zfscmd get -s local -H all $fsescaped\n"; }
 	my ($values, $error, $exit) = capture {
-		system("$rhost $mysudocmd $zfscmd get all -s local -H $fsescaped");
+		system("$rhost $mysudocmd $zfscmd get -s local -H all $fsescaped");
 	};
 
 	my %properties=();
