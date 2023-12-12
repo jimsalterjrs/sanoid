@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.0.3';
+$::VERSION = '2.0.4';
 
 use strict;
 use warnings;
@@ -145,6 +145,7 @@ my %avail = checkcommands();
 
 my %snaps;
 my $exitcode = 0;
+my $errorcount = 0;
 
 ## break here to call replication individually so that we ##
 ## can loop across children separately, for recursive     ##
@@ -155,7 +156,16 @@ if (!defined $args{'recursive'}) {
 	if (defined $args{'exclude-snaps'}) {
 		while ($syncreturn != 2) {
 			$syncreturn = syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+			## abort if we encounter too many errors ... can end up infinitely looping in at least one scenario - if an encryption key is unloaded on the remote side and we're wanting to replicate without -w
+			if ($exitcode == 2) {
+				if ($errorcount < 10) {
+					$errorcount = $errorcount + 1;
+				} else {
+					$syncreturn = 2;
+				}
+			}
 		}
+		$errorcount = 0;
 	} else {
 		syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 	}
