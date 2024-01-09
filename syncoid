@@ -493,7 +493,8 @@ sub syncdataset {
 			foreach my $key (keys %properties) {
 				my $value = $properties{$key};
 				if ($debug) { print "DEBUG: will set $key to $value ...\n"; }
-				$recvoptions .= " -o $key=$value";
+				my $pair = escapeshellparam("$key=$value");
+				$recvoptions .= " -o $pair";
 			}
 		} elsif (defined $args{'preserve-recordsize'}) {
 			my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
