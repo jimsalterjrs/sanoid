@@ -678,7 +678,8 @@ sub syncdataset {
 			}
 
 			if (! $bookmark) {
-				if ($args{'force-delete'}) {
+				# force delete is not possible for the root dataset
+				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
 					if (!$quiet) { print "Removing $targetfs because no matching snapshots were found\n"; }
 
 					my $rcommand = '';
