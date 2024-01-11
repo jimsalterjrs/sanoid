@@ -451,7 +451,7 @@ sub syncdataset {
 		# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 	#my $originaltargetreadonly;
 
-	my $sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+	my $sendoptions = getoptionsline(\@sendoptions, ('L','P','V','R','X','b','c','e','h','p','s','v','w'));
 	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
 
 	# sync 'em up.
@@ -600,7 +600,7 @@ sub syncdataset {
 		# and because this will ony resume the receive to the next
 		# snapshot, do a normal sync after that
 		if (defined($receivetoken)) {
-			$sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
+			$sendoptions = getoptionsline(\@sendoptions, ('P','e','v'));
 			my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -t $receivetoken";
 			my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 			my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
@@ -760,7 +760,7 @@ sub syncdataset {
 				my $pvsize = 0;
 				my $disp_pvsize = "UNKNOWN";
 
-				$sendoptions = getoptionsline(\@sendoptions, ('L','c','e','w'));
+				$sendoptions = getoptionsline(\@sendoptions, ('L','V','c','e','w'));
 				if ($nextsnapshot) {
 					my $nextsnapshotescaped = escapeshellparam($nextsnapshot);
 					my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions -i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$nextsnapshotescaped";
@@ -830,7 +830,7 @@ sub syncdataset {
 					return 0;
 				}
 
-				$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+				$sendoptions = getoptionsline(\@sendoptions, ('L','P','V','R','X','c','e','h','p','s','v','w'));
 				my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $args{'streamarg'} $sourcefsescaped\@$matchingsnapescaped $sourcefsescaped\@$newsyncsnapescaped";
 				my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $receiveextraargs $forcedrecv $targetfsescaped 2>&1";
 				my $pvsize = getsendsize($sourcehost,"$sourcefs\@$matchingsnap","$sourcefs\@$newsyncsnap",$sourceisroot);
@@ -1998,9 +1998,9 @@ sub getsendsize {
 
 	my $sendoptions;
 	if (defined($receivetoken)) {
-		$sendoptions = getoptionsline(\@sendoptions, ('e'));
+		$sendoptions = getoptionsline(\@sendoptions, ('V','e'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('L','V','R','X','b','c','e','h','p','s','w'));
 	}
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nvP $snaps";
 	if ($debug) { print "DEBUG: getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...\n"; }
