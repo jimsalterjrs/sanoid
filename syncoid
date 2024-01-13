@@ -917,7 +917,8 @@ sub runsynccmd {
 		foreach my $key (keys %properties) {
 			my $value = $properties{$key};
 			writelog('DEBUG', "will set $key to $value ...");
-			$recvoptions .= " -o $key=$value";
+			my $pair = escapeshellparam("$key=$value");
+			$recvoptions .= " -o $pair";
 		}
 	} elsif (defined $args{'preserve-recordsize'}) {
 		my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
