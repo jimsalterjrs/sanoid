@@ -29,6 +29,7 @@ zfs create -V 100M -o volblocksize=16k -o primarycache=all "${POOL_NAME}"/src/zv
 zfs create -V 100M -o volblocksize=64k "${POOL_NAME}"/src/zvol64
 zfs create -o recordsize=16k -o primarycache=none "${POOL_NAME}"/src/16
 zfs create -o recordsize=32k -o acltype=posixacl "${POOL_NAME}"/src/32
+zfs set 'net.openoid:var-name'='with whitespace and !"§$%&/()= symbols' "${POOL_NAME}"/src/32
 
 ../../../syncoid --preserve-properties --recursive --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
@@ -62,5 +63,9 @@ if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/32)" != 
 fi
 
 if [ "$(zfs get -H -o value -t filesystem acltype "${POOL_NAME}"/dst/32)" != "posix" ]; then
+	exit 1
+fi
+
+if [ "$(zfs get -H -o value -t filesystem 'net.openoid:var-name' "${POOL_NAME}"/dst/32)" != "with whitespace and !\"§$%&/()= symbols" ]; then
 	exit 1
 fi
