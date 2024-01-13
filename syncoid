@@ -928,7 +928,7 @@ sub runsynccmd {
 	}
 
 	my $sendcmd = "$sourcesudocmd $zfscmd send $sendoptions $sendsource";
-	my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $targetfsescaped";
+	my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $targetfsescaped 2>&1";
 
 	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
 	writelog('INFO', "Sync size: ~$disp_pvsize");
