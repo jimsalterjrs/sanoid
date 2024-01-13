@@ -7,10 +7,10 @@ set -e
 
 . ../../common/lib.sh
 
-POOL_IMAGE="/tmp/syncoid-test-8.zpool"
-MOUNT_TARGET="/tmp/syncoid-test-8.mount"
+POOL_IMAGE="/tmp/syncoid-test-10.zpool"
+MOUNT_TARGET="/tmp/syncoid-test-10.mount"
 POOL_SIZE="100M"
-POOL_NAME="syncoid-test-8"
+POOL_NAME="syncoid-test-10"
 
 truncate -s "${POOL_SIZE}" "${POOL_IMAGE}"
 
@@ -81,7 +81,7 @@ setup_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-sync-snap --exclude-snaps='hourly' "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum 'fb408c21b8540b3c1bd04781b6091d77ff9432defef3303c1a34321b45e8b6a9  -'
+verify_checksum '494b6860415607f1d670e4106a10e1316924ba6cd31b4ddacffe0ad6d30a6339  -'
 clean_snaps
 
 #####
@@ -92,7 +92,7 @@ clean_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-sync-snap --exclude-snaps='hourly' --no-stream "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum 'c9ad1d3e07156847f957509fcd4805edc7d4c91fe955c605ac4335076367d19a  -'
+verify_checksum '0a5072f42180d231cfdd678682972fbbb689140b7f3e996b3c348b7e78d67ea2  -'
 clean_snaps
 
 #####
@@ -103,7 +103,7 @@ clean_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-sync-snap --include-snaps='hourly' "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum 'f2fb62a2b475bec85796dbf4f6c02af5b4ccaca01f9995ef3d0909787213cbde  -'
+verify_checksum 'd32862be4c71c6cde846322a7d006fd5e8edbd3520d3c7b73953492946debb7f  -'
 clean_snaps
 
 #####
@@ -114,7 +114,7 @@ clean_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-sync-snap --include-snaps='hourly' --no-stream "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum '194e60e9d635783f7c7d64e2b0d9f0897c926e69a86ffa2858cf0ca874ffeeb4  -'
+verify_checksum '81ef1a8298006a7ed856430bb7e05e8b85bbff530ca9dd7831f1da782f8aa4c7  -'
 clean_snaps
 
 #####
@@ -126,7 +126,7 @@ clean_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-sync-snap --include-snaps='hourly' --exclude-snaps='3' "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum '55267405e346e64d6f7eed29d62bc9bb9ea0e15c9515103a92ee47a7439a99a2  -'
+verify_checksum '5a9dd92b7d4b8760a1fcad03be843da4f43b915c64caffc1700c0d59a1581239  -'
 clean_snaps
 
 #####
@@ -138,5 +138,5 @@ clean_snaps
 #####
 
 ../../../syncoid --debug --compress=none --no-stream --exclude-snaps='syncoid' "${POOL_NAME}"/src "${POOL_NAME}"/dst
-verify_checksum '47380e1711d08c46fb1691fa4bd65e5551084fd5b961baa2de7f91feff2cb4b8  -'
+verify_checksum '9394fdac44ec72764a4673202552599684c83530a2a724dae5b411aaea082b02  -'
 clean_snaps

@@ -274,7 +274,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --identifier=
 
-	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
+	Adds the given identifier to the snapshot and hold name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
 
 + -r --recursive
 
@@ -316,9 +316,21 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
 
++ --use-hold
+	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next succesful replication. Setting a hold prevents the snapshots from being destroyed. The hold name incldues the identifier if set. This allows for separate holds in case of replication to multiple targets.
+
 + --preserve-recordsize
 
 	This argument tells syncoid to set the recordsize on the target before writing any data to it matching the one set on the replication src. This only applies to initial sends.
+
++ --preserve-properties
+
+	This argument tells syncoid to get all locally set dataset properties from the source and apply all supported ones on the target before writing any data. It's similar to the '-p' flag for zfs send but also works for encrypted datasets in non raw sends. This only applies to initial sends.
+
++ --delete-target-snapshots
+
+	With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
+	Note that snapshot deletion is only done after a successful synchronization. If no new snapshots are found, no synchronization is done and no deletion either.
 
 + --no-clone-rollback
 
@@ -381,6 +393,11 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 + --sshkey
 
 	Use specified identity file as per ssh -i.
+
++ --insecure-direct-connection=IP:PORT[,IP:PORT,[TIMEOUT,[mbuffer]]]
+
+	WARNING: This is an insecure option as the data is not encrypted while being sent over the network. Only use if you trust the complete network path.
+	Use a direct tcp connection (with socat and busybox nc/mbuffer) for the actual zfs send/recv stream. All control commands are still executed via the ssh connection. The first address pair is used for connecting to the target host from the source host and the second pair is for listening on the target host. If the later isn't provided the same as the former is used. This can be used for saturating high throughput connection like >= 10GBe network which isn't easy with the overhead off ssh. It can also be useful for encrypted datasets to lower the cpu usage needed for replication but be aware that metadata is NOT ENCRYPTED in this case. The default timeout is 60 seconds and can be overridden by providing it as third argument. By default busybox nc is used for the listeing tcp socket, if mbuffer is preferred specify its name as fourth argument but be aware that mbuffer listens on all interfaces and uses an optionally provided ip address for access restriction (This option can't be used for relaying between two remote hosts)
 
 + --quiet
 

@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.1.0';
+$::VERSION = '2.2.0';
 
 use strict;
 use warnings;
@@ -24,9 +24,11 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@") or pod2usage(2);
+                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
+                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
+                   or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
 
@@ -106,8 +108,9 @@ my $pscmd = 'ps';
 
 my $pvcmd = 'pv';
 my $mbuffercmd = 'mbuffer';
+my $socatcmd = 'socat';
 my $sudocmd = 'sudo';
-my $mbufferoptions = "-q -s 128k -m $mbuffer_size 2>/dev/null";
+my $mbufferoptions = "-q -s 128k -m $mbuffer_size";
 # currently using POSIX compatible command to check for program existence because we aren't depending on perl
 # being present on remote machines.
 my $checkcmd = 'command -v';
@@ -145,6 +148,46 @@ my ($targethost,$targetfs,$targetisroot) = getssh($rawtargetfs);
 
 my $sourcesudocmd = $sourceisroot ? '' : $sudocmd;
 my $targetsudocmd = $targetisroot ? '' : $sudocmd;
+
+if (!defined $sourcehost) { $sourcehost = ''; }
+if (!defined $targethost) { $targethost = ''; }
+
+# handle insecure direct connection arguments
+my $directconnect = "";
+my $directlisten = "";
+my $directtimeout = 60;
+my $directmbuffer = 0;
+
+if (length $args{'insecure-direct-connection'}) {
+	if ($sourcehost ne '' && $targethost ne '') {
+		print("CRITICAL: relaying between remote hosts is not supported with insecure direct connection!\n");
+		pod2usage(2);
+		exit 127;
+	}
+
+	my @parts = split(',', $args{'insecure-direct-connection'});
+	if (scalar @parts > 4) {
+		print("CRITICAL: invalid insecure-direct-connection argument!\n");
+		pod2usage(2);
+		exit 127;
+	} elsif (scalar @parts >= 2) {
+		$directconnect = $parts[0];
+		$directlisten = $parts[1];
+	} else {
+		$directconnect = $args{'insecure-direct-connection'};
+		$directlisten = $args{'insecure-direct-connection'};
+	}
+
+	if (scalar @parts == 3) {
+		$directtimeout = $parts[2];
+	}
+
+	if (scalar @parts == 4) {
+		if ($parts[3] eq "mbuffer") {
+			$directmbuffer = 1;
+		}
+	}
+}
 
 # figure out whether compression, mbuffering, pv
 # are available on source, target, local machines.
@@ -366,6 +409,7 @@ sub syncdataset {
 	}
 
 	my $newsyncsnap;
+	my $matchingsnap;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -543,7 +587,7 @@ sub syncdataset {
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
 
-		my $matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
@@ -715,7 +759,7 @@ sub syncdataset {
 							return 0;
 						}
 
-						if (!$quiet) { print "WARN: removing existing destination: $existing\n"; }
+						writelog('WARN', "removing existing destination: $existing");
 						my $rcommand = '';
 						my $mysudocmd = '';
 						my $existingescaped = escapeshellparam($existing);
@@ -753,6 +797,42 @@ sub syncdataset {
 
 	$replicationCount++;
 
+	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
+	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
+	if (defined $args{'use-hold'}) {
+		my $holdcmd;
+		my $holdreleasecmd;
+		my $hostid = hostname();
+		my $matchingsnapescaped = escapeshellparam($matchingsnap);
+		my $holdname = "syncoid\_$identifier$hostid";
+		if ($sourcehost ne '') {
+			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped";
+			$holdreleasecmd = "$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped";
+		}
+		writelog('DEBUG', "Set new hold on source: $holdcmd");
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			writelog('DEBUG', "Release old hold on source: $holdreleasecmd");
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+		if ($targethost ne '') {
+			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
+		} else {
+			$holdcmd = "$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped";				$holdreleasecmd = "$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped";
+		}
+		writelog('DEBUG', "Set new hold on target: $holdcmd");
+		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
+		# Do hold release only if matchingsnap exists
+		if ($matchingsnap) {
+			writelog('DEBUG', "Release old hold on target: $holdreleasecmd");
+			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
+		}
+	}
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
 			my $ret = createbookmark($sourcehost, $sourcefs, $newsyncsnap, $newsyncsnap);
@@ -775,6 +855,29 @@ sub syncdataset {
 			# prune obsolete sync snaps on source and target (only if this run created ones).
 			pruneoldsyncsnaps($sourcehost,$sourcefs,$newsyncsnap,$sourceisroot,keys %{ $snaps{'source'}});
 			pruneoldsyncsnaps($targethost,$targetfs,$newsyncsnap,$targetisroot,keys %{ $snaps{'target'}});
+		}
+	}
+
+	if (defined $args{'delete-target-snapshots'}) {
+		# Find the snapshots that exist on the target, filter with
+		# those that exist on the source. Remaining are the snapshots
+		# that are only on the target. Then sort by creation date, as
+		# to remove the oldest snapshots first.
+		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		while (@to_delete) {
+			# Create batch of snapshots to remove
+			my $snaps = join ',', splice(@to_delete, 0, 50);
+			my $command;
+			if ($targethost ne '') {
+				$command = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps");
+			} else {
+				$command = "$targetsudocmd $zfscmd destroy $targetfsescaped\@$snaps";
+			}
+			writelog('DEBUG', "$command");
+			my ($stdout, $stderr, $result) = capture { system $command; };
+			if ($result != 0 && !$quiet) {
+				warn "$command failed: $stderr";
+			}
 		}
 	}
 
@@ -808,7 +911,15 @@ sub runsynccmd {
 	# if no rollbacks are allowed, disable forced receive
 	if (!defined $args{'no-rollback'}) { $recvoptions .= ' -F'; }
 
-	if (defined $args{'preserve-recordsize'}) {
+	if (defined $args{'preserve-properties'}) {
+		my %properties = getlocalzfsvalues($sourcehost,$sourcefs,$sourceisroot);
+
+		foreach my $key (keys %properties) {
+			my $value = $properties{$key};
+			writelog('DEBUG', "will set $key to $value ...");
+			$recvoptions .= " -o $key=$value";
+		}
+	} elsif (defined $args{'preserve-recordsize'}) {
 		my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
 		if ($type eq "filesystem") {
 			my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
@@ -1057,9 +1168,6 @@ sub checkcommands {
 		return %avail;
 	}
 
-	if (!defined $sourcehost) { $sourcehost = ''; }
-	if (!defined $targethost) { $targethost = ''; }
-
 	if ($sourcehost ne '') { $sourcessh = "$sshcmd $sourcehost"; } else { $sourcessh = ''; }
 	if ($targethost ne '') { $targetssh = "$sshcmd $targethost"; } else { $targetssh = ''; }
 
@@ -1125,6 +1233,22 @@ sub checkcommands {
 		$avail{'compress'} = 0;
 	}
 
+	if (length $args{'insecure-direct-connection'}) {
+		writelog('DEBUG', "checking availability of $socatcmd on source...");
+		my $socatAvailable = `$sourcessh $checkcmd $socatcmd 2>/dev/null`;
+		if ($socatAvailable eq '') {
+			die "CRIT: $socatcmd is needed on source for insecure direct connection!\n";
+		}
+
+		if (!$directmbuffer) {
+			writelog('DEBUG', "checking availability of busybox (for nc) on target...");
+			my $busyboxAvailable = `$targetssh $checkcmd busybox 2>/dev/null`;
+			if ($busyboxAvailable eq '') {
+				die "CRIT: busybox is needed on target for insecure direct connection!\n";
+			}
+		}
+	}
+
 	writelog('DEBUG', "checking availability of $mbuffercmd on source...");
 	$avail{'sourcembuffer'} = `$sourcessh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'sourcembuffer'} eq '') {
@@ -1137,6 +1261,9 @@ sub checkcommands {
 	writelog('DEBUG', "checking availability of $mbuffercmd on target...");
 	$avail{'targetmbuffer'} = `$targetssh $checkcmd $mbuffercmd 2>/dev/null`;
 	if ($avail{'targetmbuffer'} eq '') {
+		if ($directmbuffer) {
+			die "CRIT: $mbuffercmd is needed on target for insecure direct connection!\n";
+		}
 		writelog('WARN', "$mbuffercmd not available on target $t - sync will continue without target buffering.");
 		$avail{'targetmbuffer'} = 0;
 	} else {
@@ -1288,6 +1415,55 @@ sub getzfsvalue {
 	return $wantarray ? ($value, $error) : $value;
 }
 
+sub getlocalzfsvalues {
+	my ($rhost,$fs,$isroot) = @_;
+
+	my $fsescaped = escapeshellparam($fs);
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	writelog('DEBUG', "getting locally set values of properties on $fs...");
+	my $mysudocmd;
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+	writelog('DEBUG', "$rhost $mysudocmd $zfscmd get all -s local -H $fsescaped");
+	my ($values, $error, $exit) = capture {
+		system("$rhost $mysudocmd $zfscmd get all -s local -H $fsescaped");
+	};
+
+	my %properties=();
+
+	if ($exit != 0) {
+		warn "WARNING: getlocalzfsvalues failed for $fs: $error";
+		if ($exitcode < 1) { $exitcode = 1; }
+		return %properties;
+	}
+
+	my @blacklist = (
+		"available", "compressratio", "createtxg", "creation", "clones",
+		"defer_destroy", "encryptionroot", "filesystem_count", "keystatus", "guid",
+		"logicalreferenced", "logicalused", "mounted", "objsetid", "origin",
+		"receive_resume_token", "redact_snaps", "referenced", "refcompressratio", "snapshot_count",
+		"type", "used", "usedbychildren", "usedbydataset", "usedbyrefreservation",
+		"usedbysnapshots", "userrefs", "snapshots_changed", "volblocksize", "written",
+		"version", "volsize", "casesensitivity", "normalization", "utf8only"
+	);
+	my %blacklisthash = map {$_ => 1} @blacklist;
+
+	foreach (split(/\n/,$values)) {
+		my @parts = split(/\t/, $_);
+		if (exists $blacklisthash{$parts[1]}) {
+			next;
+		}
+		$properties{$parts[1]} = $parts[2];
+	}
+
+	return %properties;
+}
+
 sub readablebytes {
 	my $bytes = shift;
 	my $disp;
@@ -1367,10 +1543,19 @@ sub buildsynccmd {
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
 		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
+		if (length $directconnect) {
+			$synccmd .= " $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1 |";
+		}
 		$synccmd .= " $sshcmd $targethost ";
 
 		my $remotecmd = "";
-		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($directmbuffer) {
+			$remotecmd .= " $mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
+		} elsif (length $directlisten) {
+			$remotecmd .= " busybox nc -l " . $directlisten . " -w $directtimeout |";
+		}
+
+		if ($avail{'targetmbuffer'} && !$directmbuffer) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
 		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
 		$remotecmd .= " $recvcmd";
 
@@ -1382,10 +1567,19 @@ sub buildsynccmd {
 		my $remotecmd = $sendcmd;
 		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
 		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		if (length $directconnect) {
+			$remotecmd .= " | $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1";
+		}
 
 		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
 		$synccmd .= " | ";
-		if ($avail{'targetmbuffer'}) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+		if ($directmbuffer) {
+			$synccmd .= "$mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions | ";
+		} elsif (length $directlisten) {
+			$synccmd .= " busybox nc -l " . $directlisten . " -w $directtimeout | ";
+		}
+
+		if ($avail{'targetmbuffer'} && !$directmbuffer) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
 		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
@@ -1803,6 +1997,7 @@ sub getbookmarks() {
 	# as though each were an entirely separate get command.
 
 	my $lastguid;
+	my %creationtimes=();
 
 	foreach my $line (@rawbookmarks) {
 		# only import bookmark guids, creation from the specified filesystem
@@ -1819,7 +2014,24 @@ sub getbookmarks() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $bookmark = $line;
 			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
-			$bookmarks{$lastguid}{'creation'}=$creation . "000";
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# bookmarks in the same second are possible. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for bookmarks with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
 		}
 	}
 
@@ -2121,8 +2333,11 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
+  --preserve-properties Preserves locally set dataset properties similiar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
+  --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       DEPRECATED. Equivalent to --exclude-datasets, but will be removed in a future release. Ignored if --exclude-datasets is also provided.
   --exclude-datasets=REGEX Exclude specific datasets which match the given regular expression. Can be specified multiple times
   --exclude-snaps=REGEX Exclude specific snapshots that match the given regular expression. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
@@ -2134,6 +2349,7 @@ Options:
   --sshport=PORT        Connects to remote on a particular port
   --sshcipher|c=CIPHER  Passes CIPHER to ssh to use a particular cipher set
   --sshoption|o=OPTION  Passes OPTION to ssh for remote usage. Can be specified multiple times
+  --insecure-direct-connection=IP:PORT[,IP:PORT]  WARNING: DATA IS NOT ENCRYPTED. First address pair is for connecting to the target and the second for listening at the target
 
   --help                Prints this helptext
   --version             Prints the version number

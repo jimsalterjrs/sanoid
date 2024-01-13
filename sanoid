@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.1.0';
+$::VERSION = '2.2.0';
 my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
@@ -30,7 +30,7 @@ GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
-if (keys %args < 2) {
+if (keys %args < 4) {
 	$args{'cron'} = 1;
 	$args{'verbose'} = 1;
 }
@@ -905,6 +905,8 @@ sub init {
 				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
 				$ini{$section}{$key} = $value->[0];
 			}
+			# trim
+			$ini{$section}{$key} =~ s/^\s+|\s+$//g;
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
