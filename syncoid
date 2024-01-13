@@ -897,11 +897,11 @@ sub runsynccmd {
 	my $sendoptions;
 	if ($sendsource =~ / -t /) {
 		writelog('INFO', "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):");
-		$sendoptions = getoptionsline(\@sendoptions, ('P','e','v','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('P','V','e','v'));
 	} elsif ($sendsource =~ /#/) {
-		$sendoptions = getoptionsline(\@sendoptions, ('L','c','e','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('L','V','c','e','w'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','P','R','c','e','h','p','v','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('L','P','V','R','X','b','c','e','h','p','s','v','w'));
 	}
 
 	my $recvoptions = getoptionsline(\@recvoptions, ('h','o','x','u','v'));
@@ -2073,9 +2073,9 @@ sub getsendsize {
 
 	my $sendoptions;
 	if (defined($receivetoken)) {
-		$sendoptions = getoptionsline(\@sendoptions, ('e'));
+		$sendoptions = getoptionsline(\@sendoptions, ('V','e'));
 	} else {
-		$sendoptions = getoptionsline(\@sendoptions, ('D','L','R','c','e','h','p','w'));
+		$sendoptions = getoptionsline(\@sendoptions, ('L','V','R','X','b','c','e','h','p','s','w'));
 	}
 	my $getsendsizecmd = "$sourcessh $mysudocmd $zfscmd send $sendoptions -nvP $snaps";
 	writelog('DEBUG', "getting estimated transfer size from source $sourcehost using \"$getsendsizecmd 2>&1 |\"...");
