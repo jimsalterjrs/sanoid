@@ -2335,9 +2335,9 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
-  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next succesful replication. The hold name incldues the identifier if set. This allows for separate holds in case of multiple targets
+  --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next successful replication. The hold name includes the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
-  --preserve-properties Preserves locally set dataset properties similiar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
+  --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
   --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       DEPRECATED. Equivalent to --exclude-datasets, but will be removed in a future release. Ignored if --exclude-datasets is also provided.
