@@ -29,38 +29,43 @@ zfs create -V 100M -o volblocksize=16k -o primarycache=all "${POOL_NAME}"/src/zv
 zfs create -V 100M -o volblocksize=64k "${POOL_NAME}"/src/zvol64
 zfs create -o recordsize=16k -o primarycache=none "${POOL_NAME}"/src/16
 zfs create -o recordsize=32k -o acltype=posixacl "${POOL_NAME}"/src/32
+zfs set 'net.openoid:var-name'='with whitespace and !"§$%&/()= symbols' "${POOL_NAME}"/src/32
 
 ../../../syncoid --preserve-properties --recursive --debug --compress=none "${POOL_NAME}"/src "${POOL_NAME}"/dst
 
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst)" != "16K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst)" != "16K" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get mountpoint -H -o value -t filesystem "${POOL_NAME}"/dst)" != "none" ]; then
+if [ "$(zfs get -H -o value -t filesystem mountpoint "${POOL_NAME}"/dst)" != "none" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get xattr -H -o value -t filesystem "${POOL_NAME}"/dst)" != "on" ]; then
+if [ "$(zfs get -H -o value -t filesystem xattr "${POOL_NAME}"/dst)" != "on" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get primarycache -H -o value -t filesystem "${POOL_NAME}"/dst)" != "none" ]; then
+if [ "$(zfs get -H -o value -t filesystem primarycache "${POOL_NAME}"/dst)" != "none" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/16)" != "16K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/16)" != "16K" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get primarycache -H -o value -t filesystem "${POOL_NAME}"/dst/16)" != "none" ]; then
+if [ "$(zfs get -H -o value -t filesystem primarycache "${POOL_NAME}"/dst/16)" != "none" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get recordsize -H -o value -t filesystem "${POOL_NAME}"/dst/32)" != "32K" ]; then
+if [ "$(zfs get -H -o value -t filesystem recordsize "${POOL_NAME}"/dst/32)" != "32K" ]; then
 	exit 1
 fi
 
-if [ "$(zfs get acltype -H -o value -t filesystem "${POOL_NAME}"/dst/32)" != "posix" ]; then
+if [ "$(zfs get -H -o value -t filesystem acltype "${POOL_NAME}"/dst/32)" != "posix" ]; then
+	exit 1
+fi
+
+if [ "$(zfs get -H -o value -t filesystem 'net.openoid:var-name' "${POOL_NAME}"/dst/32)" != "with whitespace and !\"§$%&/()= symbols" ]; then
 	exit 1
 fi

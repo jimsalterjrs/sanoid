@@ -317,7 +317,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
 
 + --use-hold
-	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next succesful replication. Setting a hold prevents the snapshots from being destroyed. The hold name incldues the identifier if set. This allows for separate holds in case of replication to multiple targets.
+	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next successful replication. Setting a hold prevents the snapshots from being destroyed. The hold name includes the identifier if set. This allows for separate holds in case of replication to multiple targets.
 
 + --preserve-recordsize
 
@@ -342,7 +342,21 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --exclude=REGEX
 
-	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
+	__DEPRECATION NOTICE:__ `--exclude` has been deprecated and will be removed in a future release. Please use `--exclude-datasets` instead.
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized. If both `--exclude` and `--exclude-datasets` are provided, then `--exclude` is ignored.
+
++ --exclude-datasets=REGEX
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized.
+
++ --exclude-snaps=REGEX
+
+	Exclude specific snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+
++ --include-snaps=REGEX
+
+	Only include snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
 
 + --no-resume
 
@@ -391,7 +405,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --debug
 
-	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a syncoid run, and is normally not needed.
 
 + --help
 
