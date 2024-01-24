@@ -42,7 +42,6 @@ my $cacheTTL = 900; # 15 minutes
 # (ignore "--verbose", "--configdir" etc)
 if (($args{'monitor-snapshots'} || $args{'monitor-health'} || $args{'monitor-capacity'}) && ! ($args{'cron'} || $args{'force-update'} || $args{'take-snapshots'} || $args{'prune-snapshots'} || $args{'force-prune'})) {
 	# The command combination above must not assert true for any command that takes or prunes snapshots
-	# As long as no snapshots are taken, no conflict with the $forcecacheupdate variable below should occur
 	$cacheTTL = 18000; # 5 hours
 	if ($args{'debug'}) { print "DEBUG: command combo means that the cache file (provided it exists) will be allowed to be older than default.\n"; }
 }
