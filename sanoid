@@ -4,36 +4,44 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.0.3';
+$::VERSION = '2.2.0';
 my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
 use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
-use File::Path;       # for rmtree command in use_prune
+use File::Path 'make_path';
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
 
-my %args = ("configdir" => "/etc/sanoid");
+my %args = (
+	"configdir" => "/etc/sanoid",
+	"cache-dir" => "/var/cache/sanoid",
+	"run-dir" => "/var/run/sanoid"
+);
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
-                   "monitor-health", "force-update", "configdir=s",
+                   "configdir=s", "cache-dir=s", "run-dir=s",
+                   "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
-if (keys %args < 2) {
+if (keys %args < 4) {
 	$args{'cron'} = 1;
 	$args{'verbose'} = 1;
 }
 
-my $pscmd = '/bin/ps';
+# for compatibility reasons, older versions used hardcoded command paths
+$ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/sbin";
 
-my $zfs = '/sbin/zfs';
-my $zpool = '/sbin/zpool';
+my $pscmd = 'ps';
+
+my $zfs = 'zfs';
+my $zpool = 'zpool';
 
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
@@ -41,9 +49,15 @@ my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 # parse config file
 my %config = init($conf_file,$default_conf_file);
 
+my $cache_dir = $args{'cache-dir'};
+my $run_dir = $args{'run-dir'};
+
+make_path($cache_dir);
+make_path($run_dir);
+
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
-my $cache = '/var/cache/sanoidsnapshots.txt';
+my $cache = "$cache_dir/snapshots.txt";
 my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
@@ -116,7 +130,7 @@ sub monitor_snapshots {
 
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %datestamp = get_date();
-	my $errorlevel = 0;
+	my $errlevel = 0;
 	my $msg;
 	my @msgs;
 	my @paths;
@@ -155,20 +169,20 @@ sub monitor_snapshots {
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) {
 				if ($crit > 0) {
-					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
+					if (! $config{$section}{'monitor_dont_crit'}) { $errlevel = 2; }
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
-						push @msgs, "CRIT: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
+						push @msgs, "CRIT: $path newest $type snapshot is $dispelapsed old (should be < $dispcrit)";
 					}
 				}
 			 } elsif ($elapsed > $warn) {
 				if ($warn > 0) {
-					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
-					push @msgs, "WARN: $path\'s newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
+					if (! $config{$section}{'monitor_dont_warn'} && ($errlevel < 2) ) { $errlevel = 1; }
+					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
 			} else {
-				# push @msgs .= "OK: $path\'s newest $type snapshot is $dispelapsed old \n";
+				# push @msgs .= "OK: $path newest $type snapshot is $dispelapsed old \n";
 			}
 
 		}
@@ -182,7 +196,7 @@ sub monitor_snapshots {
 	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
 
 	print "$msg\n";
-	exit $errorlevel;
+	exit $errlevel;
 }
 
 
@@ -305,6 +319,25 @@ sub prune_snapshots {
 					if (checklock('sanoid_pruning')) {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
+							my $dataset = (split '@', $snap)[0];
+							my $snapname = (split '@', $snap)[1];
+
+							if (! $args{'readonly'} && $config{$dataset}{'pre_pruning_script'}) {
+								$ENV{'SANOID_TARGET'} = $dataset;
+								$ENV{'SANOID_SNAPNAME'} = $snapname;
+								if ($args{'verbose'}) { print "executing pre_pruning_script '".$config{$dataset}{'pre_pruning_script'}."' on dataset '$dataset'\n"; }
+								my $ret = runscript('pre_pruning_script', $dataset);
+
+								delete $ENV{'SANOID_TARGET'};
+								delete $ENV{'SANOID_SNAPNAME'};
+
+								if ($ret != 0) {
+									# warning was already thrown by runscript function
+									# skip pruning if pre snapshot script returns non zero exit code
+									next;
+								}
+							}
+
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
 							if (!$args{'force-prune'} && iszfsbusy($path)) {
 								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
@@ -312,16 +345,16 @@ sub prune_snapshots {
 								if (! $args{'readonly'}) {
 									if (system($zfs, "destroy", $snap) == 0) {
 										$pruned{$snap} = 1;
-										my $dataset = (split '@', $snap)[0];
-										my $snapname = (split '@', $snap)[1];
 										if ($config{$dataset}{'pruning_script'}) {
 											$ENV{'SANOID_TARGET'} = $dataset;
 											$ENV{'SANOID_SNAPNAME'} = $snapname;
+											$ENV{'SANOID_SCRIPT'} = 'prune';
 											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
 											my $ret = runscript('pruning_script',$dataset);
 
 											delete $ENV{'SANOID_TARGET'};
 											delete $ENV{'SANOID_SNAPNAME'};
+											delete $ENV{'SANOID_SCRIPT'};
 										}
 									} else {
 										warn "could not remove $snap : $?";
@@ -356,7 +389,7 @@ sub take_snapshots {
 	my %datestamp = get_date();
 	my $forcecacheupdate = 0;
 
-	my @newsnaps;
+	my %newsnapsgroup;
 
 	# get utc timestamp of the current day for DST check
 	my $daystartUtc = timelocal(0, 0, 0, $datestamp{'mday'}, ($datestamp{'mon'}-1), $datestamp{'year'});
@@ -378,9 +411,9 @@ sub take_snapshots {
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
-                my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
+		my @types = ('yearly','monthly','weekly','daily','hourly','frequently');
 
-                foreach my $type (@types) {
+		foreach my $type (@types) {
 			if ($config{$section}{$type} > 0) {
 
 				my $newestage; # in seconds
@@ -500,55 +533,58 @@ sub take_snapshots {
 				my $maxage = time()-$lastpreferred;
 
 				if ( $newestage > $maxage ) {
-					# update to most current possible datestamp
-					%datestamp = get_date();
 					# print "we should have had a $type snapshot of $path $maxage seconds ago; most recent is $newestage seconds old.\n";
+					if (!exists $newsnapsgroup{$path}) {
+						$newsnapsgroup{$path} = {
+							'recursive' => $config{$section}{'zfs_recursion'},
+							'handleDst' => $handleDst,
+							'datasets' => [$path], # for later atomic grouping, currently only a one element array
+							'types' => []
+						};
+					}
 
-					my $flags = "";
-					# use zfs (atomic) recursion if specified in config
-					if ($config{$section}{'zfs_recursion'}) {
-						$flags .= "r";
-					}
-					if ($handleDst) {
-						$flags .= "d";
-					}
-
-					if ($flags ne "") {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type\@$flags");
-					} else {
-						push(@newsnaps, "$path\@autosnap_$datestamp{'sortable'}_$type");
-					}
+					push(@{$newsnapsgroup{$path}{'types'}}, $type);
 				}
 			}
 		}
 	}
 
-	if ( (scalar(@newsnaps)) > 0) {
-		foreach my $snap ( @newsnaps ) {
-			my $extraMessage = "";
-			my @split = split '@', $snap, -1;
-			my $recursiveFlag = 0;
-			my $dstHandling = 0;
-			if (scalar(@split) == 3) {
-				my $flags = $split[2];
-				if (index($flags, "r") != -1) {
-					$recursiveFlag = 1;
-					$extraMessage = " (zfs recursive)";
-					chop $snap;
-				}
-				if (index($flags, "d") != -1) {
-					$dstHandling = 1;
-					chop $snap;
-				}
-				chop $snap;
+	if (%newsnapsgroup) {
+		while ((my $path, my $snapData) = each(%newsnapsgroup)) {
+			my $recursiveFlag = $snapData->{recursive};
+			my $dstHandling = $snapData->{handleDst};
+
+			my @datasets = @{$snapData->{datasets}};
+			my $dataset = $datasets[0];
+			my @types = @{$snapData->{types}};
+
+			# same timestamp for all snapshots types (daily, hourly, ...)
+			my %datestamp = get_date();
+			my @snapshots;
+
+			foreach my $type (@types) {
+				my $snapname = "autosnap_$datestamp{'sortable'}_$type";
+				push(@snapshots, $snapname);
 			}
-			my $dataset = $split[0];
-			my $snapname = $split[1];
+
+			my $datasetString = join(",", @datasets);
+			my $typeString = join(",", @types);
+			my $snapshotString = join(",", @snapshots);
+
+			my $extraMessage = "";
+			if ($recursiveFlag) {
+				$extraMessage = " (zfs recursive)";
+			}
+
 			my $presnapshotfailure = 0;
 			my $ret = 0;
 			if ($config{$dataset}{'pre_snapshot_script'}) {
 				$ENV{'SANOID_TARGET'} = $dataset;
-				$ENV{'SANOID_SNAPNAME'} = $snapname;
+				$ENV{'SANOID_TARGETS'} = $datasetString;
+				$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
+				$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
+				$ENV{'SANOID_TYPES'} = $typeString;
+				$ENV{'SANOID_SCRIPT'} = 'pre';
 				if ($args{'verbose'}) { print "executing pre_snapshot_script '".$config{$dataset}{'pre_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 				if (!$args{'readonly'}) {
@@ -556,7 +592,11 @@ sub take_snapshots {
 				}
 
 				delete $ENV{'SANOID_TARGET'};
+				delete $ENV{'SANOID_TARGETS'};
 				delete $ENV{'SANOID_SNAPNAME'};
+				delete $ENV{'SANOID_SNAPNAMES'};
+				delete $ENV{'SANOID_TYPES'};
+				delete $ENV{'SANOID_SCRIPT'};
 
 				if ($ret != 0) {
 					# warning was already thrown by runscript function
@@ -564,47 +604,58 @@ sub take_snapshots {
 					$presnapshotfailure = 1;
 				}
 			}
-			if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
-			if (!$args{'readonly'}) {
-				my $stderr;
-				my $exit;
-				($stderr, $exit) = tee_stderr {
-					if ($recursiveFlag) {
-						system($zfs, "snapshot", "-r", "$snap");
-					} else {
-						system($zfs, "snapshot", "$snap");
-					}
-				};
 
-				$exit == 0 or do {
-					if ($dstHandling) {
-						if ($stderr =~ /already exists/) {
-							$exit = 0;
-							$snap =~ s/_([a-z]+)$/dst_$1/g;
-							if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
-							if ($recursiveFlag) {
-								system($zfs, "snapshot", "-r", "$snap") == 0
-									or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
-							} else {
-								system($zfs, "snapshot", "$snap") == 0
-									or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+			foreach my $snap (@snapshots) {
+				$snap = "$dataset\@$snap";
+				if ($args{'verbose'}) { print "taking snapshot $snap$extraMessage\n"; }
+
+				if (!$args{'readonly'}) {
+					my $stderr;
+					my $exit;
+					($stderr, $exit) = tee_stderr {
+						if ($recursiveFlag) {
+							system($zfs, "snapshot", "-r", "$snap");
+						} else {
+							system($zfs, "snapshot", "$snap");
+						}
+					};
+
+					$exit == 0 or do {
+						if ($dstHandling) {
+							if ($stderr =~ /already exists/) {
+								$exit = 0;
+								$snap =~ s/_([a-z]+)$/dst_$1/g;
+								if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
+								if ($recursiveFlag) {
+									system($zfs, "snapshot", "-r", "$snap") == 0
+										or warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+								} else {
+									system($zfs, "snapshot", "$snap") == 0
+										or warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+								}
 							}
 						}
-					}
-				};
+					};
 
-				$exit == 0 or do {
-					if ($recursiveFlag) {
-						warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
-					} else {
-						warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
-					}
-				};
+					$exit == 0 or do {
+						if ($recursiveFlag) {
+							warn "CRITICAL ERROR: $zfs snapshot -r $snap failed, $?";
+						} else {
+							warn "CRITICAL ERROR: $zfs snapshot $snap failed, $?";
+						}
+					};
+				}
 			}
+
 			if ($config{$dataset}{'post_snapshot_script'}) {
 				if (!$presnapshotfailure or $config{$dataset}{'force_post_snapshot_script'}) {
 					$ENV{'SANOID_TARGET'} = $dataset;
-					$ENV{'SANOID_SNAPNAME'} = $snapname;
+					$ENV{'SANOID_TARGETS'} = $datasetString;
+					$ENV{'SANOID_SNAPNAME'} = $snapshots[0];
+					$ENV{'SANOID_SNAPNAMES'} = $snapshotString;
+					$ENV{'SANOID_TYPES'} = $typeString;
+					$ENV{'SANOID_SCRIPT'} = 'post';
+					$ENV{'SANOID_PRE_FAILURE'} = $presnapshotfailure;
 					if ($args{'verbose'}) { print "executing post_snapshot_script '".$config{$dataset}{'post_snapshot_script'}."' on dataset '$dataset'\n"; }
 
 					if (!$args{'readonly'}) {
@@ -612,7 +663,12 @@ sub take_snapshots {
 					}
 
 					delete $ENV{'SANOID_TARGET'};
+					delete $ENV{'SANOID_TARGETS'};
 					delete $ENV{'SANOID_SNAPNAME'};
+					delete $ENV{'SANOID_SNAPNAMES'};
+					delete $ENV{'SANOID_TYPES'};
+					delete $ENV{'SANOID_SCRIPT'};
+					delete $ENV{'SANOID_PRE_FAILURE'};
 				}
 			}
 		}
@@ -842,6 +898,15 @@ sub init {
 			if (! defined ($defaults{'template_default'}{$key})) {
 				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
 			}
+
+			# in case of duplicate lines we will end up with an array of all values
+			my $value = $ini{$section}{$key};
+			if (ref($value) eq 'ARRAY') {
+				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
+				$ini{$section}{$key} = $value->[0];
+			}
+			# trim
+			$ini{$section}{$key} =~ s/^\s+|\s+$//g;
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
@@ -850,7 +915,7 @@ sub init {
 		# for sections directly when they've already been defined recursively, without starting them over from scratch.
 		if (! defined ($config{$section}{'initialized'})) {
 			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
-			# set default values from %defaults, which can then be overriden by template
+			# set default values from %defaults, which can then be overridden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
 				if (! ($key =~ /template|recursive|children_only/)) {
@@ -1098,7 +1163,7 @@ sub check_zpool() {
 		}
 	}
 
-	# Tony: Debuging
+	# Tony: Debugging
 	# print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
 
 	close(STAT);
@@ -1200,7 +1265,7 @@ sub check_zpool() {
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
-			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE")) {
+			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL")) {
 				# check for io/checksum errors
 
 				my @vdeverr = ();
@@ -1365,10 +1430,10 @@ sub get_zpool_capacity {
 sub checklock {
 	# take argument $lockname.
 	#
-	# read /var/run/$lockname.lock for a pid on first line and a mutex on second line.
+	# read $run_dir/$lockname.lock for a pid on first line and a mutex on second line.
 	#
-	# check process list to see if the pid from /var/run/$lockname.lock is still active with
-	# the original mutex found in /var/run/$lockname.lock.
+	# check process list to see if the pid from $run_dir/$lockname.lock is still active with
+	# the original mutex found in $run_dir/$lockname.lock.
 	#
 	# return:
 	#    0 if lock is present and valid for another process
@@ -1380,7 +1445,7 @@ sub checklock {
 	#
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (! -e $lockfile) {
 		# no lockfile
@@ -1389,7 +1454,9 @@ sub checklock {
 	# make sure lockfile contains something
 	if ( -z $lockfile) {
 	        # zero size lockfile, something is wrong
-	        die "ERROR: something is wrong! $lockfile is empty\n";
+	        warn "WARN: deleting invalid/empty $lockfile\n";
+	        unlink $lockfile;
+	        return 1
 	}
 
 	# lockfile exists. read pid and mutex from it. see if it's our pid.  if not, see if
@@ -1400,7 +1467,9 @@ sub checklock {
 	close FH;
 	# if we didn't get exactly 2 items from the lock file there is a problem
 	if (scalar(@lock) != 2) {
-	    die "ERROR: $lockfile is invalid.\n"
+	    warn "WARN: deleting invalid $lockfile\n";
+	    unlink $lockfile;
+	    return 1
 	}
 
 	my $lockmutex = pop(@lock);
@@ -1433,11 +1502,11 @@ sub checklock {
 sub removelock {
 	# take argument $lockname.
 	#
-	# make sure /var/run/$lockname.lock actually belongs to me (contains my pid and mutex)
+	# make sure $run_dir/$lockname.lock actually belongs to me (contains my pid and mutex)
 	# and remove it if it does, die if it doesn't.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	if (checklock($lockname) == 2) {
 		unlink $lockfile;
@@ -1452,11 +1521,11 @@ sub removelock {
 sub writelock {
 	# take argument $lockname.
 	#
-	# write a lockfile to /var/run/$lockname.lock with first line
+	# write a lockfile to $run_dir/$lockname.lock with first line
 	# being my pid and second line being my mutex.
 
 	my $lockname = shift;
-	my $lockfile = "/var/run/$lockname.lock";
+	my $lockfile = "$run_dir/$lockname.lock";
 
 	# die honorably rather than overwriting a valid, existing lock
 	if (! checklock($lockname)) {
@@ -1659,6 +1728,8 @@ Assumes --cron --verbose if no other arguments (other than configdir) are specif
 Options:
 
   --configdir=DIR       Specify a directory to find config file sanoid.conf
+  --cache-dir=DIR       Specify a directory to store the zfs snapshot cache
+  --run-dir=DIR         Specify a directory for temporary files such as lock files
 
   --cron                Creates snapshots and purges expired snapshots
   --verbose             Prints out additional information during a sanoid run

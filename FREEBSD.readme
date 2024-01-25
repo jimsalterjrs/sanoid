@@ -1,4 +1,10 @@
-FreeBSD users will need to change the Perl shebangs at the top of the executables from #!/usr/bin/perl 
+Syncoid assumes a bourne style shell on remote hosts. Using (t)csh (the default for root under FreeBSD)
+will cause syncoid to fail cryptically due to 2>&1 output redirects.
+
+To use syncoid successfully with FreeBSD targets, you must use the chsh command to change the root shell:
+    root@bsd:~# chsh -s /bin/sh
+
+FreeBSD users will also need to change the Perl shebangs at the top of the executables from #!/usr/bin/perl 
 to #!/usr/local/bin/perl in most cases.
 
 Sorry folks, but if I set this with #!/usr/bin/env perl as suggested, then nothing works properly
@@ -11,14 +17,3 @@ If you don't want to have to change the shebangs, your other option is to drop a
 root@bsd:~# ln -s /usr/local/bin/perl /usr/bin/perl
 
 After putting this symlink in place, ANY perl script shebanged for Linux will work on your system too.
-
-Syncoid assumes a bourne style shell on remote hosts. Using (t)csh (the default for root under FreeBSD)
-has some known issues:
-
-* If mbuffer is present, syncoid will fail with an "Ambiguous output redirect." error. So if you:
-  root@bsd:~# ln -s /usr/local/bin/mbuffer /usr/bin/mbuffer
-  make sure the remote user is using an sh compatible shell.
-
-To change to a compatible shell, use the chsh command:
-
-root@bsd:~# chsh -s /bin/sh

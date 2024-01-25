@@ -12,8 +12,7 @@ Package: sanoid
 Architecture: all
 Depends: libcapture-tiny-perl,
          libconfig-inifiles-perl,
-         systemd,
-         zfsutils-linux | zfs,
+         zfsutils-linux | zfs | openzfs-zfsutils,
          ${misc:Depends},
          ${perl:Depends}
 Recommends: gzip,
