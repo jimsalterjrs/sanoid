@@ -35,6 +35,17 @@ if (keys %args < 4) {
 	$args{'verbose'} = 1;
 }
 
+
+my $cacheTTL = 900; # 15 minutes
+
+# Allow a much older snapshot cache file than default if _only_ "--monitor-*" action commands are given
+# (ignore "--verbose", "--configdir" etc)
+if (($args{'monitor-snapshots'} || $args{'monitor-health'} || $args{'monitor-capacity'}) && ! ($args{'cron'} || $args{'force-update'} || $args{'take-snapshots'} || $args{'prune-snapshots'} || $args{'force-prune'})) {
+	# The command combination above must not assert true for any command that takes or prunes snapshots
+	$cacheTTL = 18000; # 5 hours
+	if ($args{'debug'}) { print "DEBUG: command combo means that the cache file (provided it exists) will be allowed to be older than default.\n"; }
+}
+
 # for compatibility reasons, older versions used hardcoded command paths
 $ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/sbin";
 
@@ -58,7 +69,6 @@ make_path($run_dir);
 # if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
 my $forcecacheupdate = 0;
 my $cache = "$cache_dir/snapshots.txt";
-my $cacheTTL = 900; # 15 minutes
 my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
 my %pruned;
 my %capacitycache;
