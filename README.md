@@ -1,6 +1,17 @@
-<table align="center"><tr><td border="1" width="750"><p align="center"><img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo"></p><p align="left">Sanoid is provided to you free and libre via the GPL v3.0 license. If you would like to support the project, please consider becoming a member of the Practical ZFS patreon <a href="https://www.patreon.com/PracticalZFS" target="_blank">community</a>. Becoming a member helps support development and maintenance of Sanoid, and helps keep the lights on at the <a href="https://discourse.practicalzfs.com/">Practical ZFS</a> forum--which, by the way, is an excellent place to ask for help with Sanoid or with OpenZFS in general!</p></td></tr></table>
+<table align="center">
+	<tr>
+		<td border="1" width="750">
+			<p align="center">
+				<img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo">
+			</p>
+			<img src="https://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">
+			<p align="left">Sanoid is provided to you completely free and libre, now and in perpetuity, via the GPL v3.0 license. If you find the project useful, please consider either a recurring or one-time donation at <a href="https://www.patreon.com/PracticalZFS" target="_blank">Patreon</a> or <a href="https://www.paypal.com/donate/?hosted_button_id=5BLPNV86D4S9N" target="_blank">PayPal</a>—your contributions will support both this project and the Practical ZFS <a href="https://discourse.practicalzfs.com/" target="_blank">forum</a>.
+			</p>
+		</td>
+	</tr>
+</table>
 
-<img src="https://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="https://openoid.net/transcend" target="_blank">functionally immortal</a> via automated snapshot management and over-the-air replication.
+Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="https://openoid.net/transcend" target="_blank">functionally immortal</a> via automated snapshot management and over-the-air replication.
 
 <p align="center"><a href="https://youtu.be/ZgowLNBsu00" target="_blank"><img src="http://www.openoid.net/sanoid_video_launcher.png" alt="sanoid rollback demo" title="sanoid rollback demo"></a><br clear="all"><sup>(Real time demo: rolling back a full-scale cryptomalware infection in seconds!)</sup></p>
 
