@@ -169,7 +169,7 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop sanoid
 
 *   Simplest path workaround is symlinks, eg `ln -s /usr/local/bin/lzop /usr/bin/lzop` or similar, as appropriate to create links in **/usr/bin** to wherever the utilities actually are on your system.
 
-*   See note about mbuffer and other things in FREEBSD.readme
+*   See note about tcsh unpleasantness and other things in FREEBSD.readme
 
 ## Alpine Linux / busybox based distributions
 
