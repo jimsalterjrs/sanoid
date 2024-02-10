@@ -1,3 +1,9 @@
+sanoid (2.2.1) unstable; urgency=medium
+
+  [syncoid]   add simple systemd.units
+
+ -- Christopher Bock <christopher@bocki.com>  Sat, 10 Feb 2023 23:15:00 +0200
+
 sanoid (2.2.0) unstable; urgency=medium
 
   [overall]   documentation updates, small fixes (@azmodude, @deviantintegral, @jimsalterjrs, @alexhaydock, @cbreak-black, @kd8bny, @JavaScriptDude, @veeableful, @rsheasby, @Topslakr, @mavhc, @adam-stamand, @joelishness, @jsoref, @dodexahedron, @phreaker0)

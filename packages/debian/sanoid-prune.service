@@ -3,6 +3,8 @@ Description=Cleanup ZFS Pool
 Requires=zfs.target
 After=zfs.target sanoid.service
 ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+Before=syncoid.service
+Wants=syncoid.service
 
 [Service]
 Environment=TZ=UTC

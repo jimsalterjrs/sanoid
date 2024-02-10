@@ -1,0 +1,7 @@
+syncoid /usr/sbin/
+sanoid /usr/sbin/
+findoid /usr/sbin/
+sanoid.defaults.conf /usr/share/sanoid/
+debian/sanoid-prune.service /lib/systemd/system
+debian/syncoid.service /lib/systemd/system
+CHANGELIST /usr/share/doc/sanoid/changelog
