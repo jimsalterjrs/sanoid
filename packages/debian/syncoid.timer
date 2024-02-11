@@ -7,9 +7,9 @@ Documentation=man:systemd.time(7)
 WantedBy=timers.target
 
 [Timer]
-RandomizeDelaySec=60
+RandomizedDelaySec=60
 OnBootSec=5m
 #OnUnitActiveSec=20m
-OnCalendar=*-*-* */2:00:00
+OnCalendar=00/2:30
 Persistent=true
 Unit=syncoid.service
