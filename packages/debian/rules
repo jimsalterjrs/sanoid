@@ -6,3 +6,9 @@
 
 %:
 	dh $@
+
+
+DESTDIR = $(CURDIR)/debian/sanoid
+override_dh_auto_install:
+	install -d $(DESTDIR)/etc/sanoid
+	install -m 664 sanoid.defaults.conf $(DESTDIR)/etc/sanoid

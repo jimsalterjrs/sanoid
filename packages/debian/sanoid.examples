@@ -1,3 +1,4 @@
 sanoid.conf
 debian/syncoid.conf
 debian/syncoid.timer
+debian/syncoid.service

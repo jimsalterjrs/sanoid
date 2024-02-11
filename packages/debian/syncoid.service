@@ -1,14 +1,11 @@
 [Unit]
 Description=Transfer ZFS Snapshots
 Documentation=man:syncoid(8)
-Requires=local-fs.target sanoid.service
-After=local-fs.target sanoid-prune.service
+Requires=local-fs.target
+Wants=sanoid.service
 ConditionFileNotEmpty=/etc/sanoid/syncoid.conf
 
 [Service]
 EnvironmentFile=/etc/sanoid/syncoid.conf
 Type=oneshot
 ExecStart=/usr/sbin/syncoid $DEBUG $OPTS $EXCLUDES $INCLUDES $SSHOPTS $SOURCE $TARGET
-
-[Install]
-WantedBy=sanoid.service
