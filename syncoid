@@ -867,13 +867,13 @@ sub syncdataset {
 		# snapshots first.
 
 		# regather snapshots on source and target
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
 
-                if ($targetexists) {
-                    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
-                    my %sourcesnaps = %snaps;
-                    %snaps = (%sourcesnaps, %targetsnaps);
-                }
+		if ($targetexists) {
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
+		    my %sourcesnaps = %snaps;
+		    %snaps = (%sourcesnaps, %targetsnaps);
+		}
 
 		my @to_delete = sort { sortsnapshots(\%snaps, $a, $b) } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
