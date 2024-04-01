@@ -853,8 +853,18 @@ sub syncdataset {
 	if (defined $args{'delete-target-snapshots'}) {
 		# Find the snapshots that exist on the target, filter with
 		# those that exist on the source. Remaining are the snapshots
-		# that are only on the target. Then sort by creation date, as
-		# to remove the oldest snapshots first.
+		# that are only on the target. Then sort to remove the oldest
+		# snapshots first.
+
+		# regather snapshots on source and target
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+
+		if ($targetexists) {
+			my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
+			my %sourcesnaps = %snaps;
+			%snaps = (%sourcesnaps, %targetsnaps);
+		}
+
 		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
 			# Create batch of snapshots to remove
