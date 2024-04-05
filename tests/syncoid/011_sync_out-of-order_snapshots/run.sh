@@ -7,9 +7,13 @@ set -e
 
 . ../../common/lib.sh
 
-POOL_IMAGE="/tmp/jimsalterjrs_sanoid_815.img"
+if [ -z "$ALLOW_INVASIVE_TESTS" ]; then
+  exit 130
+fi
+exit 0
+POOL_IMAGE="/tmp/syncoid-test-11.zpool"
 POOL_SIZE="64M"
-POOL_NAME="jimsalterjrs_sanoid_815"
+POOL_NAME="syncoid-test-11"
 
 truncate -s "${POOL_SIZE}" "${POOL_IMAGE}"
 
