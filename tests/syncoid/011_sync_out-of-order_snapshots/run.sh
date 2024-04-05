@@ -10,7 +10,7 @@ set -e
 if [ -z "$ALLOW_INVASIVE_TESTS" ]; then
   exit 130
 fi
-exit 0
+
 POOL_IMAGE="/tmp/syncoid-test-11.zpool"
 POOL_SIZE="64M"
 POOL_NAME="syncoid-test-11"
