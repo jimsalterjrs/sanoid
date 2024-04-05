@@ -25,6 +25,9 @@ if ($args{'path'} eq '') {
 	}
 }
 
+# resolve given path to a canonical one
+$args{'path'} = Cwd::realpath($args{'path'});
+
 my $dataset = getdataset($args{'path'});
 
 my %versions = getversions($args{'path'}, $dataset);
