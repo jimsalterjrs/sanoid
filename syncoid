@@ -1786,8 +1786,15 @@ sub getssh {
 
 	if ($rhost ne "") {
 		if ($remoteuser eq 'root' || $args{'no-privilege-elevation'}) { $isroot = 1; } else { $isroot = 0; }
+
+		my $sanitizedrhost = $rhost;
+		$sanitizedrhost =~ s/[^a-zA-Z0-9-]//g;
+		# unix socket path have a length limit of about 104 characters so make sure it's not exceeded
+		$sanitizedrhost = substr($sanitizedrhost, 0, 50);
+
 		# now we need to establish a persistent master SSH connection
-		$socket = "/tmp/syncoid-$rhost-" . time() . "-" . int(rand(10000));
+		$socket = "/tmp/syncoid-$sanitizedrhost-" . time() . "-" . $$ . "-" . int(rand(10000));
+
 
 		open FH, "$sshcmd -M -S $socket -o ControlPersist=1m $args{'sshport'} $rhost exit |";
 		close FH;
