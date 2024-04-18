@@ -1012,7 +1012,11 @@ sub syncincremental {
 				my $snapa = $intsnaps[$i];
 				my $snapb = $intsnaps[$i + 1];
 				writelog('INFO', "Performing an incremental sync between '$snapa' and '$snapb'");
-				syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $snapa, $snapb, 1) == 0 or return $?;
+				(my $ret, my $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $snapa, $snapb, 1);
+
+				if ($ret != 0) {
+					return ($ret, $stdout);
+				}
 			}
 
 			# Return after finishing the -i syncs so that we don't try to do another -I
