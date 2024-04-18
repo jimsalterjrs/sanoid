@@ -498,7 +498,6 @@ sub syncdataset {
 
 		my $ret;
 		if (defined $origin) {
-			writelog('INFO', "Clone is recreated on target $targetfs based on $origin");
 			($ret, $stdout) = syncclone($sourcehost, $sourcefs, $origin, $targethost, $targetfs, $oldestsnap);
 			if ($ret) {
 				writelog('INFO', "clone creation failed, trying ordinary replication as fallback");
@@ -506,12 +505,6 @@ sub syncdataset {
 				return 0;
 			}
 		} else {
-			if (!defined ($args{'no-stream'}) ) {
-				writelog('INFO', "Sending oldest full snapshot $sourcefs\@$oldestsnap to new target filesystem:");
-			} else {
-				writelog('INFO', "--no-stream selected; sending newest full snapshot $sourcefs\@$oldestsnap to new target filesystem:");
-			}
-
 			($ret, $stdout) = syncfull($sourcehost, $sourcefs, $targethost, $targetfs, $oldestsnap);
 		}
 
@@ -531,8 +524,6 @@ sub syncdataset {
 				# with ZFS on Linux (possibly OpenZFS in general) when setting/unsetting readonly.
 			# $originaltargetreadonly = getzfsvalue($targethost,$targetfs,$targetisroot,'readonly');
 			# setzfsvalue($targethost,$targetfs,$targetisroot,'readonly','on');
-
-			writelog('INFO', "Updating new target filesystem with incremental $sourcefs\@$oldestsnap ... $newsyncsnap:");
 
 			(my $ret, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $oldestsnap, $newsyncsnap, 0);
 
@@ -898,7 +889,6 @@ sub runsynccmd {
 	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
 	my $sendoptions;
 	if ($sendsource =~ / -t /) {
-		writelog('INFO', "Resuming interrupted zfs send/receive from $sourcefs to $targetfs (~ $disp_pvsize remaining):");
 		$sendoptions = getoptionsline(\@sendoptions, ('P','V','e','v'));
 	} elsif ($sendsource =~ /#/) {
 		$sendoptions = getoptionsline(\@sendoptions, ('L','V','c','e','w'));
@@ -934,12 +924,13 @@ sub runsynccmd {
 	my $recvcmd = "$targetsudocmd $zfscmd receive $recvoptions $targetfsescaped 2>&1";
 
 	my $synccmd = buildsynccmd($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot);
-	writelog('INFO', "Sync size: ~$disp_pvsize");
+	writelog('DEBUG', "sync size: ~$disp_pvsize");
 	writelog('DEBUG', "$synccmd");
 
 	# make sure target is (still) not currently in receive.
 	if (iszfsbusy($targethost,$targetfs,$targetisroot)) {
-		writelog('WARN', "Cannot sync now: $targetfs is already target of a zfs receive process.");
+		my $targetname = buildnicename($targethost, $targetfs);
+		writelog('WARN', "Cannot sync now: $targetname is already target of a zfs receive process.");
 		return (1, '');
 	}
 
@@ -970,6 +961,16 @@ sub syncfull {
 	my $snapescaped = escapeshellparam($snapname);
 	my $sendsource = "$sourcefsescaped\@$snapescaped";
 	my $pvsize = getsendsize($sourcehost,"$sourcefs\@$snapname",0,$sourceisroot);
+
+	my $srcname = buildnicename($sourcehost, $sourcefs, $snapname);
+	my $targetname = buildnicename($targethost, $targetfs);
+	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
+
+	if (!defined ($args{'no-stream'}) ) {
+		writelog('INFO', "Sending oldest full snapshot $srcname to new target filesystem $targetname (~ $disp_pvsize):");
+	} else {
+		writelog('INFO', "--no-stream selected; sending newest full snapshot $srcname to new target filesystem $targetname: (~ $disp_pvsize)");
+	}
 
 	return runsynccmd($sourcehost, $sourcefs, $sendsource, $targethost, $targetfs, $pvsize);
 } # end syncfull()
@@ -1011,7 +1012,6 @@ sub syncincremental {
 			foreach my $i (0..(scalar(@intsnaps) - 2)) {
 				my $snapa = $intsnaps[$i];
 				my $snapb = $intsnaps[$i + 1];
-				writelog('INFO', "Performing an incremental sync between '$snapa' and '$snapb'");
 				syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $snapa, $snapb, 1) == 0 or return $?;
 			}
 
@@ -1026,6 +1026,12 @@ sub syncincremental {
 	my $sendsource = "$streamarg $sourcefsescaped\@$fromsnapescaped $sourcefsescaped\@$tosnapescaped";
 	my $pvsize = getsendsize($sourcehost,"$sourcefs\@$fromsnap","$sourcefs\@$tosnap",$sourceisroot);
 
+	my $srcname = buildnicename($sourcehost, $sourcefs, $fromsnap);
+	my $targetname = buildnicename($targethost, $targetfs);
+	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
+
+	writelog('INFO', "Sending incremental $srcname ... $tosnap to $targetname (~ $disp_pvsize):");
+
 	return runsynccmd($sourcehost, $sourcefs, $sendsource, $targethost, $targetfs, $pvsize);
 } # end syncincremental()
 
@@ -1038,6 +1044,12 @@ sub syncclone {
 	my $sendsource = "-i $originescaped $sourcefsescaped\@$tosnapescaped";
 	my $pvsize = getsendsize($sourcehost,$origin,"$sourcefs\@$tosnap",$sourceisroot);
 
+	my $srcname = buildnicename($sourcehost, $origin);
+	my $targetname = buildnicename($targethost, $targetfs);
+	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
+
+	writelog('INFO', "Clone is recreated on target $targetname based on $srcname (~ $disp_pvsize):");
+
 	return runsynccmd($sourcehost, $sourcefs, $sendsource, $targethost, $targetfs, $pvsize);
 } # end syncclone()
 
@@ -1046,6 +1058,12 @@ sub syncresume {
 
 	my $sendsource = "-t $receivetoken";
 	my $pvsize = getsendsize($sourcehost,"","",$sourceisroot,$receivetoken);
+
+	my $srcname = buildnicename($sourcehost, $sourcefs);
+	my $targetname = buildnicename($targethost, $targetfs);
+	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
+
+	writelog('INFO', "Resuming interrupted zfs send/receive from $srcname to $targetname (~ $disp_pvsize remaining):");
 
 	return runsynccmd($sourcehost, $sourcefs, $sendsource, $targethost, $targetfs, $pvsize);
 } # end syncresume()
@@ -1057,6 +1075,11 @@ sub syncbookmark {
 	my $bookmarkescaped = escapeshellparam($bookmark);
 	my $tosnapescaped = escapeshellparam($tosnap);
 	my $sendsource = "-i $sourcefsescaped#$bookmarkescaped $sourcefsescaped\@$tosnapescaped";
+
+	my $srcname = buildnicename($sourcehost, $sourcefs, '', $bookmark);
+	my $targetname = buildnicename($targethost, $targetfs);
+
+	writelog('INFO', "Sending incremental $srcname ... $tosnap to $targetname:");
 
 	return runsynccmd($sourcehost, $sourcefs, $sendsource, $targethost, $targetfs, 0);
 } # end syncbookmark
@@ -1507,7 +1530,7 @@ sub getnewestsnapshot {
 	my $snaps = shift;
 	foreach my $snap (sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
-		writelog('INFO', "NEWEST SNAPSHOT: $snap");
+		writelog('DEBUG', "NEWEST SNAPSHOT: $snap");
 		return $snap;
 	}
 	# must not have had any snapshots on source - looks like we'd better create one!
@@ -2231,6 +2254,26 @@ sub snapisincluded {
 	}
 
 	return 1;
+}
+
+sub buildnicename {
+	my ($host,$fs,$snapname,$bookmarkname) = @_;
+
+	my $name;
+	if ($host) {
+		$host =~ s/-S \/tmp\/syncoid[a-zA-Z0-9-@]+ //g;
+		$name = "$host:$fs";
+	} else {
+		$name = "$fs";
+	}
+
+	if ($snapname) {
+		$name = "$name\@$snapname";
+	} elsif ($bookmarkname) {
+		$name = "$name#$bookmarkname";
+	}
+
+	return $name;
 }
 
 __END__
