@@ -1114,10 +1114,22 @@ sub compressargset {
 			decomrawcmd => 'zstd',
 			decomargs   => '-dc',
 		},
+		'zstdmt-fast' => {
+			rawcmd      => 'zstdmt',
+			args        => '-3',
+			decomrawcmd => 'zstdmt',
+			decomargs   => '-dc',
+		},
 		'zstd-slow' => {
 			rawcmd      => 'zstd',
 			args        => '-19',
 			decomrawcmd => 'zstd',
+			decomargs   => '-dc',
+		},
+		'zstdmt-slow' => {
+			rawcmd      => 'zstdmt',
+			args        => '-19',
+			decomrawcmd => 'zstdmt',
 			decomargs   => '-dc',
 		},
 		'xz' => {
@@ -1142,7 +1154,7 @@ sub compressargset {
 
 	if ($value eq 'default') {
 		$value = $DEFAULT_COMPRESSION;
-	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstd-slow', 'lz4', 'xz', 'lzo', 'default', 'none'))) {
+	} elsif (!(grep $value eq $_, ('gzip', 'pigz-fast', 'pigz-slow', 'zstd-fast', 'zstdmt-fast', 'zstd-slow', 'zstdmt-slow', 'lz4', 'xz', 'lzo', 'default', 'none'))) {
 		writelog('WARN', "Unrecognised compression value $value, defaulting to $DEFAULT_COMPRESSION");
 		$value = $DEFAULT_COMPRESSION;
 	}
@@ -2255,7 +2267,7 @@ syncoid - ZFS snapshot replication tool
 
 Options:
 
-  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none
+  --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, zstd-fast, zstdmt-fast, zstd-slow, zstdmt-slow, lz4, xz, lzo (default) & none
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
