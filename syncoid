@@ -829,16 +829,25 @@ sub syncdataset {
 		if (defined $args{'create-bookmark'}) {
 			my $ret = createbookmark($sourcehost, $sourcefs, $newsyncsnap, $newsyncsnap);
 			$ret == 0 or do {
-				# fallback: assume naming conflict and try again with guid based suffix
+				my %existingbookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 				my $guid = $snaps{'source'}{$newsyncsnap}{'guid'};
-				$guid = substr($guid, 0, 6);
 
-				writelog('INFO', "bookmark creation failed, retrying with guid based suffix ($guid)...");
+				if (defined $existingbookmarks{$guid} && $existingbookmarks{$guid}{'name'} eq $newsyncsnap) {
+					writelog('INFO', "bookmark already exists, skipping creation");
+				} else {
+					# fallback: assume naming conflict and try again with guid based suffix
+					my $suffix = substr($guid, 0, 6);
 
-				my $ret = createbookmark($sourcehost, $sourcefs, $newsyncsnap, "$newsyncsnap$guid");
-				$ret == 0 or do {
-					if ($exitcode < 2) { $exitcode = 2; }
-					return 0;
+					writelog('INFO', "bookmark creation failed, retrying with guid based suffix ($suffix)...");
+
+					my $newsyncsnapsuffix = "$newsyncsnap$suffix";
+					my $ret = createbookmark($sourcehost, $sourcefs, $newsyncsnap, $newsyncsnapsuffix);
+					$ret == 0 or do {
+						if (! defined $existingbookmarks{$guid} || $existingbookmarks{$guid}{'name'} ne $newsyncsnapsuffix) {
+							if ($exitcode < 2) { $exitcode = 2; }
+							return 0;
+						}
+					}
 				}
 			};
 		}
