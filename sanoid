@@ -25,7 +25,7 @@ my %args = (
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
-                   "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots",
                    "monitor-capacity"
           ) or pod2usage(2);
 
@@ -40,7 +40,7 @@ my $cacheTTL = 900; # 15 minutes
 
 # Allow a much older snapshot cache file than default if _only_ "--monitor-*" action commands are given
 # (ignore "--verbose", "--configdir" etc)
-if (($args{'monitor-snapshots'} || $args{'monitor-health'} || $args{'monitor-capacity'}) && ! ($args{'cron'} || $args{'force-update'} || $args{'take-snapshots'} || $args{'prune-snapshots'} || $args{'force-prune'})) {
+if (($args{'monitor-snapshots'} || $args{'monitor-health'} || $args{'monitor-capacity'}) && ! ($args{'cron'} || $args{'force-update'} || $args{'take-snapshots'} || $args{'prune-snapshots'})) {
 	# The command combination above must not assert true for any command that takes or prunes snapshots
 	$cacheTTL = 18000; # 5 hours
 	if ($args{'debug'}) { print "DEBUG: command combo means that the cache file (provided it exists) will be allowed to be older than default.\n"; }
@@ -349,26 +349,23 @@ sub prune_snapshots {
 							}
 
 							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-							if (!$args{'force-prune'} && iszfsbusy($path)) {
-								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
-							} else {
-								if (! $args{'readonly'}) {
-									if (system($zfs, "destroy", $snap) == 0) {
-										$pruned{$snap} = 1;
-										if ($config{$dataset}{'pruning_script'}) {
-											$ENV{'SANOID_TARGET'} = $dataset;
-											$ENV{'SANOID_SNAPNAME'} = $snapname;
-											$ENV{'SANOID_SCRIPT'} = 'prune';
-											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
-											my $ret = runscript('pruning_script',$dataset);
 
-											delete $ENV{'SANOID_TARGET'};
-											delete $ENV{'SANOID_SNAPNAME'};
-											delete $ENV{'SANOID_SCRIPT'};
-										}
-									} else {
-										warn "could not remove $snap : $?";
+							if (! $args{'readonly'}) {
+								if (system($zfs, "destroy", $snap) == 0) {
+									$pruned{$snap} = 1;
+									if ($config{$dataset}{'pruning_script'}) {
+										$ENV{'SANOID_TARGET'} = $dataset;
+										$ENV{'SANOID_SNAPNAME'} = $snapname;
+										$ENV{'SANOID_SCRIPT'} = 'prune';
+										if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
+										my $ret = runscript('pruning_script',$dataset);
+
+										delete $ENV{'SANOID_TARGET'};
+										delete $ENV{'SANOID_SNAPNAME'};
+										delete $ENV{'SANOID_SCRIPT'};
 									}
+								} else {
+									warn "could not remove $snap : $?";
 								}
 							}
 						}
@@ -1557,30 +1554,6 @@ sub writelock {
 	close FH;
 }
 
-sub iszfsbusy {
-	# check to see if ZFS filesystem passed in as argument currently has a zfs send or zfs receive process referencing it.
-	# return true if busy (currently being sent or received), return false if not.
-
-        my $fs = shift;
-        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd -Ao args= ...\n"; }
-
-        open PL, "$pscmd -Ao args= |";
-        my @processes = <PL>;
-        close PL;
-
-        foreach my $process (@processes) {
-		# if ($args{'debug'}) { print "DEBUG: checking process $process...\n"; }
-                if ($process =~ /zfs *(send|receive|recv).*$fs/) {
-                        # there's already a zfs send/receive process for our target filesystem - return true
-                        # if ($args{'debug'}) { print "DEBUG: process $process matches target $fs!\n"; }
-                        return 1;
-                }
-        }
-
-        # no zfs receive processes for our target filesystem found - return false
-        return 0;
-}
-
 #######################################################################################################################3
 #######################################################################################################################3
 #######################################################################################################################3
@@ -1752,7 +1725,6 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
-  --force-prune         Purges expired snapshots even if a send/recv is in progress
 
   --help                Prints this helptext
   --version             Prints the version number
