@@ -80,9 +80,9 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 	This will process your sanoid.conf file, it will NOT create snapshots, but it will purge expired ones.
 
-+ --force-prune
++ --double-check-prune
 
-	Purges expired snapshots even if a send/recv is in progress
+	Double-check that no send/recv is in progress before pruning a snapshot. May slow down by a second for pruned snapshot. Normally, this should not be needed, because zfs does not drop busy snapshots anyway.
 
 + --monitor-snapshots
 
