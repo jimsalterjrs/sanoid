@@ -410,6 +410,7 @@ sub syncdataset {
 
 	my $newsyncsnap;
 	my $matchingsnap;
+	my $usebookmark = 0;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -585,24 +586,27 @@ sub syncdataset {
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
 		my %bookmark = ();
+		my $bookmarksnap = 0;
 
 		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+
+		# find most recent matching bookmark
+		my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+
+		# check for matching guid of source bookmark and target snapshot (oldest first)
+		foreach my $snap ( sort { sortsnapshots(\%snaps, $b, $a, 'target') } keys %{ $snaps{'target'} }) {
+			my $guid = $snaps{'target'}{$snap}{'guid'};
+
+			if (defined $bookmarks{$guid}) {
+				# found a match
+				%bookmark = %{ $bookmarks{$guid} };
+				$bookmarksnap = $snap;
+				last;
+			}
+		}
+
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
-			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
-
-			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { sortsnapshots(\%snaps, $b, $a) } keys %{ $snaps{'target'} }) {
-				my $guid = $snaps{'target'}{$snap}{'guid'};
-
-				if (defined $bookmarks{$guid}) {
-					# found a match
-					%bookmark = %{ $bookmarks{$guid} };
-					$matchingsnap = $snap;
-					last;
-				}
-			}
-
 			if (! %bookmark) {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
@@ -657,6 +661,20 @@ sub syncdataset {
 
 				# return false now in case more child datasets need replication.
 				return 0;
+			} else {
+				# use bookmark as fallback
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
+			}
+		} elsif (%bookmark && $bookmark{'guid'} ne $snaps{'source'}{$matchingsnap}{'guid'}) {
+			my $comparisonkey = 'creation';
+			if (defined $snaps{'source'}{$matchingsnap}{'createtxg'} && defined $bookmark{'createtxg'}) {
+				$comparisonkey = 'createtxg';
+			}
+			if ($bookmark{$comparisonkey} > $snaps{'source'}{$matchingsnap}{$comparisonkey}) {
+				writelog('DEBUG', "using bookmark $bookmark{'name'} because it was created after latest matching snapshot $matchingsnap");
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
 			}
 		}
 
@@ -676,13 +694,13 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if (%bookmark) {
+			if ($usebookmark) {
 
 				if (!defined $args{'no-stream'}) {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
-					foreach my $snap ( sort { sortsnapshots(\%snaps, $a, $b) } keys %{ $snaps{'source'} }) {
+					foreach my $snap ( sort { sortsnapshots(\%snaps, $a, $b, 'source') } keys %{ $snaps{'source'} }) {
 						my $comparisonkey = 'creation';
 						if (defined $snaps{'source'}{$snap}{'createtxg'} && defined $bookmark{'createtxg'}) {
 							$comparisonkey = 'createtxg';
@@ -736,7 +754,7 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!%bookmark || $nextsnapshot) {
+			if (!$usebookmark || $nextsnapshot) {
 				if ($matchingsnap eq $newsyncsnap) {
 					# edge case: bookmark replication used the latest snapshot
 					return 0;
@@ -801,7 +819,7 @@ sub syncdataset {
 
 	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
 	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
-	if (defined $args{'use-hold'}) {
+	if (defined $args{'use-hold'} && !$usebookmark) {
 		my $holdcmd;
 		my $holdreleasecmd;
 		my $hostid = hostname();
@@ -865,7 +883,7 @@ sub syncdataset {
 		# those that exist on the source. Remaining are the snapshots
 		# that are only on the target. Then sort to remove the oldest
 		# snapshots first.
-		my @to_delete = sort { sortsnapshots(\%snaps, $a, $b) } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		my @to_delete = sort { sortsnapshots(\%snaps, $a, $b, 'source') } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
 			# Create batch of snapshots to remove
 			my $snaps = join ',', splice(@to_delete, 0, 50);
@@ -1486,16 +1504,16 @@ sub readablebytes {
 }
 
 sub sortsnapshots {
-	my ($snaps, $left, $right) = @_;
-	if (defined $snaps->{'source'}{$left}{'createtxg'} && defined $snaps->{'source'}{$right}{'createtxg'}) {
-		return $snaps->{'source'}{$left}{'createtxg'} <=> $snaps->{'source'}{$right}{'createtxg'};
+	my ($snaps, $left, $right, $idx) = @_;
+	if (defined $snaps->{$idx}{$left}{'createtxg'} && defined $snaps->{$idx}{$right}{'createtxg'}) {
+		return $snaps->{$idx}{$left}{'createtxg'} <=> $snaps->{$idx}{$right}{'createtxg'};
 	}
-	return $snaps->{'source'}{$left}{'creation'} <=> $snaps->{'source'}{$right}{'creation'};
+	return $snaps->{$idx}{$left}{'creation'} <=> $snaps->{$idx}{$right}{'creation'};
 }
 
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap (sort { sortsnapshots($snaps, $a, $b) } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps, $a, $b, 'source') } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -1509,7 +1527,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap (sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps, $b, $a, 'source') } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		writelog('INFO', "NEWEST SNAPSHOT: $snap");
 		return $snap;
@@ -1688,7 +1706,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { sortsnapshots($snaps, $b, $a, 'source') } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -1964,6 +1982,7 @@ sub getbookmarks() {
 
 	for my $bookmark (keys %bookmark_data) {
 		my $guid = $bookmark_data{$bookmark}{'guid'};
+		$bookmarks{$guid}{'guid'} = $guid;
 		$bookmarks{$guid}{'name'} = $bookmark;
 		$bookmarks{$guid}{'creation'} = $bookmark_data{$bookmark}{'creation'};
 		$bookmarks{$guid}{'createtxg'} = $bookmark_data{$bookmark}{'createtxg'};
