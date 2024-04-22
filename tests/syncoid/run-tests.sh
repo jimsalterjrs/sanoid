@@ -17,8 +17,11 @@ for test in $(find . -mindepth 1 -maxdepth 1 -type d -printf "%P\n" | sort -g); 
     cd "${test}"
     echo | bash run.sh > "${LOGFILE}" 2>&1
 
-    if [ $? -eq 0 ]; then
+    ret=$?
+    if [ $ret -eq 0 ]; then
         echo "[PASS]"
+    elif [ $ret -eq 130 ]; then
+        echo "[SKIPPED]"
     else
         echo "[FAILED] (see ${LOGFILE})"
     fi
