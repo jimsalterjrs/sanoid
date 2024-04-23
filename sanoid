@@ -868,9 +868,10 @@ sub getsnaps {
 			@rawsnaps = <FH>;
 			close FH;
 
-			open FH, "> $cache" or die 'Could not write to $cache!\n';
+			open FH, "> $cache.tmp" or die 'Could not write to $cache.tmp!\n';
 			print FH @rawsnaps;
 			close FH;
+			rename("$cache.tmp", "$cache") or die 'Could not rename to $cache!\n';
 			removelock('sanoid_cacheupdate');
 		} else {
 			if ($args{'verbose'}) { print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n"; }
@@ -1105,9 +1106,10 @@ sub init {
 					print "INFO: dataset cache expired - updating from zfs list.\n";
 				}
 			}
-			open FH, "> $cachedatasetspath" or die 'Could not write to $cachedatasetspath!\n';
+			open FH, "> $cachedatasetspath.tmp" or die 'Could not write to $cachedatasetspath.tmp!\n';
 			print FH @updatedatasets;
 			close FH;
+			rename("$cachedatasetspath.tmp", "$cachedatasetspath") or die 'Could not rename to $cachedatasetspath!\n';
 			removelock('sanoid_cachedatasetupdate');
 		} else {
 			if ($args{'verbose'}) { print "INFO: deferring dataset cache update - valid cache update lock held by another sanoid process.\n"; }
@@ -1731,13 +1733,14 @@ sub removecachedsnapshots {
 	my @rawsnaps = <FH>;
 	close FH;
 
-	open FH, "> $cache" or die 'Could not write to $cache!\n';
+	open FH, "> $cache.tmp" or die 'Could not write to $cache.tmp!\n';
 	foreach my $snapline ( @rawsnaps ) {
 		my @columns = split("\t", $snapline);
 		my $snap = $columns[0];
 		print FH $snapline unless ( exists($pruned{$snap}) );
 	}
 	close FH;
+	rename("$cache.tmp", "$cache") or die 'Could not rename to $cache!\n';
 
 	removelock('sanoid_cacheupdate');
 	%snaps = getsnaps(\%config,$cacheTTL,0);
