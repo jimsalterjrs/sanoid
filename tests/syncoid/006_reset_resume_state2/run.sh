@@ -28,6 +28,8 @@ zfs create -o mountpoint="${MOUNT_TARGET}" "${POOL_NAME}"/src
 
 dd if=/dev/urandom of="${MOUNT_TARGET}"/big_file bs=1M count=200
 
+sleep 1
+
 zfs snapshot "${POOL_NAME}"/src@big
 ../../../syncoid --debug --no-sync-snap --compress=none --source-bwlimit=2m "${POOL_NAME}"/src "${POOL_NAME}"/dst &
 syncoid_pid=$!
