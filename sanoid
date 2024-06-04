@@ -25,7 +25,7 @@ my %args = (
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
-                   "monitor-snapshots", "take-snapshots", "prune-snapshots",
+                   "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity"
           ) or pod2usage(2);
 
@@ -53,6 +53,10 @@ make_path($cache_dir);
 make_path($run_dir);
 
 my $cacheTTL = 1200; # 20 minutes
+
+if ($args{'force-prune'}) {
+	warn "WARN: --force-prune argument is deprecated and its behavior is now standard";
+}
 
 # Allow a much older snapshot cache file than default if _only_ "--monitor-*" action commands are given
 # (ignore "--verbose", "--configdir" etc)
