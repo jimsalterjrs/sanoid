@@ -194,6 +194,9 @@ if (length $args{'insecure-direct-connection'}) {
 # warn user of anything missing, then continue with sync.
 my %avail = checkcommands();
 
+# host => { supports_type_filter => 1/0, supported_properties => ['guid', 'creation', ...] }
+my %host_zfs_get_features;
+
 my %snaps;
 my $exitcode = 0;
 
@@ -415,10 +418,10 @@ sub syncdataset {
 	if (!defined($receivetoken)) {
 		# build hashes of the snaps on the source and target filesystems.
 
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
 
 		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
 		}
@@ -858,10 +861,10 @@ sub syncdataset {
 		# snapshots first.
 
 		# regather snapshots on source and target
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
 
 		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
 		}
@@ -1393,6 +1396,48 @@ sub checkcommands {
 	return %avail;
 }
 
+sub check_zfs_get_features {
+	my ($rhost, $mysudocmd, $zfscmd) = @_;
+	my $host = $rhost ? (split(/\s+/, $rhost))[-1] : "localhost";
+
+	return $host_zfs_get_features{$host} if exists $host_zfs_get_features{$host};
+
+	writelog('DEBUG', "Checking `zfs get` features on host \"$host\"...");
+
+	$host_zfs_get_features{$host} = {
+		supports_type_filter => 0,
+		supported_properties => []
+	};
+
+	my $check_t_option_cmd = "$rhost $mysudocmd $zfscmd get -H -t snapshot '' ''";
+	open my $fh_t, "$check_t_option_cmd 2>&1 |";
+	my $output_t = <$fh_t>;
+	close $fh_t;
+
+	if ($output_t !~ /^\Qinvalid option\E/) {
+		$host_zfs_get_features{$host}->{supports_type_filter} = 1;
+	}
+
+	writelog('DEBUG', "Host \"$host\" has `zfs get -t`?: $host_zfs_get_features{$host}->{supports_type_filter}");
+
+	my @properties_to_check = ('guid', 'creation', 'createtxg');
+	foreach my $prop (@properties_to_check) {
+		my $check_prop_cmd = "$rhost $mysudocmd $zfscmd get -H $prop ''";
+		open my $fh_p, "$check_prop_cmd 2>&1 |";
+		my $output_p = <$fh_p>;
+		close $fh_p;
+
+		if ($output_p !~ /^\Qbad property list: invalid property\E/) {
+			push @{$host_zfs_get_features{$host}->{supported_properties}}, $prop;
+		}
+	}
+
+	writelog('DEBUG', "Host \"$host\" ZFS properties: @{$host_zfs_get_features{$host}->{supported_properties}}");
+
+	return $host_zfs_get_features{$host};
+}
+
+
 sub iszfsbusy {
 	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
@@ -1869,12 +1914,10 @@ sub dumphash() {
 }
 
 sub getsnaps {
-	my ($type,$rhost,$fs,$isroot,$use_fallback,%snaps) = @_;
+	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-
-	my $rhostOriginal = $rhost;
 
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
@@ -1882,9 +1925,17 @@ sub getsnaps {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = $use_fallback
-		? "$rhost $mysudocmd $zfscmd get -Hpd 1 all $fsescaped"
-		: "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot all $fsescaped";
+	my $host_features = check_zfs_get_features($rhost, $mysudocmd, $zfscmd);
+
+	my @properties = @{$host_features->{supported_properties}};
+	my $type_filter = "";
+	if ($host_features->{supports_type_filter}) {
+		$type_filter = "-t snapshot";
+	} else {
+		push @properties, 'type';
+	}
+	my $properties_string = join(',', @properties);
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 $type_filter $properties_string $fsescaped";
 
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
@@ -1894,13 +1945,7 @@ sub getsnaps {
 	}
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH or do {
-		if (!$use_fallback) {
-			writelog('WARN', "snapshot listing failed, trying fallback command");
-			return getsnaps($type, $rhostOriginal, $fs, $isroot, 1, %snaps);
-		}
-		die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
-	};
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 
 	my %snap_data;
 	my %creationtimes;
@@ -1938,7 +1983,7 @@ sub getsnaps {
 	}
 
 	for my $snap (keys %snap_data) {
-		if (!$use_fallback || $snap_data{$snap}{'type'} eq 'snapshot') {
+		if (length $type_filter || $snap_data{$snap}{'type'} eq 'snapshot') {
 			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
 			$snaps{$type}{$snap}{'createtxg'} = $snap_data{$snap}{'createtxg'};
 			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
