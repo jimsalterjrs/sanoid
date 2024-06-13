@@ -1874,6 +1874,8 @@ sub getsnaps {
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
+	my $rhostOriginal = $rhost;
+
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
 		# double escaping needed
@@ -1895,7 +1897,7 @@ sub getsnaps {
 	close FH or do {
 		if (!$use_fallback) {
 			writelog('WARN', "snapshot listing failed, trying fallback command");
-			return getsnaps($type, $rhost, $fs, $isroot, 1, %snaps);
+			return getsnaps($type, $rhostOriginal, $fs, $isroot, 1, %snaps);
 		}
 		die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 	};
