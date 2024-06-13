@@ -1911,7 +1911,7 @@ sub getsnaps {
 		die "CRITICAL ERROR: Unexpected line format in $line" unless defined $value;
 
 		my (undef, $snap) = split /@/, $dataset;
-		die "CRITICAL ERROR: Unexpected dataset format in $line" unless $snap;
+		next unless length $snap;
 
         if (!snapisincluded($snap)) { next; }
 
