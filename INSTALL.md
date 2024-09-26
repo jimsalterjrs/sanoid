@@ -6,7 +6,7 @@
 
 - [Installation](#installation)
 	- [Debian/Ubuntu](#debianubuntu)
-	- [CentOS](#centos)
+	- [RHEL/CentOS/AlmaLinux](#RHEL/CentOS/AlmaLinux)
 	- [FreeBSD](#freebsd)
 	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
 	- [Other OSes](#other-oses)
@@ -44,7 +44,7 @@ Enable sanoid timer:
 sudo systemctl enable --now sanoid.timer
 ```
 
-## CentOS/RHEL
+## RHEL/CentOS/AlmaLinux
 
 Install prerequisite software:
 
