@@ -1008,6 +1008,12 @@ sub init {
 					}
 					if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
 					$config{$section}{$key} = $ini{$template}{$key};
+
+					my $value = $config{$section}{$key};
+					if (ref($value) eq 'ARRAY') {
+						# handle duplicates silently (warning was already printed above)
+						$config{$section}{$key} = $value->[0];
+					}
 				}
 			}
 		}
