@@ -80,10 +80,6 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 	This will process your sanoid.conf file, it will NOT create snapshots, but it will purge expired ones.
 
-+ --force-prune
-
-	Purges expired snapshots even if a send/recv is in progress
-
 + --monitor-snapshots
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of your snapshots.
