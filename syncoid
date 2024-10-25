@@ -27,7 +27,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
-                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
+                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@", "hostid=s")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -138,6 +138,17 @@ if (length $args{'identifier'}) {
 		exit 127;
 	}
 	$identifier = "$args{'identifier'}_";
+}
+
+my $hostid = hostname();
+if (length $args{'hostid'}) {
+	if ($args{'hostid'} !~ /^[a-zA-Z0-9-_:.]+$/) {
+		# invalid extra hostid
+		writelog('WARN', "hostid contains invalid chars!");
+		pod2usage(2);
+		exit 127;
+	}
+	$hostid = "$args{'hostid'}_";
 }
 
 # figure out if source and/or target are remote.
@@ -377,7 +388,6 @@ sub syncdataset {
 		writelog('INFO', "Skipping dataset (syncoid:sync=false): $sourcefs...");
 		return 0;
 	} else {
-		my $hostid = hostname();
 		my @hosts = split(/,/,$sync);
 		if (!(grep $hostid eq $_, @hosts)) {
 			writelog('INFO', "Skipping dataset (syncoid:sync doesn't include $hostid): $sourcefs...");
@@ -795,7 +805,6 @@ sub syncdataset {
 	if (defined $args{'use-hold'}) {
 		my $holdcmd;
 		my $holdreleasecmd;
-		my $hostid = hostname();
 		my $matchingsnapescaped = escapeshellparam($matchingsnap);
 		my $holdname = "syncoid\_$identifier$hostid";
 		if ($sourcehost ne '') {
@@ -1677,8 +1686,6 @@ sub pruneoldsyncsnaps {
 
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
 
-	my $hostid = hostname();
-
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd=''; } else { $mysudocmd = $sudocmd; }
 
@@ -1754,7 +1761,6 @@ sub newsyncsnap {
 	}
 	my $mysudocmd;
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	my $hostid = hostname();
 	my %date = getdate();
 	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
