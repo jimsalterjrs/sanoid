@@ -148,7 +148,7 @@ if (length $args{'hostid'}) {
 		pod2usage(2);
 		exit 127;
 	}
-	$hostid = "$args{'hostid'}_";
+	$hostid = "$args{'hostid'}";
 }
 
 # figure out if source and/or target are remote.
