@@ -126,7 +126,9 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 ### Sanoid script hooks
 
-There are three script types which can optionally be executed at various stages in the lifecycle of a snapshot:
+There are three script types which can optionally be executed at various stages in the lifecycle of a snapshot.
+
+**Note** that snapshots related script are triggered only if you have `autosnap = yes` and pruning scripts are triggered only if you have `autoprune = yes`.
 
 #### `pre_snapshot_script`
 
