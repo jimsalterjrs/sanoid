@@ -162,6 +162,7 @@ Install prerequisite software:
 ```bash
 pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop sanoid
 ```
+_No additional steps are required as of FreeBSD 14.1 - the notes below may apply to versions prior to that._
 
 **Additional notes:**
 
