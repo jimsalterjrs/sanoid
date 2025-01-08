@@ -27,7 +27,7 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
-                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
+                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@", "target-properties=s@", "restore-properties")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -40,6 +40,12 @@ if (defined($args{'exclude'})) {
 	if (!defined($args{'exclude-datasets'})) {
 		$args{'exclude-datasets'} = $args{'exclude'};
 	}
+}
+
+if (defined $args{'restore-properties'} && defined $args{'preserve-properties'}) {
+	writelog('WARN', "invalid argument combination, --restore-properties and --preserve-properties aren't compatible!");
+	pod2usage(2);
+	exit 127;
 }
 
 my @sendoptions = ();
@@ -913,20 +919,83 @@ sub runsynccmd {
 	# if no rollbacks are allowed, disable forced receive
 	if (!defined $args{'no-rollback'}) { $recvoptions .= ' -F'; }
 
-	if (defined $args{'preserve-properties'}) {
-		my %properties = getlocalzfsvalues($sourcehost,$sourcefs,$sourceisroot);
-
+	my %properties = getlocalzfsvalues($sourcehost,$sourcefs,$sourceisroot);
+	
+	if (defined $args{'restore-properties'}) {
 		foreach my $key (keys %properties) {
 			my $value = $properties{$key};
-			writelog('DEBUG', "will set $key to $value ...");
-			my $pair = escapeshellparam("$key=$value");
-			$recvoptions .= " -o $pair";
+			my ($skey, $ikey) = split(/:/, $key);
+			if (!length($ikey)) {
+				my $skeypresent = 0;
+				foreach my $key1 (keys %properties) {
+					my ($skey1, $ikey1) = split(/:/, $key1);
+					if (length($ikey1)) {
+						if($ikey1 eq $key) {
+							$skeypresent = 1;
+						}
+					}
+				}
+				if (!$skeypresent) {
+					if(!istargetpropertypresent($key)) {
+						writelog('DEBUG', "will set $key to $value ...");
+						my $pair = escapeshellparam("$key=$value");
+						$recvoptions .= " -o $pair";
+					}
+				}
+			} else {
+				if(!istargetpropertypresent($ikey)) {
+					if($value eq "*default*") {
+						writelog('DEBUG', "will unset $ikey ...");
+						$recvoptions .= " -x $ikey";
+					} else {
+						writelog('DEBUG', "will set $ikey to $value ...");
+						my $pair = escapeshellparam("$ikey=$value");
+						$recvoptions .= " -o $pair";
+					}
+				}
+			}
+		}
+	}
+
+	if (defined $args{'preserve-properties'}) {
+		foreach my $key (keys %properties) {
+			my $value = $properties{$key};
+			if(!istargetpropertypresent($key)) {
+				writelog('DEBUG', "will set $key to $value ...");
+				my $pair = escapeshellparam("$key=$value");
+				$recvoptions .= " -o $pair";
+			} else {
+				my $newkey .= "syncoid:$key";
+				writelog('DEBUG', "will set $newkey to $value ...");
+				my $pair = escapeshellparam("$newkey=$value");
+				$recvoptions .= " -o $pair";
+			}
 		}
 	} elsif (defined $args{'preserve-recordsize'}) {
 		my $type = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'type');
 		if ($type eq "filesystem") {
 			my $recordsize = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'recordsize');
 			$recvoptions .= " -o recordsize=$recordsize"
+		}
+	}
+
+	if (defined $args{'target-properties'}) {
+		my $props = $args{'target-properties'};
+		foreach (@$props) {
+			my ($tkey, $tvalue) = split(/=/);
+			my $tpair = escapeshellparam("$tkey=$tvalue");
+			$recvoptions .= " -o $tpair";
+			my $localpresent = 0;
+			foreach my $key (keys %properties) {
+				my $value = $properties{$key};
+				if ($tkey eq $key) {
+					$localpresent = 1;
+				}
+			}
+			if(!$localpresent && defined $args{'preserve-properties'}) {
+				$tpair = escapeshellparam("syncoid:$tkey=*default*");
+				$recvoptions .= " -o $tpair";
+			}
 		}
 	}
 
@@ -2251,6 +2320,23 @@ sub writelog {
 	}
 }
 
+sub istargetpropertypresent {
+	my ($propname) = @_;
+
+	if (defined $args{'target-properties'}) {
+		my $props = $args{'target-properties'};
+		foreach (@$props) {
+			my ($tkey, $tvalue) = split(/=/);
+			if ($propname =~ /$tkey/) {
+				writelog('DEBUG', "source property $propname will be overwritten by value set in target-properties /$_/");
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
 sub snapisincluded {
 	my ($snapname) = @_;
 
@@ -2334,7 +2420,9 @@ Options:
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next successful replication. The hold name includes the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
-  --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
+  --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends. If --target-properties overrides locally set property, it will be saved with 'syncoid:' prefix on target dataset.
+  --restore-properties  Works like --preserve-properties but also sets properties present locally with 'syncoid:' prefix on target dataset (without this prefix).
+  --target-properties   Set properties on target dataset, for example --target-properties=canmount=noauto. Can be specified multiple times. The properties defined by this parameter override the properties set by --preserve-properties and --restore-properties.
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
   --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       DEPRECATED. Equivalent to --exclude-datasets, but will be removed in a future release. Ignored if --exclude-datasets is also provided.
