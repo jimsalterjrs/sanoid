@@ -53,14 +53,16 @@ Install prerequisite software:
 # (Note that on RHEL we cannot enable EPEL with the epel-release
 # package, so you should follow the instructions on the main EPEL site.)
 sudo yum install -y epel-release git
-# On CentOS, we also need to enable the PowerTools repo:
+# On CentOS 8 (not for CentOS Stream 9 or AlamaLinux 9.5) we also need to enable the PowerTools repo:
 sudo yum config-manager --set-enabled powertools
-# For Centos 8 you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
+# For Centos 8 (not for CentOS Stream 9 or AlamaLinux 9.5) you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
 sudo dnf config-manager --set-enabled powertools
 # On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
 sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
 # Install the packages that Sanoid depends on:
-sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny perl-Getopt-Long lzop mbuffer mhash pv
+sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Getopt-Long lzop mbuffer mhash pv
+# CentOS Stream 9 (not AlmaLinx 9.5)
+sudo dnf install -y perl-Capture-Tiny
 # The repositories above should contain all the relevant Perl modules, but if you
 # still cannot find them then you can install them from CPAN manually:
 sudo dnf install perl-CPAN perl-CPAN
@@ -80,6 +82,8 @@ cd sanoid
 git checkout $(git tag | grep "^v" | tail -n 1)
 # Install the executables
 sudo cp sanoid syncoid findoid sleepymutex /usr/local/sbin
+# AlmaLinux 9.5 (also put them in /usr/sbin)
+sudo cp sanoid syncoid findoid sleepymutex /usr/sbin
 # Create the config directory
 sudo mkdir /etc/sanoid
 # Install default config
