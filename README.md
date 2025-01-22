@@ -15,16 +15,16 @@ Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When co
 
 <p align="center"><a href="https://youtu.be/ZgowLNBsu00" target="_blank"><img src="http://www.openoid.net/sanoid_video_launcher.png" alt="sanoid rollback demo" title="sanoid rollback demo"></a><br clear="all"><sup>(Real time demo: rolling back a full-scale cryptomalware infection in seconds!)</sup></p>
 
-More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md for more details:
-```
-* * * * * TZ=UTC /usr/local/bin/sanoid --cron
-```
+More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  
 
-`Note`: Using UTC as timezone is recommended to prevent problems with daylight saving times
+Newer systemd `timer` and older `crontab` scheduling examples are available, see INSTALL.md for more details
+`Note`: Using UTC as a timezone is recommended to prevent problems with daylight-saving times
 
 And its /etc/sanoid/sanoid.conf might look something like this:
-
 ```
+[data]
+	use_template = production
+	recursive = yes
 [data/home]
 	use_template = production
 [data/images]
@@ -33,6 +33,9 @@ And its /etc/sanoid/sanoid.conf might look something like this:
 	process_children_only = yes
 [data/images/win7]
 	hourly = 4
+[data/tmp]
+	use_template = ignore
+
 
 #############################
 # templates below this line #
@@ -46,9 +49,14 @@ And its /etc/sanoid/sanoid.conf might look something like this:
         yearly = 0
         autosnap = yes
         autoprune = yes
+
+[template_ignore]              
+        autoprune = no              
+        autosnap = no              
+        monitor = no
 ```
 
-Which would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4 hourlies for whatever reason.
+This would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set).  Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4-hourlies for whatever reason.
 
 For more full details on sanoid.conf settings see [Wiki page](https://github.com/jimsalterjrs/sanoid/wiki/Sanoid#options).
 
@@ -58,7 +66,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --cron
 
- 	This will process your sanoid.conf file, create snapshots, then purge expired ones.
+ 	This will process your sanoid.conf file, create snapshots, and then purge expired ones.
 
 + --configdir
 
@@ -74,7 +82,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --take-snapshots
 
-	This will process your sanoid.conf file, create snapshots, but it will NOT purge expired ones. (Note that snapshots taken are atomic in an individual dataset context, <i>not</i> a global context - snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent and atomic, but one may be a few filesystem transactions "newer" than the other.)
+	This will process your sanoid.conf file, and create snapshots, but it will NOT purge expired ones. (Note that snapshots taken are atomic in an individual dataset context, <i>not</i> a global context - snapshots of pool/dataset1 and pool/dataset2 will each be internally consistent and atomic, but one may be a few filesystem transactions "newer" than the other.)
 
 + --prune-snapshots
 
