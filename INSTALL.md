@@ -2,6 +2,13 @@
 
 **Sanoid** and **Syncoid** are complementary but separate pieces of software. To install and configure them, follow the guide below for your operating system. Everything in `code blocks` should be copy-pasteable. If your OS isn't listed, a set of general instructions is at the end of the list and you can perform the process manually.
 
+# General outline for installation
+
+1.  Install prerequisites: Perl module Config::IniFiles, ssh, pv, gzip, lzop, and mbuffer
+2.  Download the **Sanoid** repo
+3.  Create the config directory `/etc/sanoid` and put `sanoid.defaults.conf` in there, and create `sanoid.conf` in it too
+4.  Create a systemd timer or cron job that runs `sanoid --cron` every 15 minutes.
+
 <!-- TOC depthFrom:1 depthTo:6 withLinks:1 updateOnSave:0 orderedList:0 -->
 
 - [Installation](#installation)
@@ -76,7 +83,9 @@ cpan # answer the questions and paste the following lines:
 
 Clone this repo, then put the executables and config files into the appropriate directories:
 
-```bash
+``` bash
+# Change directory for your working area
+cd /usr/local/src
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
@@ -89,75 +98,14 @@ sudo cp sanoid syncoid findoid sleepymutex /usr/sbin
 # Create the config directory
 sudo mkdir /etc/sanoid
 # Install default config
-sudo cp sanoid.defaults.conf /etc/sanoid
+sudo cp sanoid.defaults.conf   /etc/sanoid
 # Create a blank config file
 sudo touch /etc/sanoid/sanoid.conf
 # Place the sample config in the conf directory for reference
 sudo cp sanoid.conf /etc/sanoid/sanoid.example.conf
 ```
 
-Create a systemd service:
 
-```bash
-cat << "EOF" | sudo tee /etc/systemd/system/sanoid.service
-[Unit]
-Description=Snapshot ZFS Pool
-Requires=zfs.target
-After=zfs.target
-Wants=sanoid-prune.service
-Before=sanoid-prune.service
-ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
-
-[Service]
-Environment=TZ=UTC
-Type=oneshot
-ExecStart=/usr/local/sbin/sanoid --take-snapshots --verbose
-EOF
-
-cat << "EOF" | sudo tee /etc/systemd/system/sanoid-prune.service
-[Unit]
-Description=Cleanup ZFS Pool
-Requires=zfs.target
-After=zfs.target sanoid.service
-ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
-
-[Service]
-Environment=TZ=UTC
-Type=oneshot
-ExecStart=/usr/local/sbin/sanoid --prune-snapshots --verbose
-
-[Install]
-WantedBy=sanoid.service
-EOF
-```
-
-And a systemd timer that will execute **Sanoid** once per quarter hour
-(Decrease the interval as suitable for configuration):
-
-```bash
-cat << "EOF" | sudo tee /etc/systemd/system/sanoid.timer
-[Unit]
-Description=Run Sanoid Every 15 Minutes
-Requires=sanoid.service
-
-[Timer]
-OnCalendar=*:0/15
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-```
-
-Reload systemd and start our timer:
-```bash
-# Tell systemd about our new service definitions
-sudo systemctl daemon-reload
-# Enable sanoid-prune.service to allow it to be triggered by sanoid.service
-sudo systemctl enable sanoid-prune.service
-# Enable and start the Sanoid timer
-sudo systemctl enable --now sanoid.timer
-```
 
 Now, proceed to configure [**Sanoid**](#configuration)
 
@@ -233,25 +181,124 @@ sudo launchctl load /Library/LaunchDaemons/net.openoid.Sanoid.plist
 
 **Sanoid** depends on the Perl module Config::IniFiles and will not operate without it. Config::IniFiles may be installed from CPAN, though the project strongly recommends using your distribution's repositories instead.
 
-**Syncoid** depends on ssh, pv, gzip, lzop, and mbuffer. It can run with reduced functionality in the absence of any or all of the above. SSH is only required for remote synchronization. On newer FreeBSD and Ubuntu Xenial chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the default for SSH transport since v1.4.6. Syncoid runs will fail if one of them is not available on either end of the transport.
+**Syncoid** depends on ssh, pv, gzip, lzop, and mbuffer. It can run with reduced functionality in the absence of any or all of the above. SSH is only required for remote synchronization. On newer FreeBSD and Ubuntu Xenial chacha20-poly1305@openssh.com, on other distributions, arcfour crypto is the default for SSH transport since v1.4.6. Syncoid runs will fail if one of them is not available on either end of the transport.
 
-### General outline for installation
 
-1.  Install prerequisites: Perl module Config::IniFiles, ssh, pv, gzip, lzop, and mbuffer
-2.  Download the **Sanoid** repo
-3.  Create the config directory `/etc/sanoid` and put `sanoid.defaults.conf` in there, and create `sanoid.conf` in it too
-4.  Create a cron job or a systemd timer that runs `sanoid --cron` once per minute
 
-## cron
+## Scheduling and timers 
+Note:
+* Using UTC as a timezone is recommended to prevent problems with daylight-saving times
+* Sanoid also requires a "service defaults" file located at /etc/sanoid/sanoid.defaults.conf
 
-If you use cron there is the need to ensure that only one instance of sanoid is run at any time (or else there will be funny error messages about missing snapshots, ...). It's also good practice to separate the snapshot taking and pruning so the later won't block the former in case of long running pruning operations. Following is the recommend setup for a standard install:
+### Example: sanoid configuration file.
+
+The sanoid configuration file `/etc/sanoid/sanoid.conf` might look something like this:
+```
+[data/home]
+	use_template = production
+[data/images]
+	use_template = production
+	recursive = yes
+	process_children_only = yes
+[data/images/win7]
+	hourly = 4
+
+#############################
+# templates below this line #
+#############################
+
+[template_production]
+        frequently = 0
+        hourly = 36
+        daily = 30
+        monthly = 3
+        yearly = 0
+        autosnap = yes
+        autoprune = yes
+```
+This would be enough to tell sanoid to take and keep 36 hourly snapshots, 30 dailies, 3 monthlies, and no yearlies for all datasets under data/images (but not data/images itself, since process_children_only is set). Except in the case of data/images/win7, which follows the same template (since it's a child of data/images) but only keeps 4-hourlies for whatever reason.
+
+
+For more full details on sanoid.conf settings see Wiki page.
+
+### Create systemd sanoid service timers:
+
+```bash
+cat << "EOF" | sudo tee /etc/systemd/system/sanoid.service
+[Unit]
+Description=Snapshot ZFS Pool
+Requires=zfs.target
+After=zfs.target
+Wants=sanoid-prune.service
+Before=sanoid-prune.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+ExecStart=/usr/local/sbin/sanoid --take-snapshots --verbose
+EOF
+
+cat << "EOF" | sudo tee /etc/systemd/system/sanoid-prune.service
+[Unit]
+Description=Cleanup ZFS Pool
+Requires=zfs.target
+After=zfs.target sanoid.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+ExecStart=/usr/local/sbin/sanoid --prune-snapshots --verbose
+
+[Install]
+WantedBy=sanoid.service
+EOF
+```
+
+And a systemd timer that will execute **Sanoid** every 15 minutes.
+(Decrease the interval as suitable for configuration):
+
+```bash
+cat << "EOF" | sudo tee /etc/systemd/system/sanoid.timer
+[Unit]
+Description=Run Sanoid Every 15 Minutes
+Requires=sanoid.service
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+Reload systemd and start our timer:
+```bash
+# Tell systemd about our new service definitions
+sudo systemctl daemon-reload
+# Enable sanoid-prune.service to allow it to be triggered by sanoid.service
+sudo systemctl enable sanoid-prune.service
+# Enable and start the Sanoid timer
+sudo systemctl enable --now sanoid.timer
+```
+
+Note: Be aware that if you don't specify some interval options the defaults will be used (from /etc/sanoid/sanoid.defaults.conf)
+
+### Example: cron crontab entry
+
+```
+* * * * * TZ=UTC /usr/local/bin/sanoid --cron
+```
+
+If you have funny error messages about missing snapshots, you will need to ensure that only one instance of sanoid is run at any time.  It is also good practice to separate the snapshot taking and pruning so the latter won't block the former in case of long-running pruning operations. Following is the recommended setup for a standard install:
 
 ```
 */15 * * * * root flock -n /var/run/sanoid/cron-take.lock -c "TZ=UTC sanoid --take-snapshots"
 */15 * * * * root flock -n /var/run/sanoid/cron-prune.lock -c "sanoid --prune-snapshots"
 ```
 
-Adapt the timer interval to the lowest configured snapshot interval.
 
 # Configuration
 
