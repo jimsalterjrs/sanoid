@@ -55,8 +55,10 @@ Install prerequisite software:
 sudo yum install -y epel-release git
 # On CentOS 8 (not for CentOS Stream 9 or AlamaLinux 9.5) we also need to enable the PowerTools repo:
 sudo yum config-manager --set-enabled powertools
-# For Centos 8 (not for CentOS Stream 9 or AlamaLinux 9.5) you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
+# For CentOS 8 (not for CentOS Stream 9 or AlamaLinux 9.5) you need to enable the PowerTools repo to make all the needed Perl modules available (Recommended)
 sudo dnf config-manager --set-enabled powertools
+# For CentOS Stream 9 or AlamaLinux 9.5
+dnf config-manager --set-enabled crb
 # On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
 sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
 # Install the packages that Sanoid depends on:
