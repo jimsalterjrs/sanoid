@@ -1501,7 +1501,8 @@ sub getlocalzfsvalues {
 		"receive_resume_token", "redact_snaps", "referenced", "refcompressratio", "snapshot_count",
 		"type", "used", "usedbychildren", "usedbydataset", "usedbyrefreservation",
 		"usedbysnapshots", "userrefs", "snapshots_changed", "volblocksize", "written",
-		"version", "volsize", "casesensitivity", "normalization", "utf8only"
+		"version", "volsize", "casesensitivity", "normalization", "utf8only",
+		"encryption"
 	);
 	my %blacklisthash = map {$_ => 1} @blacklist;
 
