@@ -26,9 +26,10 @@ apt install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuff
 
 ```
 
-Clone this repo, build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
+Clone this repo under /tmp (to make sure the apt user has access to the unpacked clone), build the debian package and install it (alternatively you can skip the package and do it manually like described below for CentOS):
 
 ```bash
+cd /tmp
 git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
 # checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
@@ -73,6 +74,7 @@ cpan # answer the questions and paste the following lines:
 Clone this repo, then put the executables and config files into the appropriate directories:
 
 ```bash
+cd /tmp
 # Download the repo as root to avoid changing permissions later
 sudo git clone https://github.com/jimsalterjrs/sanoid.git
 cd sanoid
@@ -225,9 +227,9 @@ sudo launchctl load /Library/LaunchDaemons/net.openoid.Sanoid.plist
 
 ## Other OSes
 
-**Sanoid** depends on the Perl module Config::IniFiles and will not operate without it. Config::IniFiles may be installed from CPAN, though the project strongly recommends using your distribution's repositories instead.
+**Sanoid** depends on the Perl modules Config::IniFiles and Capture::Tiny and will not operate without them. These modules may be installed from CPAN, though the project strongly recommends using your distribution's repositories instead.
 
-**Syncoid** depends on ssh, pv, gzip, lzop, and mbuffer. It can run with reduced functionality in the absence of any or all of the above. SSH is only required for remote synchronization. On newer FreeBSD and Ubuntu Xenial chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the default for SSH transport since v1.4.6. Syncoid runs will fail if one of them is not available on either end of the transport.
+**Syncoid** depends on ssh, pv, gzip, lzop, and mbuffer as well as sharing sanoid's dependency on Capture::Tiny. Capture::Tiny is mandatory, but syncoid can function with reduced functionality without any or all of the command-line dependencies. SSH is only required for remote synchronization. On newer FreeBSD and Ubuntu Xenial chacha20-poly1305@openssh.com, on other distributions arcfour crypto is the default for SSH transport since v1.4.6. Syncoid runs will fail if one of them is not available on either end of the transport.
 
 ### General outline for installation
 
