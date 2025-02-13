@@ -1,0 +1,15 @@
+[Unit]
+Description=Transfer ZFS Snapshots
+Documentation=man:syncoid(8)
+Documentation=man:systemd.time(7)
+
+[Install]
+WantedBy=timers.target
+
+[Timer]
+RandomizedDelaySec=60
+OnBootSec=5m
+#OnUnitActiveSec=20m
+OnCalendar=00/2:30
+Persistent=true
+Unit=syncoid.service

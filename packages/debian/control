@@ -20,4 +20,11 @@ Recommends: gzip,
             mbuffer,
             openssh-client | ssh-client,
             pv
-Description: Policy-driven snapshot management and replication tools
+Description: Policy-driven ZFS snapshot management and replication tool
+ Sanoid is a policy-driven snapshot management and replication tool for ZFS
+ filesystems.
+ .
+ More prosaically, you can use Sanoid to create, automatically thin, and
+ monitor snapshots and pool health from a single eminently human-readable
+ TOML config file. Sanoid also includes a replication tool, syncoid, which
+ facilitates the asynchronous incremental replication of ZFS filesystems.
