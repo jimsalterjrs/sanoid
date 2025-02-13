@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# run's all the available tests
+# runs all the available tests
 
 for test in $(find . -mindepth 1 -maxdepth 1 -type d -printf "%P\n" | sort -g); do
     if [ ! -x "${test}/run.sh" ]; then
