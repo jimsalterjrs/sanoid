@@ -608,8 +608,8 @@ sub take_snapshots {
 			foreach my $type (@types) {
 				my $sortable = strftime($config{$dataset}{'datestamp_format'}, localtime($datestamp{'unix_time'}));
 				my $snapname = $config{$dataset}{'snapname_format'};
-				$snapname =~ s/DATE/$sortable/;
-				$snapname =~ s/TYPE/$type/;
+				$snapname =~ s/DATE/$sortable/g;
+				$snapname =~ s/TYPE/$type/g;
 				push(@snapshots, $snapname);
 			}
 
