@@ -607,7 +607,10 @@ sub take_snapshots {
 
 			foreach my $type (@types) {
 				my $sortable = strftime($config{$dataset}{'datestamp_format'}, localtime($datestamp{'unix_time'}));
-				my $snapname = "$config{$dataset}{'prefix'}_${sortable}_$type";
+				my $snapname = $config{$dataset}{'snapname_format'};
+				$snapname =~ s/IDENTIFIER/$config{$dataset}{'identifier'}/g;
+				$snapname =~ s/DATE/$sortable/g;
+				$snapname =~ s/TYPE/$type/g;
 				push(@snapshots, $snapname);
 			}
 
@@ -889,12 +892,13 @@ sub getsnaps {
 	}
 
 	foreach my $snap (@rawsnaps) {
-		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\t*creation\t*(\d*)/);
+		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*?)\t*creation\t*(\d*)/);
 
 		# avoid pissing off use warnings
 		if (defined $snapname) {
-			my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-			if ($snapname =~ /^$config{$fs}{'prefix'}/) {
+			if ($snapname =~ /$config{$fs}{'identifier'}/) {
+				my @types = qw(yearly monthly weekly daily hourly frequently);
+				my ($snaptype) = grep { $snapname =~ /$_/ } @types;
 				$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 				$snaps{$fs}{$snapname}{'type'}=$snaptype;
 			}
