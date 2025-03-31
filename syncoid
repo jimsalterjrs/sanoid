@@ -178,7 +178,7 @@ if (length $args{'insecure-direct-connection'}) {
 		$directlisten = $args{'insecure-direct-connection'};
 	}
 
-	if (scalar @parts == 3) {
+	if (scalar @parts >= 3) {
 		$directtimeout = $parts[2];
 	}
 
