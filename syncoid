@@ -17,6 +17,9 @@ use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 my $pvoptions = "-p -t -e -r -b";
+# Get number of CPUs for zstd threading, but leave at least two cores empty
+my $ncpus = int(`nproc`);
+if ($ncpus > 2) { $ncpus -= 2;}
 
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
@@ -1142,10 +1145,10 @@ sub compressargset {
 			decomargs   => '-dc',
 		},
 		'zstd-fast' => {
-			rawcmd      => 'zstd',
-			args        => '-3',
-			decomrawcmd => 'zstd',
-			decomargs   => '-dc',
+                        rawcmd      => 'zstd',
+                        args        => "-T$ncpus -3",
+                        decomrawcmd => 'zstd',
+                        decomargs   => "-T$ncpus -dc",
 		},
 		'zstdmt-fast' => {
 			rawcmd      => 'zstdmt',
@@ -1154,10 +1157,10 @@ sub compressargset {
 			decomargs   => '-dc',
 		},
 		'zstd-slow' => {
-			rawcmd      => 'zstd',
-			args        => '-19',
-			decomrawcmd => 'zstd',
-			decomargs   => '-dc',
+                        rawcmd      => 'zstd',
+                        args        => "-T$ncpus -19",
+                        decomrawcmd => 'zstd',
+                        decomargs   => "-T$ncpus -dc",
 		},
 		'zstdmt-slow' => {
 			rawcmd      => 'zstdmt',
