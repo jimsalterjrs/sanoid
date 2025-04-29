@@ -17,7 +17,7 @@ use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 my $pvoptions = "-p -t -e -r -b";
-# Get number of CPUs for zstd threading, but leave at least two cores empty
+# Get number of CPUs for zstd threading, but leave at least two cores empty for system responsiveness
 my $ncpus = int(`nproc`);
 if ($ncpus > 2) { $ncpus -= 2;}
 
