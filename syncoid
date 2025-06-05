@@ -898,7 +898,7 @@ sub runsynccmd {
 
 	my $disp_pvsize = $pvsize == 0 ? 'UNKNOWN' : readablebytes($pvsize);
 	my $sendoptions;
-	if ($sendsource =~ / -t /) {
+	if ($sendsource =~ /^-t /) {
 		$sendoptions = getoptionsline(\@sendoptions, ('P','V','e','v'));
 	} elsif ($sendsource =~ /#/) {
 		$sendoptions = getoptionsline(\@sendoptions, ('L','V','c','e','w'));
