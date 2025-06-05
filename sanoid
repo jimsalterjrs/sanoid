@@ -12,6 +12,7 @@ use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
 use File::Path 'make_path';
+use File::Copy;
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
@@ -26,7 +27,7 @@ GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
-                   "monitor-capacity"
+                   "monitor-capacity", "cache-ttl=i"
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
@@ -58,6 +59,13 @@ if ($args{'force-prune'}) {
 	warn "WARN: --force-prune argument is deprecated and its behavior is now standard";
 }
 
+if ($args{'cache-ttl'}) {
+	if ($args{'cache-ttl'} < 0) {
+		die "ERROR: cache-ttl needs to be positive!\n";
+	}
+	$cacheTTL = $args{'cache-ttl'};
+}
+
 # Allow a much older snapshot cache file than default if _only_ "--monitor-*" action commands are given
 # (ignore "--verbose", "--configdir" etc)
 if (
@@ -70,6 +78,7 @@ if (
 		|| $args{'force-update'}
 		|| $args{'take-snapshots'}
 		|| $args{'prune-snapshots'}
+		|| $args{'cache-ttl'}
 	)
 ) {
 	# The command combination above must not assert true for any command that takes or prunes snapshots
@@ -89,6 +98,7 @@ my %config = init($conf_file,$default_conf_file);
 
 my %pruned;
 my %capacitycache;
+my %taken;
 
 my %snaps;
 my %snapsbytype;
@@ -592,6 +602,7 @@ sub take_snapshots {
 	}
 
 	if (%newsnapsgroup) {
+		$forcecacheupdate = 0;
 		while ((my $path, my $snapData) = each(%newsnapsgroup)) {
 			my $recursiveFlag = $snapData->{recursive};
 			my $dstHandling = $snapData->{handleDst};
@@ -662,9 +673,17 @@ sub take_snapshots {
 						}
 					};
 
+					if ($exit == 0) {
+						$taken{$snap} = {
+							'time' => time(),
+							'recursive' => $recursiveFlag
+						};
+					}
+
 					$exit == 0 or do {
 						if ($dstHandling) {
 							if ($stderr =~ /already exists/) {
+								$forcecacheupdate = 1;
 								$exit = 0;
 								$snap =~ s/_([a-z]+)$/dst_$1/g;
 								if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
@@ -714,8 +733,8 @@ sub take_snapshots {
 				}
 			}
 		}
-		$forcecacheupdate = 1;
-		%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
+		addcachedsnapshots();
+		%snaps = getsnaps(\%config,$cacheTTL,$forcecacheupdate);
 	}
 }
 
@@ -1722,6 +1741,11 @@ sub removecachedsnapshots {
 		print FH $snapline unless ( exists($pruned{$snap}) );
 	}
 	close FH;
+
+	# preserve mtime of cache for expire check
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
+	utime($atime, $mtime, "$cache.tmp");
+
 	rename("$cache.tmp", "$cache") or die "Could not rename to $cache!\n";
 
 	removelock('sanoid_cacheupdate');
@@ -1729,6 +1753,61 @@ sub removecachedsnapshots {
 
 	# clear hash
 	undef %pruned;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub addcachedsnapshots {
+	if (not %taken) {
+		return;
+	}
+
+	my $unlocked = checklock('sanoid_cacheupdate');
+
+	# wait until we can get a lock to do our cache changes
+	while (not $unlocked) {
+		if ($args{'verbose'}) { print "INFO: waiting for cache update lock held by another sanoid process.\n"; }
+		sleep(10);
+		$unlocked = checklock('sanoid_cacheupdate');
+	}
+
+	writelock('sanoid_cacheupdate');
+
+	if ($args{'verbose'}) {
+		print "INFO: adding taken snapshots to cache.\n";
+	}
+
+	copy($cache, "$cache.tmp") or die "Could not copy to $cache.tmp!\n";
+
+	open FH, ">> $cache.tmp" or die "Could not write to $cache.tmp!\n";
+	while((my $snap, my $details) = each(%taken)) {
+		my @parts = split("@", $snap, 2);
+
+		my $suffix = $parts[1] . "\tcreation\t" . $details->{time} . "\t-";
+		my $dataset = $parts[0];
+
+		print FH "${dataset}\@${suffix}\n";
+
+		if ($details->{recursive}) {
+			my @datasets = getchilddatasets($dataset);
+
+			foreach my $dataset(@datasets) {
+				print FH "${dataset}\@${suffix}\n";
+			}
+		}
+	}
+
+	close FH;
+
+	# preserve mtime of cache for expire check
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
+	utime($atime, $mtime, "$cache.tmp");
+
+	rename("$cache.tmp", "$cache") or die "Could not rename to $cache!\n";
+
+	removelock('sanoid_cacheupdate');
 }
 
 #######################################################################################################################3
@@ -1832,6 +1911,7 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
+  --cache-ttl=SECONDS   Set custom cache expire time in seconds (default: 20 minutes)
 
   --help                Prints this helptext
   --version             Prints the version number
