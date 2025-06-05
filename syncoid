@@ -415,10 +415,10 @@ sub syncdataset {
 	if (!defined($receivetoken)) {
 		# build hashes of the snaps on the source and target filesystems.
 
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
+		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
 
 		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
+		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
 		}
@@ -438,7 +438,7 @@ sub syncdataset {
 			# Don't send the sync snap if it's filtered out by --exclude-snaps or
 			# --include-snaps
 			if (!snapisincluded($newsyncsnap)) {
-				$newsyncsnap = getnewestsnapshot(\%snaps);
+				$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 				if ($newsyncsnap eq 0) {
 					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 					if ($exitcode < 1) { $exitcode = 1; }
@@ -447,7 +447,7 @@ sub syncdataset {
 			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
-			$newsyncsnap = getnewestsnapshot(\%snaps);
+			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
 			if ($newsyncsnap eq 0) {
 				writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 				if ($exitcode < 1) { $exitcode = 1; }
@@ -575,7 +575,8 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my %bookmark = ();
+		my $bookmark = 0;
+		my $bookmarkcreation = 0;
 
 		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
 		if (! $matchingsnap) {
@@ -583,18 +584,19 @@ sub syncdataset {
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
 			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { sortsnapshots(\%snaps, $b, $a) } keys %{ $snaps{'target'} }) {
+			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
 				my $guid = $snaps{'target'}{$snap}{'guid'};
 
 				if (defined $bookmarks{$guid}) {
 					# found a match
-					%bookmark = %{ $bookmarks{$guid} };
+					$bookmark = $bookmarks{$guid}{'name'};
+					$bookmarkcreation = $bookmarks{$guid}{'creation'};
 					$matchingsnap = $snap;
 					last;
 				}
 			}
 
-			if (! %bookmark) {
+			if (! $bookmark) {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
 					writelog('INFO', "Removing $targetfs because no matching snapshots were found");
@@ -667,18 +669,15 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if (%bookmark) {
+			if ($bookmark) {
+				my $bookmarkescaped = escapeshellparam($bookmark);
 
 				if (!defined $args{'no-stream'}) {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
 					# do an replication to it and replicate as always from oldest to newest
 					# because bookmark sends doesn't support intermediates directly
-					foreach my $snap ( sort { sortsnapshots(\%snaps, $a, $b) } keys %{ $snaps{'source'} }) {
-						my $comparisonkey = 'creation';
-						if (defined $snaps{'source'}{$snap}{'createtxg'} && defined $bookmark{'createtxg'}) {
-							$comparisonkey = 'createtxg';
-						}
-						if ($snaps{'source'}{$snap}{$comparisonkey} >= $bookmark{$comparisonkey}) {
+					foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+						if ($snaps{'source'}{$snap}{'creation'} >= $bookmarkcreation) {
 							$nextsnapshot = $snap;
 							last;
 						}
@@ -686,13 +685,13 @@ sub syncdataset {
 				}
 
 				if ($nextsnapshot) {
-					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $nextsnapshot);
+					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $nextsnapshot);
 
 					$exit == 0 or do {
 						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							writelog('WARN', "resetting partially receive state");
 							resetreceivestate($targethost,$targetfs,$targetisroot);
-							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $nextsnapshot);
+							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $nextsnapshot);
 							$ret == 0 or do {
 								if ($exitcode < 2) { $exitcode = 2; }
 								return 0;
@@ -706,13 +705,13 @@ sub syncdataset {
 					$matchingsnap = $nextsnapshot;
 					$matchingsnapescaped = escapeshellparam($matchingsnap);
 				} else {
-					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $newsyncsnap);
+					($exit, $stdout) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $newsyncsnap);
 
 					$exit == 0 or do {
 						if (!$resume && $stdout =~ /\Qcontains partially-complete state\E/) {
 							writelog('WARN', "resetting partially receive state");
 							resetreceivestate($targethost,$targetfs,$targetisroot);
-							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark{'name'}, $newsyncsnap);
+							(my $ret) = syncbookmark($sourcehost, $sourcefs, $targethost, $targetfs, $bookmark, $newsyncsnap);
 							$ret == 0 or do {
 								if ($exitcode < 2) { $exitcode = 2; }
 								return 0;
@@ -727,7 +726,7 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!%bookmark || $nextsnapshot) {
+			if (!$bookmark || $nextsnapshot) {
 				if ($matchingsnap eq $newsyncsnap) {
 					# edge case: bookmark replication used the latest snapshot
 					return 0;
@@ -854,19 +853,9 @@ sub syncdataset {
 	if (defined $args{'delete-target-snapshots'}) {
 		# Find the snapshots that exist on the target, filter with
 		# those that exist on the source. Remaining are the snapshots
-		# that are only on the target. Then sort to remove the oldest
-		# snapshots first.
-
-		# regather snapshots on source and target
-		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
-
-		if ($targetexists) {
-		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
-		    my %sourcesnaps = %snaps;
-		    %snaps = (%sourcesnaps, %targetsnaps);
-		}
-
-		my @to_delete = sort { sortsnapshots(\%snaps, $a, $b) } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		# that are only on the target. Then sort by creation date, as
+		# to remove the oldest snapshots first.
+		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
 			# Create batch of snapshots to remove
 			my $snaps = join ',', splice(@to_delete, 0, 50);
@@ -1531,22 +1520,9 @@ sub readablebytes {
 	return $disp;
 }
 
-sub sortsnapshots {
-	my ($snaps, $left, $right) = @_;
-	if (defined $snaps->{'source'}{$left}{'createtxg'} && defined $snaps->{'source'}{$right}{'createtxg'}) {
-		return $snaps->{'source'}{$left}{'createtxg'} <=> $snaps->{'source'}{$right}{'createtxg'};
-	}
-
-	if (defined $snaps->{'source'}{$left}{'creation'} && defined $snaps->{'source'}{$right}{'creation'}) {
-		return $snaps->{'source'}{$left}{'creation'} <=> $snaps->{'source'}{$right}{'creation'};
-	}
-
-	return 0;
-}
-
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap (sort { sortsnapshots($snaps, $a, $b) } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -1560,7 +1536,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap (sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		writelog('DEBUG', "NEWEST SNAPSHOT: $snap");
 		return $snap;
@@ -1739,7 +1715,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { sortsnapshots($snaps, $b, $a) } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -1874,8 +1850,88 @@ sub dumphash() {
 	writelog('INFO', Dumper($hash));
 }
 
-sub getsnaps {
-	my ($type,$rhost,$fs,$isroot,$use_fallback,%snaps) = @_;
+sub getsnaps() {
+	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my $mysudocmd;
+	my $fsescaped = escapeshellparam($fs);
+	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+
+	my $rhostOriginal = $rhost;
+
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		# double escaping needed
+		$fsescaped = escapeshellparam($fsescaped);
+	}
+
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+	if ($debug) {
+		$getsnapcmd = "$getsnapcmd |";
+		writelog('DEBUG', "getting list of snapshots on $fs using $getsnapcmd...");
+	} else {
+		$getsnapcmd = "$getsnapcmd 2>/dev/null |";
+	}
+	open FH, $getsnapcmd;
+	my @rawsnaps = <FH>;
+	close FH or do {
+		# fallback (solaris for example doesn't support the -t option)
+		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,%snaps);
+	};
+
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
+
+	my %creationtimes=();
+
+	foreach my $line (@rawsnaps) {
+		$line =~ /\Q$fs\E\@(\S*)/;
+		my $snapname = $1;
+
+		if (!snapisincluded($snapname)) { next; }
+
+		# only import snap guids from the specified filesystem
+		if ($line =~ /\Q$fs\E\@.*\tguid/) {
+			chomp $line;
+			my $guid = $line;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			$snaps{$type}{$snap}{'guid'}=$guid;
+		}
+		# only import snap creations from the specified filesystem
+		elsif ($line =~ /\Q$fs\E\@.*\tcreation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
+
+			# the accuracy of the creation timestamp is only for a second, but
+			# snapshots in the same second are highly likely. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for snapshot with the same creation timestamp
+			my $counter = 0;
+			my $creationsuffix;
+			while ($counter < 999) {
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				if (!defined $creationtimes{$creationsuffix}) {
+					$creationtimes{$creationsuffix} = 1;
+					last;
+				}
+				$counter += 1;
+			}
+
+			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+		}
+	}
+
+	return %snaps;
+}
+
+sub getsnapsfallback() {
+	# fallback (solaris for example doesn't support the -t option)
+	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
@@ -1886,67 +1942,73 @@ sub getsnaps {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = $use_fallback
-		? "$rhost $mysudocmd $zfscmd get -Hpd 1 all $fsescaped"
-		: "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot all $fsescaped";
-
-	if ($debug) {
-		$getsnapcmd = "$getsnapcmd |";
-		writelog('DEBUG', "getting list of snapshots on $fs using $getsnapcmd...");
-	} else {
-		$getsnapcmd = "$getsnapcmd 2>/dev/null |";
-	}
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
+	writelog('WARN', "snapshot listing failed, trying fallback command");
+	writelog('DEBUG', "FALLBACK, getting list of snapshots on $fs using $getsnapcmd...");
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH or do {
-		if (!$use_fallback) {
-			writelog('WARN', "snapshot listing failed, trying fallback command");
-			return getsnaps($type, $rhost, $fs, $isroot, 1, %snaps);
+	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
+
+	my %creationtimes=();
+
+	my $state = 0;
+	foreach my $line (@rawsnaps) {
+		if ($state < 0) {
+			$state++;
+			next;
 		}
-		die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
-	};
 
-	my %snap_data;
-	my %creationtimes;
+		if ($state eq 0) {
+			if ($line !~ /\Q$fs\E\@.*\ttype\s*snapshot/) {
+				# skip non snapshot type object
+				$state = -2;
+				next;
+			}
+		} elsif ($state eq 1) {
+			if ($line !~ /\Q$fs\E\@.*\tguid/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
+			}
 
-	for my $line (@rawsnaps) {
-		chomp $line;
-		my ($dataset, $property, $value) = split /\t/, $line;
-		die "CRITICAL ERROR: Unexpected line format in $line" unless defined $value;
+			chomp $line;
+			my $guid = $line;
+			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
+			if (!snapisincluded($snap)) { next; }
+			$snaps{$type}{$snap}{'guid'}=$guid;
+		} elsif ($state eq 2) {
+			if ($line !~ /\Q$fs\E\@.*\tcreation/) {
+				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
+			}
 
-		my (undef, $snap) = split /@/, $dataset;
-		die "CRITICAL ERROR: Unexpected dataset format in $line" unless $snap;
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $snap = $line;
+			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
+			if (!snapisincluded($snap)) { next; }
 
-        if (!snapisincluded($snap)) { next; }
-
-		$snap_data{$snap}{$property} = $value;
-
-		# the accuracy of the creation timestamp is only for a second, but
-		# snapshots in the same second are highly likely. The list command
-		# has an ordered output so we append another three digit running number
-		# to the creation timestamp and make sure those are ordered correctly
-		# for snapshot with the same creation timestamp
-		if ($property eq 'creation') {
+			# the accuracy of the creation timestamp is only for a second, but
+			# snapshots in the same second are highly likely. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for snapshot with the same creation timestamp
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $value, $counter);
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-			$snap_data{$snap}{'creation'} = $creationsuffix;
-		}
-	}
 
-	for my $snap (keys %snap_data) {
-		if (!$use_fallback || $snap_data{$snap}{'type'} eq 'snapshot') {
-			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
-			$snaps{$type}{$snap}{'createtxg'} = $snap_data{$snap}{'createtxg'};
-			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
+			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
+			$state = -1;
 		}
+
+		$state++;
 	}
 
 	return %snaps;
@@ -1965,7 +2027,7 @@ sub getbookmarks() {
 	}
 
 	my $error = 0;
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark all $fsescaped 2>&1 |";
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
 	writelog('DEBUG', "getting list of bookmarks on $fs using $getbookmarkcmd...");
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
@@ -1980,44 +2042,46 @@ sub getbookmarks() {
 		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
 	}
 
-	my %bookmark_data;
-	my %creationtimes;
+	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
+	# as though each were an entirely separate get command.
 
-	for my $line (@rawbookmarks) {
-		chomp $line;
-		my ($dataset, $property, $value) = split /\t/, $line;
-		die "CRITICAL ERROR: Unexpected line format in $line" unless defined $value;
+	my $lastguid;
+	my %creationtimes=();
 
-		my (undef, $bookmark) = split /#/, $dataset;
-		die "CRITICAL ERROR: Unexpected dataset format in $line" unless $bookmark;
+	foreach my $line (@rawbookmarks) {
+		# only import bookmark guids, creation from the specified filesystem
+		if ($line =~ /\Q$fs\E\#.*\tguid/) {
+			chomp $line;
+			$lastguid = $line;
+			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
+			$bookmarks{$lastguid}{'name'}=$bookmark;
+		} elsif ($line =~ /\Q$fs\E\#.*\tcreation/) {
+			chomp $line;
+			my $creation = $line;
+			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
+			my $bookmark = $line;
+			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
 
-		$bookmark_data{$bookmark}{$property} = $value;
-
-		# the accuracy of the creation timestamp is only for a second, but
-		# bookmarks in the same second are possible. The list command
-		# has an ordered output so we append another three digit running number
-		# to the creation timestamp and make sure those are ordered correctly
-		# for bookmarks with the same creation timestamp
-		if ($property eq 'creation') {
+			# the accuracy of the creation timestamp is only for a second, but
+			# bookmarks in the same second are possible. The list command
+			# has an ordered output so we append another three digit running number
+			# to the creation timestamp and make sure those are ordered correctly
+			# for bookmarks with the same creation timestamp
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $value, $counter);
+				$creationsuffix = sprintf("%s%03d", $creation, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-			$bookmark_data{$bookmark}{'creation'} = $creationsuffix;
-		}
-	}
 
-	for my $bookmark (keys %bookmark_data) {
-		my $guid = $bookmark_data{$bookmark}{'guid'};
-		$bookmarks{$guid}{'name'} = $bookmark;
-		$bookmarks{$guid}{'creation'} = $bookmark_data{$bookmark}{'creation'};
-		$bookmarks{$guid}{'createtxg'} = $bookmark_data{$bookmark}{'createtxg'};
+			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
+		}
 	}
 
 	return %bookmarks;
