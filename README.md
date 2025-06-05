@@ -100,6 +100,10 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 	This clears out sanoid's zfs snapshot listing cache. This is normally not needed.
 
++ --cache-ttl=SECONDS
+
+	Set custom cache expire time in seconds (default: 20 minutes).
+
 + --version
 
 	This prints the version number, and exits.
