@@ -1535,7 +1535,12 @@ sub sortsnapshots {
 	if (defined $snaps->{'source'}{$left}{'createtxg'} && defined $snaps->{'source'}{$right}{'createtxg'}) {
 		return $snaps->{'source'}{$left}{'createtxg'} <=> $snaps->{'source'}{$right}{'createtxg'};
 	}
-	return $snaps->{'source'}{$left}{'creation'} <=> $snaps->{'source'}{$right}{'creation'};
+
+	if (defined $snaps->{'source'}{$left}{'creation'} && defined $snaps->{'source'}{$right}{'creation'}) {
+		return $snaps->{'source'}{$left}{'creation'} <=> $snaps->{'source'}{$right}{'creation'};
+	}
+
+	return 0;
 }
 
 sub getoldestsnapshot {
