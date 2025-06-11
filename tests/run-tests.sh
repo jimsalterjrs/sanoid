@@ -2,7 +2,7 @@
 
 # run's all the available tests
 
-for test in $(find . -mindepth 1 -maxdepth 1 -type d -printf "%P\n" | sort -g); do
+for test in */; do
     if [ ! -x "${test}/run.sh" ]; then
         continue
     fi

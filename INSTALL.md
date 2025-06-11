@@ -60,6 +60,8 @@ sudo yum config-manager --set-enabled powertools
 sudo dnf config-manager --set-enabled powertools
 # On RHEL, instead of PowerTools, we need to enable the CodeReady Builder repo:
 sudo subscription-manager repos --enable=codeready-builder-for-rhel-8-x86_64-rpms
+# For Rocky Linux 9 or AlmaLinux 9 you need the CodeReady Builder repo, and it is labelled `crb`
+sudo dnf config-manager --set-enabled crb
 # Install the packages that Sanoid depends on:
 sudo yum install -y perl-Config-IniFiles perl-Data-Dumper perl-Capture-Tiny perl-Getopt-Long lzop mbuffer mhash pv
 # The repositories above should contain all the relevant Perl modules, but if you

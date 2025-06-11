@@ -10,7 +10,10 @@ function setup {
     export SANOID="../../sanoid"
 
     # make sure that there is no cache file
-    rm -f /var/cache/sanoidsnapshots.txt
+    rm -f /var/cache/sanoid/snapshots.txt
+    rm -f /var/cache/sanoid/datasets.txt
+
+    mkdir -p /etc/sanoid
 
     # install needed sanoid configuration files
     [ -f sanoid.conf ] && cp sanoid.conf /etc/sanoid/sanoid.conf
@@ -50,6 +53,11 @@ function disableTimeSync {
     which timedatectl > /dev/null
     if [ $? -eq 0 ]; then
         timedatectl set-ntp 0
+    fi
+
+    which systemctl > /dev/null
+    if [ $? -eq 0 ]; then
+        systemctl is-active virtualbox-guest-utils.service && systemctl stop virtualbox-guest-utils.service
     fi
 }
 

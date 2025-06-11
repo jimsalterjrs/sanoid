@@ -1,4 +1,4 @@
-%global version 2.2.0
+%global version 2.3.0
 %global git_tag v%{version}
 
 # Enable with systemctl "enable sanoid.timer"
@@ -111,6 +111,8 @@ echo "* * * * * root %{_sbindir}/sanoid --cron" > %{buildroot}%{_docdir}/%{name}
 %endif
 
 %changelog
+* Tue Jun 05 2025 Christoph Klaffl <christoph@phreaker.eu> - 2.3.0
+- Bump to 2.3.0
 * Tue Jul 18 2023 Christoph Klaffl <christoph@phreaker.eu> - 2.2.0
 - Bump to 2.2.0
 * Tue Nov 24 2020 Christoph Klaffl <christoph@phreaker.eu> - 2.1.0
