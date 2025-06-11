@@ -441,7 +441,7 @@ sub syncdataset {
 			# Don't send the sync snap if it's filtered out by --exclude-snaps or
 			# --include-snaps
 			if (!snapisincluded($newsyncsnap)) {
-				$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+				$newsyncsnap = getnewestsnapshot(\%snaps);
 				if ($newsyncsnap eq 0) {
 					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 					if ($exitcode < 1) { $exitcode = 1; }
@@ -450,7 +450,7 @@ sub syncdataset {
 			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
-			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+			$newsyncsnap = getnewestsnapshot(\%snaps);
 			if ($newsyncsnap eq 0) {
 				writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 				if ($exitcode < 1) { $exitcode = 1; }
@@ -868,7 +868,7 @@ sub syncdataset {
 			%snaps = (%sourcesnaps, %targetsnaps);
 		}
 
-		my @to_delete = sort { $snaps{'target'}{$a}{'creation'}<=>$snaps{'target'}{$b}{'creation'} } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
+		my @to_delete = sort { sortsnapshots($snaps{'target'}, $a, $b) } grep {!exists $snaps{'source'}{$_}} keys %{ $snaps{'target'} };
 		while (@to_delete) {
 			# Create batch of snapshots to remove
 			my $snaps = join ',', splice(@to_delete, 0, 50);
@@ -1574,9 +1574,22 @@ sub readablebytes {
 	return $disp;
 }
 
+sub sortsnapshots {
+	my ($snapdata, $left, $right) = @_;
+	if (defined $snapdata->{$left}{'createtxg'} && defined $snapdata->{$right}{'createtxg'}) {
+		return $snapdata->{$left}{'createtxg'} <=> $snapdata->{$right}{'createtxg'};
+	}
+
+	if (defined $snapdata->{$left}{'creation'} && defined $snapdata->{$right}{'creation'}) {
+		return $snapdata->{$left}{'creation'} <=> $snapdata->{$right}{'creation'};
+	}
+
+	return 0;
+}
+
 sub getoldestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps{'source'}, $a, $b) } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the oldest
 		return $snap;
 	}
@@ -1590,7 +1603,7 @@ sub getoldestsnapshot {
 
 sub getnewestsnapshot {
 	my $snaps = shift;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap (sort { sortsnapshots($snaps{'source'}, $b, $a) } keys %{ $snaps{'source'} }) {
 		# return on first snap found - it's the newest
 		writelog('DEBUG', "NEWEST SNAPSHOT: $snap");
 		return $snap;
@@ -1769,7 +1782,7 @@ sub pruneoldsyncsnaps {
 
 sub getmatchingsnapshot {
 	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
+	foreach my $snap ( sort { sortsnapshots($snaps{'source'}, $b, $a) } keys %{ $snaps{'source'} }) {
 		if (defined $snaps{'target'}{$snap}) {
 			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
 				return $snap;
@@ -1974,9 +1987,11 @@ sub getsnaps {
 
 	for my $snap (keys %snap_data) {
 		if (length $type_filter || $snap_data{$snap}{'type'} eq 'snapshot') {
-			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
-			$snaps{$type}{$snap}{'createtxg'} = $snap_data{$snap}{'createtxg'};
-			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
+			foreach my $prop (@{$host_features->{supported_properties}}) {
+				if (exists $snap_data{$snap}{$prop}) {
+					$snaps{$type}{$snap}{$prop} = $snap_data{$snap}{$prop};
+				}
+			}
 		}
 	}
 
