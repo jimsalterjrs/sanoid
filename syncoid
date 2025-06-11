@@ -194,6 +194,9 @@ if (length $args{'insecure-direct-connection'}) {
 # warn user of anything missing, then continue with sync.
 my %avail = checkcommands();
 
+# host => { supports_type_filter => 1/0, supported_properties => ['guid', 'creation', ...] }
+my %host_zfs_get_features;
+
 my %snaps;
 my $exitcode = 0;
 
@@ -1392,6 +1395,47 @@ sub checkcommands {
 	return %avail;
 }
 
+sub check_zfs_get_features {
+	my ($rhost, $mysudocmd, $zfscmd) = @_;
+	my $host = $rhost ? (split(/\s+/, $rhost))[-1] : "localhost";
+
+	return $host_zfs_get_features{$host} if exists $host_zfs_get_features{$host};
+
+	writelog('DEBUG', "Checking `zfs get` features on host \"$host\"...");
+
+	$host_zfs_get_features{$host} = {
+		supports_type_filter => 0,
+		supported_properties => ['guid', 'creation']
+	};
+
+	my $check_t_option_cmd = "$rhost $mysudocmd $zfscmd get -H -t snapshot '' ''";
+	open my $fh_t, "$check_t_option_cmd 2>&1 |";
+	my $output_t = <$fh_t>;
+	close $fh_t;
+
+	if ($output_t !~ /^\Qinvalid option\E/) {
+		$host_zfs_get_features{$host}->{supports_type_filter} = 1;
+	}
+
+	writelog('DEBUG', "Host \"$host\" has `zfs get -t`?: $host_zfs_get_features{$host}->{supports_type_filter}");
+
+	my @properties_to_check = ('createtxg');
+	foreach my $prop (@properties_to_check) {
+		my $check_prop_cmd = "$rhost $mysudocmd $zfscmd get -H $prop ''";
+		open my $fh_p, "$check_prop_cmd 2>&1 |";
+		my $output_p = <$fh_p>;
+		close $fh_p;
+
+		if ($output_p !~ /^\Qbad property list: invalid property\E/) {
+			push @{$host_zfs_get_features{$host}->{supported_properties}}, $prop;
+		}
+	}
+
+	writelog('DEBUG', "Host \"$host\" ZFS properties: @{$host_zfs_get_features{$host}->{supported_properties}}");
+
+	return $host_zfs_get_features{$host};
+}
+
 sub iszfsbusy {
 	my ($rhost,$fs,$isroot) = @_;
 	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
@@ -1860,13 +1904,11 @@ sub dumphash() {
 	writelog('INFO', Dumper($hash));
 }
 
-sub getsnaps() {
+sub getsnaps {
 	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-
-	my $rhostOriginal = $rhost;
 
 	if ($rhost ne '') {
 		$rhost = "$sshcmd $rhost";
@@ -1874,7 +1916,18 @@ sub getsnaps() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t snapshot guid,creation $fsescaped";
+	my $host_features = check_zfs_get_features($rhost, $mysudocmd, $zfscmd);
+
+	my @properties = @{$host_features->{supported_properties}};
+	my $type_filter = "";
+	if ($host_features->{supports_type_filter}) {
+		$type_filter = "-t snapshot";
+	} else {
+		push @properties, 'type';
+	}
+	my $properties_string = join(',', @properties);
+	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 $type_filter $properties_string $fsescaped";
+
 	if ($debug) {
 		$getsnapcmd = "$getsnapcmd |";
 		writelog('DEBUG', "getting list of snapshots on $fs using $getsnapcmd...");
@@ -1883,142 +1936,48 @@ sub getsnaps() {
 	}
 	open FH, $getsnapcmd;
 	my @rawsnaps = <FH>;
-	close FH or do {
-		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,%snaps);
-	};
-
-	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
-	# as though each were an entirely separate get command.
-
-	my %creationtimes=();
-
-	foreach my $line (@rawsnaps) {
-		$line =~ /\Q$fs\E\@(\S*)/;
-		my $snapname = $1;
-
-		if (!snapisincluded($snapname)) { next; }
-
-		# only import snap guids from the specified filesystem
-		if ($line =~ /\Q$fs\E\@.*\tguid/) {
-			chomp $line;
-			my $guid = $line;
-			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			$snaps{$type}{$snap}{'guid'}=$guid;
-		}
-		# only import snap creations from the specified filesystem
-		elsif ($line =~ /\Q$fs\E\@.*\tcreation/) {
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
-
-			# the accuracy of the creation timestamp is only for a second, but
-			# snapshots in the same second are highly likely. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for snapshot with the same creation timestamp
-			my $counter = 0;
-			my $creationsuffix;
-			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
-				if (!defined $creationtimes{$creationsuffix}) {
-					$creationtimes{$creationsuffix} = 1;
-					last;
-				}
-				$counter += 1;
-			}
-
-			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
-		}
-	}
-
-	return %snaps;
-}
-
-sub getsnapsfallback() {
-	# fallback (solaris for example doesn't support the -t option)
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
-	my $mysudocmd;
-	my $fsescaped = escapeshellparam($fs);
-	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-
-	if ($rhost ne '') {
-		$rhost = "$sshcmd $rhost";
-		# double escaping needed
-		$fsescaped = escapeshellparam($fsescaped);
-	}
-
-	my $getsnapcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 type,guid,creation $fsescaped |";
-	writelog('WARN', "snapshot listing failed, trying fallback command");
-	writelog('DEBUG', "FALLBACK, getting list of snapshots on $fs using $getsnapcmd...");
-	open FH, $getsnapcmd;
-	my @rawsnaps = <FH>;
 	close FH or die "CRITICAL ERROR: snapshots couldn't be listed for $fs (exit code $?)";
 
-	my %creationtimes=();
+	my %snap_data;
+	my %creationtimes;
 
-	my $state = 0;
-	foreach my $line (@rawsnaps) {
-		if ($state < 0) {
-			$state++;
-			next;
-		}
+	for my $line (@rawsnaps) {
+		chomp $line;
+		my ($dataset, $property, $value) = split /\t/, $line;
+		next unless defined $value;
 
-		if ($state eq 0) {
-			if ($line !~ /\Q$fs\E\@.*\ttype\s*snapshot/) {
-				# skip non snapshot type object
-				$state = -2;
-				next;
-			}
-		} elsif ($state eq 1) {
-			if ($line !~ /\Q$fs\E\@.*\tguid/) {
-				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (guid parser error)";
-			}
+		my (undef, $snap) = split /@/, $dataset;
+		next unless length $snap;
 
-			chomp $line;
-			my $guid = $line;
-			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
-			$snaps{$type}{$snap}{'guid'}=$guid;
-		} elsif ($state eq 2) {
-			if ($line !~ /\Q$fs\E\@.*\tcreation/) {
-				die "CRITICAL ERROR: snapshots couldn't be listed for $fs (creation parser error)";
-			}
+		if (!snapisincluded($snap)) { next; }
+		$snap_data{$snap}{$property} = $value;
 
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $snap = $line;
-			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
-
-			# the accuracy of the creation timestamp is only for a second, but
-			# snapshots in the same second are highly likely. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for snapshot with the same creation timestamp
+		# the accuracy of the creation timestamp is only for a second, but
+		# snapshots in the same second are highly likely. The list command
+		# has an ordered output so we append another three digit running number
+		# to the creation timestamp and make sure those are ordered correctly
+		# for snapshot with the same creation timestamp
+		if ($property eq 'creation') {
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				$creationsuffix = sprintf("%s%03d", $value, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-
-			$snaps{$type}{$snap}{'creation'}=$creationsuffix;
-			$state = -1;
+			$snap_data{$snap}{'creation'} = $creationsuffix;
 		}
+	}
 
-		$state++;
+	for my $snap (keys %snap_data) {
+		if (length $type_filter || $snap_data{$snap}{'type'} eq 'snapshot') {
+			$snaps{$type}{$snap}{'guid'} = $snap_data{$snap}{'guid'};
+			$snaps{$type}{$snap}{'createtxg'} = $snap_data{$snap}{'createtxg'};
+			$snaps{$type}{$snap}{'creation'} = $snap_data{$snap}{'creation'};
+		}
 	}
 
 	return %snaps;
@@ -2036,8 +1995,12 @@ sub getbookmarks() {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
+	my $host_features = check_zfs_get_features($rhost, $mysudocmd, $zfscmd);
+	my @properties = @{$host_features->{supported_properties}};
+	my $properties_string = join(',', @properties);
+
 	my $error = 0;
-	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark guid,creation $fsescaped 2>&1 |";
+	my $getbookmarkcmd = "$rhost $mysudocmd $zfscmd get -Hpd 1 -t bookmark $properties_string $fsescaped 2>&1 |";
 	writelog('DEBUG', "getting list of bookmarks on $fs using $getbookmarkcmd...");
 	open FH, $getbookmarkcmd;
 	my @rawbookmarks = <FH>;
@@ -2052,46 +2015,44 @@ sub getbookmarks() {
 		die "CRITICAL ERROR: bookmarks couldn't be listed for $fs (exit code $?)";
 	}
 
-	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
-	# as though each were an entirely separate get command.
+	my %bookmark_data;
+	my %creationtimes;
 
-	my $lastguid;
-	my %creationtimes=();
+	for my $line (@rawbookmarks) {
+		chomp $line;
+		my ($dataset, $property, $value) = split /\t/, $line;
+		next unless defined $value;
 
-	foreach my $line (@rawbookmarks) {
-		# only import bookmark guids, creation from the specified filesystem
-		if ($line =~ /\Q$fs\E\#.*\tguid/) {
-			chomp $line;
-			$lastguid = $line;
-			$lastguid =~ s/^.*\tguid\t*(\d*).*/$1/;
-			my $bookmark = $line;
-			$bookmark =~ s/^.*\#(.*)\tguid.*$/$1/;
-			$bookmarks{$lastguid}{'name'}=$bookmark;
-		} elsif ($line =~ /\Q$fs\E\#.*\tcreation/) {
-			chomp $line;
-			my $creation = $line;
-			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
-			my $bookmark = $line;
-			$bookmark =~ s/^.*\#(.*)\tcreation.*$/$1/;
+		my (undef, $bookmark) = split /#/, $dataset;
+		next unless length $bookmark;
 
-			# the accuracy of the creation timestamp is only for a second, but
-			# bookmarks in the same second are possible. The list command
-			# has an ordered output so we append another three digit running number
-			# to the creation timestamp and make sure those are ordered correctly
-			# for bookmarks with the same creation timestamp
+		$bookmark_data{$bookmark}{$property} = $value;
+
+		# the accuracy of the creation timestamp is only for a second, but
+		# bookmarks in the same second are possible. The list command
+		# has an ordered output so we append another three digit running number
+		# to the creation timestamp and make sure those are ordered correctly
+		# for bookmarks with the same creation timestamp
+		if ($property eq 'creation') {
 			my $counter = 0;
 			my $creationsuffix;
 			while ($counter < 999) {
-				$creationsuffix = sprintf("%s%03d", $creation, $counter);
+				$creationsuffix = sprintf("%s%03d", $value, $counter);
 				if (!defined $creationtimes{$creationsuffix}) {
 					$creationtimes{$creationsuffix} = 1;
 					last;
 				}
 				$counter += 1;
 			}
-
-			$bookmarks{$lastguid}{'creation'}=$creationsuffix;
+			$bookmark_data{$bookmark}{'creation'} = $creationsuffix;
 		}
+	}
+
+	for my $bookmark (keys %bookmark_data) {
+		my $guid = $bookmark_data{$bookmark}{'guid'};
+		$bookmarks{$guid}{'name'} = $bookmark;
+		$bookmarks{$guid}{'creation'} = $bookmark_data{$bookmark}{'creation'};
+		$bookmarks{$guid}{'createtxg'} = $bookmark_data{$bookmark}{'createtxg'};
 	}
 
 	return %bookmarks;
