@@ -330,6 +330,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
 
 + --use-hold
+
 	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next successful replication. Setting a hold prevents the snapshots from being destroyed. The hold name includes the identifier if set. This allows for separate holds in case of replication to multiple targets.
 
 + --preserve-recordsize
