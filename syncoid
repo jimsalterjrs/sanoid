@@ -932,7 +932,7 @@ sub runsynccmd {
 			
 			# Apply corrected inheritance logic
 			if ($source =~ /^inherited/ and defined $args{'preserve-inherited-properties'}) {
-				if (wouldzfspropertybeinherited($targethost, $targetfs, $targetisroot, $key)) {
+				if (wouldzfspropertybeinherited($targethost, $targetfs, $targetisroot, $key, $value)) {
 					# Property would be inherited at destination, so don't set it locally
 					writelog('DEBUG', "skipping inherited property $key - would be inherited at destination");
 					next;
@@ -1490,7 +1490,7 @@ sub getzfsvalue {
 
 # Check if a property would be inherited at the destination
 sub wouldzfspropertybeinherited {
-	my ($targethost, $targetfs, $targetisroot, $property) = @_;
+	my ($targethost, $targetfs, $targetisroot, $property, $expectedvalue) = @_;
 	
 	# Return early if target is a root dataset (no parents to check)
 	return 0 unless ($targetfs =~ /\//);
@@ -1519,8 +1519,21 @@ sub wouldzfspropertybeinherited {
 		
 		# If this ancestor has the property set locally, it would be inherited
 		if ($exit == 0 && $values ne '') {
-			writelog('DEBUG', "wouldzfspropertybeinherited: found $property set locally on $parentfs - would be inherited");
-			return 1;
+			# Extract the value from the output (format: dataset property value source)
+			my @fields = split(/\t/, $values);
+			my $inheritedvalue = $fields[2] if @fields >= 3;
+			chomp($inheritedvalue) if defined $inheritedvalue;
+			
+			if (defined $expectedvalue && defined $inheritedvalue && $inheritedvalue eq $expectedvalue) {
+				writelog('DEBUG', "wouldzfspropertybeinherited: found $property=$inheritedvalue set locally on $parentfs - would be inherited with correct value");
+				return 1;
+			} elsif (defined $expectedvalue) {
+				writelog('DEBUG', "wouldzfspropertybeinherited: found $property=$inheritedvalue set locally on $parentfs - would be inherited with wrong value (expected $expectedvalue)");
+				return 0;
+			} else {
+				writelog('DEBUG', "wouldzfspropertybeinherited: found $property set locally on $parentfs - would be inherited");
+				return 1;
+			}
 		}
 		
 		# Move up to the next parent
