@@ -26,11 +26,16 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
-                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
+                   "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties", "preserve-inherited-properties",
                    "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
+
+# --preserve-inherited-properties implies --preserve-properties
+if (defined $args{'preserve-inherited-properties'}) {
+	$args{'preserve-properties'} = 1;
+}
 
 if (defined($args{'exclude'})) {
 	writelog('WARN', 'The --exclude option is deprecated, please use --exclude-datasets instead');
@@ -913,10 +918,27 @@ sub runsynccmd {
 	if (!defined $args{'no-rollback'}) { $recvoptions .= ' -F'; }
 
 	if (defined $args{'preserve-properties'}) {
-		my %properties = getlocalzfsvalues($sourcehost,$sourcefs,$sourceisroot);
+		my %properties = getzfspropertiestopreserve($sourcehost,$sourcefs,$sourceisroot);
 
 		foreach my $key (keys %properties) {
-			my $value = $properties{$key};
+			# Skip if property already specified in recvoptions (-o or -x)
+			if ($recvoptions =~ /-[ox]\s+\Q$key\E(=|$|\s)/) {
+				writelog('DEBUG', "skipping $key - already specified in recvoptions");
+				next;
+			}
+			
+			my $value = $properties{$key}{'value'};
+			my $source = $properties{$key}{'source'};
+			
+			# Apply corrected inheritance logic
+			if ($source =~ /^inherited/ and defined $args{'preserve-inherited-properties'}) {
+				if (wouldzfspropertybeinherited($targethost, $targetfs, $targetisroot, $key)) {
+					# Property would be inherited at destination, so don't set it locally
+					writelog('DEBUG', "skipping inherited property $key - would be inherited at destination");
+					next;
+				}
+			}
+			
 			writelog('DEBUG', "will set $key to $value ...");
 			my $pair = escapeshellparam("$key=$value");
 			$recvoptions .= " -o $pair";
@@ -1466,7 +1488,51 @@ sub getzfsvalue {
 	return $wantarray ? ($value, $error) : $value;
 }
 
-sub getlocalzfsvalues {
+# Check if a property would be inherited at the destination
+sub wouldzfspropertybeinherited {
+	my ($targethost, $targetfs, $targetisroot, $property) = @_;
+	
+	# Return early if target is a root dataset (no parents to check)
+	return 0 unless ($targetfs =~ /\//);
+	
+	# Walk up the parent chain to find if any ancestor has this property set
+	my $currentfs = $targetfs;
+	do {
+		# Get parent dataset path
+		my $parentfs = $currentfs;
+		$parentfs =~ s/\/[^\/]+$//;
+		
+		my $fsescaped = escapeshellparam($parentfs);
+		my $targethost_copy = $targethost;
+		if ($targethost_copy ne '') {
+			$targethost_copy = "$sshcmd $targethost_copy";
+			$fsescaped = escapeshellparam($fsescaped);
+		}
+		
+		my ($mysudocmd);
+		if ($targetisroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
+		
+		# Check if this ancestor has the property set locally
+		my ($values, $error, $exit) = capture {
+		    system("$targethost_copy $mysudocmd $zfscmd get -H -s local $property $fsescaped 2>/dev/null");
+		};
+		
+		# If this ancestor has the property set locally, it would be inherited
+		if ($exit == 0 && $values ne '') {
+			writelog('DEBUG', "wouldzfspropertybeinherited: found $property set locally on $parentfs - would be inherited");
+			return 1;
+		}
+		
+		# Move up to the next parent
+		$currentfs = $parentfs;
+	} until ($currentfs !~ /\//);  # Until we reach a root dataset (no slashes)
+	
+	# No ancestor found with this property set locally
+	writelog('DEBUG', "wouldzfspropertybeinherited: no ancestor found with $property set locally - would not be inherited");
+	return 0;
+}
+
+sub getzfspropertiestopreserve {
 	my ($rhost,$fs,$isroot) = @_;
 
 	my $fsescaped = escapeshellparam($fs);
@@ -1477,18 +1543,19 @@ sub getlocalzfsvalues {
 		$fsescaped = escapeshellparam($fsescaped);
 	}
 
-	writelog('DEBUG', "getting locally set values of properties on $fs...");
-	my $mysudocmd;
+	writelog('DEBUG', "getting values of properties to preserve on $fs...");
+	my ($mysudocmd, $source);
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
-	writelog('DEBUG', "$rhost $mysudocmd $zfscmd get -s local -H all $fsescaped");
+	if (defined $args{'preserve-inherited-properties'}) { $source = 'local,inherited'; } else { $source = 'local'; }
+	writelog('DEBUG', "$rhost $mysudocmd $zfscmd get -s $source -H all $fsescaped");
 	my ($values, $error, $exit) = capture {
-		system("$rhost $mysudocmd $zfscmd get -s local -H all $fsescaped");
+		system("$rhost $mysudocmd $zfscmd get -s $source -H all $fsescaped");
 	};
 
 	my %properties=();
 
 	if ($exit != 0) {
-		warn "WARNING: getlocalzfsvalues failed for $fs: $error";
+		warn "WARNING: getzfspropertiestopreserve failed for $fs: $error";
 		if ($exitcode < 1) { $exitcode = 1; }
 		return %properties;
 	}
@@ -1501,7 +1568,7 @@ sub getlocalzfsvalues {
 		"type", "used", "usedbychildren", "usedbydataset", "usedbyrefreservation",
 		"usedbysnapshots", "userrefs", "snapshots_changed", "volblocksize", "written",
 		"version", "volsize", "casesensitivity", "normalization", "utf8only",
-		"encryption"
+		"encryption", "keylocation"
 	);
 	my %blacklisthash = map {$_ => 1} @blacklist;
 
@@ -1510,7 +1577,13 @@ sub getlocalzfsvalues {
 		if (exists $blacklisthash{$parts[1]}) {
 			next;
 		}
-		$properties{$parts[1]} = $parts[2];
+		# Store both value and source information
+		$properties{$parts[1]} = {
+			'value' => $parts[2],
+			'source' => $parts[3]
+		};
+
+	    writelog('DEBUG', "preserving $parts[1] - $parts[3]");
 	}
 
 	return %properties;
@@ -2415,6 +2488,7 @@ Options:
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next successful replication. The hold name includes the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
+  --preserve-inherited-properties Preserves both locally set and inherited dataset properties. Implies --preserve-properties.
   --no-rollback         Does not rollback snapshots on target (it probably requires a readonly target)
   --delete-target-snapshots With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
   --exclude=REGEX       DEPRECATED. Equivalent to --exclude-datasets, but will be removed in a future release. Ignored if --exclude-datasets is also provided.
