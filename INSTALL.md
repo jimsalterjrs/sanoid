@@ -176,13 +176,6 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop sanoid
 
 *   See note about tcsh unpleasantness and other things in FREEBSD.readme
 
-## Alpine Linux or busybox based distributions
-
-The busybox implementation of ps is lacking needed arguments so a proper ps program needs to be installed.
-For Alpine Linux this can be done with:
-
-`apk --no-cache add procps`
-
 ## OmniOS
 
 Used  with OmniOS r34, r36 and r37 (with napp-it installed). Hence, we presume you have a standard perl installation etc.
