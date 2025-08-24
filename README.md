@@ -1,15 +1,26 @@
-<p align="center"><img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo"></p>
+<table align="center">
+	<tr>
+		<td border="1" width="750">
+			<p align="center">
+				<img src="http://www.openoid.net/wp-content/themes/openoid/images/sanoid_logo.png" alt="sanoid logo" title="sanoid logo">
+			</p>
+			<img src="https://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">
+			<p align="left">Sanoid is provided to you completely free and libre, now and in perpetuity, via the GPL v3.0 license. If you find the project useful, please consider either a recurring or one-time donation at <a href="https://www.patreon.com/PracticalZFS" target="_blank">Patreon</a> or <a href="https://www.paypal.com/donate/?hosted_button_id=5BLPNV86D4S9N" target="_blank">PayPal</a>—your contributions will support both this project and the Practical ZFS <a href="https://discourse.practicalzfs.com/" target="_blank">forum</a>.
+			</p>
+		</td>
+	</tr>
+</table>
 
-<img src="http://openoid.net/gplv3-127x51.png" width=127 height=51 align="right">Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="http://openoid.net/transcend" target="_blank">functionally immortal</a>.  
+Sanoid is a policy-driven snapshot management tool for ZFS filesystems.  When combined with the Linux KVM hypervisor, you can use it to make your systems <a href="https://openoid.net/transcend" target="_blank">functionally immortal</a> via automated snapshot management and over-the-air replication.
 
 <p align="center"><a href="https://youtu.be/ZgowLNBsu00" target="_blank"><img src="http://www.openoid.net/sanoid_video_launcher.png" alt="sanoid rollback demo" title="sanoid rollback demo"></a><br clear="all"><sup>(Real time demo: rolling back a full-scale cryptomalware infection in seconds!)</sup></p>
 
-More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md fore more details:
+More prosaically, you can use Sanoid to create, automatically thin, and monitor snapshots and pool health from a single eminently human-readable TOML config file at /etc/sanoid/sanoid.conf.  (Sanoid also requires a "defaults" file located at /etc/sanoid/sanoid.defaults.conf, which is not user-editable.)  A typical Sanoid system would have a single cron job but see INSTALL.md for more details:
 ```
 * * * * * TZ=UTC /usr/local/bin/sanoid --cron
 ```
 
-`Note`: Using UTC as timezone is recommend to prevent problems with daylight saving times
+`Note`: Using UTC as timezone is recommended to prevent problems with daylight saving times
 
 And its /etc/sanoid/sanoid.conf might look something like this:
 
@@ -69,10 +80,6 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 	This will process your sanoid.conf file, it will NOT create snapshots, but it will purge expired ones.
 
-+ --force-prune
-
-	Purges expired snapshots even if a send/recv is in progress
-
 + --monitor-snapshots
 
 	This option is designed to be run by a Nagios monitoring system. It reports on the health of your snapshots.
@@ -89,13 +96,17 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 	This clears out sanoid's zfs snapshot listing cache. This is normally not needed.
 
++ --cache-ttl=SECONDS
+
+	Set custom cache expire time in seconds (default: 20 minutes).
+
 + --version
 
 	This prints the version number, and exits.
 
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --verbose
 
@@ -103,7 +114,7 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a sanoid run, and is normally not needed.
 
 + --readonly
 
@@ -115,7 +126,9 @@ For more full details on sanoid.conf settings see [Wiki page](https://github.com
 
 ### Sanoid script hooks
 
-There are three script types which can optionally be executed at various stages in the lifecycle of a snapshot:
+There are three script types which can optionally be executed at various stages in the lifecycle of a snapshot.
+
+**Note** that snapshots related script are triggered only if you have `autosnap = yes` and pruning scripts are triggered only if you have `autoprune = yes`.
 
 #### `pre_snapshot_script`
 
@@ -125,7 +138,7 @@ Will be executed before the snapshot(s) of a single dataset are taken. The follo
 | -----------------  | -----------                                                                                                                                          |
 | `SANOID_SCRIPT`    | The type of script being executed, one of `pre`, `post`, or `prune`.  Allows for one script to be used for multiple tasks                            |
 | `SANOID_TARGET`    | **DEPRECATED** The dataset about to be snapshot (only the first dataset will be provided)                                                            |
-| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshoted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
+| `SANOID_TARGETS`   | Comma separated list of all datasets to be snapshotted (currently only a single dataset, multiple datasets will be possible later with atomic groups) |
 | `SANOID_SNAPNAME`  | **DEPRECATED** The name of the snapshot that will be taken (only the first name will be provided, does not include the dataset name)                 |
 | `SANOID_SNAPNAMES` | Comma separated list of all snapshot names that will be taken (does not include the dataset name)                                                    |
 | `SANOID_TYPES`     | Comma separated list of all snapshot types to be taken (yearly, monthly, weekly, daily, hourly, frequently)                                          |
@@ -232,7 +245,7 @@ syncoid root@remotehost:data/images/vm backup/images/vm
 Which would pull-replicate the filesystem from the remote host to the local system over an SSH tunnel.
 
 Syncoid supports recursive replication (replication of a dataset and all its child datasets) and uses mbuffer buffering, lzop compression, and pv progress bars if the utilities are available on the systems used.
-If ZFS supports resumeable send/receive streams on both the source and target those will be enabled as default.
+If ZFS supports resumable send/receive streams on both the source and target those will be enabled as default.
 
 As of 1.4.18, syncoid also automatically supports and enables resume of interrupted replication when both source and target support this feature.
 
@@ -274,7 +287,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --identifier=
 
-	Adds the given identifier to the snapshot name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
+	Adds the given identifier to the snapshot and hold name after "syncoid_" prefix and before the hostname. This enables the use case of reliable replication to multiple targets from the same host. The following chars are allowed: a-z, A-Z, 0-9, _, -, : and . .
 
 + -r --recursive
 
@@ -286,7 +299,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --compress <compression type>
 
-	Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
+	Compression method to use for network transfer. Currently accepted options: gzip, pigz-fast, pigz-slow, zstd-fast, zstd-slow, lz4, xz, lzo (default) & none. If the selected compression method is unavailable on the source and destination, no compression will be used.
 
 + --source-bwlimit <limit t|g|m|k>
 
@@ -294,7 +307,7 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --target-bwlimit <limit t|g|m|k>
 
-	This is the bandwidth limit in bytes (kbytes, mbytesm etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
+	This is the bandwidth limit in bytes (kbytes, mbytes, etc) per second imposed upon the target. This is mainly used if the source does not have mbuffer installed, but bandwidth limits are desired.
 
 + --no-command-checks
 
@@ -316,9 +329,22 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	This argument tells syncoid to create a zfs bookmark for the newest snapshot after it got replicated successfully. The bookmark name will be equal to the snapshot name. Only works in combination with the --no-sync-snap option. This can be very useful for irregular replication where the last matching snapshot on the source was already deleted but the bookmark remains so a replication is still possible.
 
++ --use-hold
+
+	This argument tells syncoid to add a hold to the newest snapshot on the source and target after replication succeeds and to remove the hold after the next successful replication. Setting a hold prevents the snapshots from being destroyed. The hold name includes the identifier if set. This allows for separate holds in case of replication to multiple targets.
+
 + --preserve-recordsize
 
 	This argument tells syncoid to set the recordsize on the target before writing any data to it matching the one set on the replication src. This only applies to initial sends.
+
++ --preserve-properties
+
+	This argument tells syncoid to get all locally set dataset properties from the source and apply all supported ones on the target before writing any data. It's similar to the '-p' flag for zfs send but also works for encrypted datasets in non raw sends. This only applies to initial sends.
+
++ --delete-target-snapshots
+
+	With this argument snapshots which are missing on the source will be destroyed on the target. Use this if you only want to handle snapshots on the source.
+	Note that snapshot deletion is only done after a successful synchronization. If no new snapshots are found, no synchronization is done and no deletion either.
 
 + --no-clone-rollback
 
@@ -330,19 +356,33 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 + --exclude=REGEX
 
-	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times.
+	__DEPRECATION NOTICE:__ `--exclude` has been deprecated and will be removed in a future release. Please use `--exclude-datasets` instead.
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized. If both `--exclude` and `--exclude-datasets` are provided, then `--exclude` is ignored.
+
++ --exclude-datasets=REGEX
+
+	The given regular expression will be matched against all datasets which would be synced by this run and excludes them. This argument can be specified multiple times. The provided regex pattern is matched against the dataset name only; this option does not affect which snapshots are synchronized.
+
++ --exclude-snaps=REGEX
+
+	Exclude specific snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
+
++ --include-snaps=REGEX
+
+	Only include snapshots that match the given regular expression. The provided regex pattern is matched against the snapshot name only. Can be specified multiple times. If a snapshot matches both the exclude-snaps and include-snaps patterns, then it will be excluded.
 
 + --no-resume
 
-	This argument tells syncoid to not use resumeable zfs send/receive streams.
+	This argument tells syncoid to not use resumable zfs send/receive streams.
 
 + --force-delete
 
-	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks.
+	Remove target datasets recursively (WARNING: this will also affect child datasets with matching snapshots/bookmarks), if there are no matching snapshots/bookmarks. Also removes conflicting snapshots if the replication would fail because of a snapshot which has the same name between source and target but different contents.
 
 + --no-clone-handling
 
-	This argument tells syncoid to not recreate clones on the targe on initial sync and doing a normal replication instead.
+	This argument tells syncoid to not recreate clones on the target on initial sync, and do a normal replication instead.
 
 + --dumpsnaps
 
@@ -368,13 +408,18 @@ As of 1.4.18, syncoid also automatically supports and enables resume of interrup
 
 	Use specified identity file as per ssh -i.
 
++ --insecure-direct-connection=IP:PORT[,IP:PORT,[TIMEOUT,[mbuffer]]]
+
+	WARNING: This is an insecure option as the data is not encrypted while being sent over the network. Only use if you trust the complete network path.
+	Use a direct tcp connection (with socat and busybox nc/mbuffer) for the actual zfs send/recv stream. All control commands are still executed via the ssh connection. The first address pair is used for connecting to the target host from the source host and the second pair is for listening on the target host. If the later isn't provided the same as the former is used. This can be used for saturating high throughput connection like >= 10GBe network which isn't easy with the overhead off ssh. It can also be useful for encrypted datasets to lower the cpu usage needed for replication but be aware that metadata is NOT ENCRYPTED in this case. The default timeout is 60 seconds and can be overridden by providing it as third argument. By default busybox nc is used for the listeing tcp socket, if mbuffer is preferred specify its name as fourth argument but be aware that mbuffer listens on all interfaces and uses an optionally provided ip address for access restriction (This option can't be used for relaying between two remote hosts)
+
 + --quiet
 
-	Supress non-error output.
+	Suppress non-error output.
 
 + --debug
 
-	This prints out quite alot of additional information during a sanoid run, and is normally not needed.
+	This prints out quite a lot of additional information during a syncoid run, and is normally not needed.
 
 + --help
 

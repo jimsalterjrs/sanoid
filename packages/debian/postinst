@@ -2,3 +2,5 @@
 
 # remove old cache file
 [ -f /var/cache/sanoidsnapshots.txt ] && rm /var/cache/sanoidsnapshots.txt || true
+[ -f /var/cache/sanoid/snapshots.txt ] && rm /var/cache/sanoid/snapshots.txt || true
+[ -f /var/cache/sanoid/datasets.txt ] && rm /var/cache/sanoid/datasets.txt || true

@@ -17,8 +17,11 @@ for test in */; do
     cd "${test}"
     echo -n y | bash run.sh > "${LOGFILE}" 2>&1
 
-    if [ $? -eq 0 ]; then
+    ret=$?
+    if [ $ret -eq 0 ]; then
         echo "[PASS]"
+    elif [ $ret -eq 130 ]; then
+        echo "[SKIPPED]"
     else
         echo "[FAILED] (see ${LOGFILE})"
     fi

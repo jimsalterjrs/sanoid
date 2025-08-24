@@ -42,7 +42,7 @@ function cleanUp {
 trap cleanUp EXIT
 
 while [ $timestamp -le $END ]; do
-    setdate $timestamp; date; "${SANOID}" --cron --verbose
+    setdate $timestamp; date; "${SANOID}" --cron --verbose --cache-ttl=2592000
     timestamp=$((timestamp+900))
 done
 

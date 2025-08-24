@@ -12,10 +12,6 @@ override_dh_auto_install:
 	install -d $(DESTDIR)/etc/sanoid
 	install -m 664 sanoid.defaults.conf $(DESTDIR)/etc/sanoid
 
-	install -d $(DESTDIR)/lib/systemd/system
-	install -m 664 debian/sanoid-prune.service debian/sanoid.timer \
-		$(DESTDIR)/lib/systemd/system
-
 	install -d $(DESTDIR)/usr/sbin
 	install -m 775 \
 		findoid sanoid sleepymutex syncoid \
@@ -24,6 +20,8 @@ override_dh_auto_install:
 	install -d $(DESTDIR)/usr/share/doc/sanoid
 	install -m 664 sanoid.conf \
 		$(DESTDIR)/usr/share/doc/sanoid/sanoid.conf.example
+
+	dh_installsystemd --name sanoid-prune
 
 override_dh_installinit:
 	dh_installinit --noscripts

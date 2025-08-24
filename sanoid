@@ -4,7 +4,7 @@
 # from http://www.gnu.org/licenses/gpl-3.0.html on 2014-11-17.  A copy should also be available in this
 # project's Git repository at https://github.com/jimsalterjrs/sanoid/blob/master/LICENSE.
 
-$::VERSION = '2.1.0';
+$::VERSION = '2.3.0';
 my $MINIMUM_DEFAULTS_VERSION = 2;
 
 use strict;
@@ -12,6 +12,7 @@ use warnings;
 use Config::IniFiles; # read samba-style conf file
 use Data::Dumper;     # debugging - print contents of hash
 use File::Path 'make_path';
+use File::Copy;
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
@@ -26,11 +27,11 @@ GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
                    "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
-                   "monitor-capacity"
+                   "monitor-capacity", "cache-ttl=i"
           ) or pod2usage(2);
 
 # If only config directory (or nothing) has been specified, default to --cron --verbose
-if (keys %args < 2) {
+if (keys %args < 4) {
 	$args{'cron'} = 1;
 	$args{'verbose'} = 1;
 }
@@ -46,26 +47,82 @@ my $zpool = 'zpool';
 my $conf_file = "$args{'configdir'}/sanoid.conf";
 my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
-# parse config file
-my %config = init($conf_file,$default_conf_file);
-
 my $cache_dir = $args{'cache-dir'};
 my $run_dir = $args{'run-dir'};
 
 make_path($cache_dir);
 make_path($run_dir);
 
-# if we call getsnaps(%config,1) it will forcibly update the cache, TTL or no TTL
-my $forcecacheupdate = 0;
+my $cacheTTL = 1200; # 20 minutes
+
+if ($args{'force-prune'}) {
+	warn "WARN: --force-prune argument is deprecated and its behavior is now standard";
+}
+
+if ($args{'cache-ttl'}) {
+	if ($args{'cache-ttl'} < 0) {
+		die "ERROR: cache-ttl needs to be positive!\n";
+	}
+	$cacheTTL = $args{'cache-ttl'};
+}
+
+# Allow a much older snapshot cache file than default if _only_ "--monitor-*" action commands are given
+# (ignore "--verbose", "--configdir" etc)
+if (
+	(
+		$args{'monitor-snapshots'}
+		|| $args{'monitor-health'}
+		|| $args{'monitor-capacity'}
+	) && ! (
+		$args{'cron'}
+		|| $args{'force-update'}
+		|| $args{'take-snapshots'}
+		|| $args{'prune-snapshots'}
+		|| $args{'cache-ttl'}
+	)
+) {
+	# The command combination above must not assert true for any command that takes or prunes snapshots
+	$cacheTTL = 18000; # 5 hours
+	if ($args{'debug'}) { print "DEBUG: command combo means that the cache file (provided it exists) will be allowed to be older than default.\n"; }
+}
+
+# snapshot cache
 my $cache = "$cache_dir/snapshots.txt";
-my $cacheTTL = 900; # 15 minutes
-my %snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate );
+
+# configured dataset cache
+my $cachedatasetspath = "$cache_dir/datasets.txt";
+my @cachedatasets;
+
+# parse config file
+my %config = init($conf_file,$default_conf_file);
+
 my %pruned;
 my %capacitycache;
+my %taken;
 
-my %snapsbytype = getsnapsbytype( \%config, \%snaps );
+my %snaps;
+my %snapsbytype;
+my %snapsbypath;
 
-my %snapsbypath = getsnapsbypath( \%config, \%snaps );
+# get snapshot list only if needed
+if ($args{'monitor-snapshots'}
+	|| $args{'monitor-health'}
+	|| $args{'cron'}
+	|| $args{'take-snapshots'}
+	|| $args{'prune-snapshots'}
+	|| $args{'force-update'}
+	|| $args{'debug'}
+) {
+	my $forcecacheupdate = 0;
+	if ($args{'force-update'}) 	{
+		$forcecacheupdate = 1;
+	}
+
+	%snaps = getsnaps( \%config, $cacheTTL, $forcecacheupdate);
+
+	%snapsbytype = getsnapsbytype( \%config, \%snaps );
+	%snapsbypath = getsnapsbypath( \%config, \%snaps );
+}
 
 # let's make it a little easier to be consistent passing these hashes in the same order to each sub
 my @params = ( \%config, \%snaps, \%snapsbytype, \%snapsbypath );
@@ -74,7 +131,6 @@ if ($args{'debug'})		{ $args{'verbose'}=1; blabber (@params); }
 if ($args{'monitor-snapshots'}) { monitor_snapshots(@params); }
 if ($args{'monitor-health'}) 	{ monitor_health(@params); }
 if ($args{'monitor-capacity'})  { monitor_capacity(@params); }
-if ($args{'force-update'}) 	{ my $snaps = getsnaps( \%config, $cacheTTL, 1 ); }
 
 if ($args{'cron'}) {
 	if ($args{'quiet'}) { $args{'verbose'} = 0; }
@@ -130,7 +186,7 @@ sub monitor_snapshots {
 
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %datestamp = get_date();
-	my $errorlevel = 0;
+	my $errlevel = 0;
 	my $msg;
 	my @msgs;
 	my @paths;
@@ -169,7 +225,7 @@ sub monitor_snapshots {
 			my $dispcrit = displaytime($crit);
 			if ( $elapsed > $crit || $elapsed == -1) {
 				if ($crit > 0) {
-					if (! $config{$section}{'monitor_dont_crit'}) { $errorlevel = 2; }
+					if (! $config{$section}{'monitor_dont_crit'}) { $errlevel = 2; }
 					if ($elapsed == -1) {
 						push @msgs, "CRIT: $path has no $type snapshots at all!";
 					} else {
@@ -178,7 +234,7 @@ sub monitor_snapshots {
 				}
 			 } elsif ($elapsed > $warn) {
 				if ($warn > 0) {
-					if (! $config{$section}{'monitor_dont_warn'} && ($errorlevel < 2) ) { $errorlevel = 1; }
+					if (! $config{$section}{'monitor_dont_warn'} && ($errlevel < 2) ) { $errlevel = 1; }
 					push @msgs, "WARN: $path newest $type snapshot is $dispelapsed old (should be < $dispwarn)";
 				}
 			} else {
@@ -196,7 +252,7 @@ sub monitor_snapshots {
 	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
 
 	print "$msg\n";
-	exit $errorlevel;
+	exit $errlevel;
 }
 
 
@@ -265,7 +321,6 @@ sub prune_snapshots {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 
 	my %datestamp = get_date();
-	my $forcecacheupdate = 0;
 
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
@@ -319,29 +374,43 @@ sub prune_snapshots {
 					if (checklock('sanoid_pruning')) {
 						writelock('sanoid_pruning');
 						foreach my $snap( @prunesnaps ){
-							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
-							if (!$args{'force-prune'} && iszfsbusy($path)) {
-								if ($args{'verbose'}) { print "INFO: deferring pruning of $snap - $path is currently in zfs send or receive.\n"; }
-							} else {
-								if (! $args{'readonly'}) {
-									if (system($zfs, "destroy", $snap) == 0) {
-										$pruned{$snap} = 1;
-										my $dataset = (split '@', $snap)[0];
-										my $snapname = (split '@', $snap)[1];
-										if ($config{$dataset}{'pruning_script'}) {
-											$ENV{'SANOID_TARGET'} = $dataset;
-											$ENV{'SANOID_SNAPNAME'} = $snapname;
-											$ENV{'SANOID_SCRIPT'} = 'prune';
-											if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
-											my $ret = runscript('pruning_script',$dataset);
+							my $dataset = (split '@', $snap)[0];
+							my $snapname = (split '@', $snap)[1];
 
-											delete $ENV{'SANOID_TARGET'};
-											delete $ENV{'SANOID_SNAPNAME'};
-											delete $ENV{'SANOID_SCRIPT'};
-										}
-									} else {
-										warn "could not remove $snap : $?";
+							if (! $args{'readonly'} && $config{$dataset}{'pre_pruning_script'}) {
+								$ENV{'SANOID_TARGET'} = $dataset;
+								$ENV{'SANOID_SNAPNAME'} = $snapname;
+								if ($args{'verbose'}) { print "executing pre_pruning_script '".$config{$dataset}{'pre_pruning_script'}."' on dataset '$dataset'\n"; }
+								my $ret = runscript('pre_pruning_script', $dataset);
+
+								delete $ENV{'SANOID_TARGET'};
+								delete $ENV{'SANOID_SNAPNAME'};
+
+								if ($ret != 0) {
+									# warning was already thrown by runscript function
+									# skip pruning if pre snapshot script returns non zero exit code
+									next;
+								}
+							}
+
+							if ($args{'verbose'}) { print "INFO: pruning $snap ... \n"; }
+
+							if (! $args{'readonly'}) {
+								if (system($zfs, "destroy", $snap) == 0) {
+									$pruned{$snap} = 1;
+									if ($config{$dataset}{'pruning_script'}) {
+										$ENV{'SANOID_TARGET'} = $dataset;
+										$ENV{'SANOID_SNAPNAME'} = $snapname;
+										$ENV{'SANOID_SCRIPT'} = 'prune';
+										if ($args{'verbose'}) { print "executing pruning_script '".$config{$dataset}{'pruning_script'}."' on dataset '$dataset'\n"; }
+										my $ret = runscript('pruning_script',$dataset);
+
+										delete $ENV{'SANOID_TARGET'};
+										delete $ENV{'SANOID_SNAPNAME'};
+										delete $ENV{'SANOID_SCRIPT'};
 									}
+								} else {
+									warn "could not remove $snap : $?";
 								}
 							}
 						}
@@ -533,6 +602,7 @@ sub take_snapshots {
 	}
 
 	if (%newsnapsgroup) {
+		$forcecacheupdate = 0;
 		while ((my $path, my $snapData) = each(%newsnapsgroup)) {
 			my $recursiveFlag = $snapData->{recursive};
 			my $dstHandling = $snapData->{handleDst};
@@ -603,9 +673,17 @@ sub take_snapshots {
 						}
 					};
 
+					if ($exit == 0) {
+						$taken{$snap} = {
+							'time' => time(),
+							'recursive' => $recursiveFlag
+						};
+					}
+
 					$exit == 0 or do {
 						if ($dstHandling) {
 							if ($stderr =~ /already exists/) {
+								$forcecacheupdate = 1;
 								$exit = 0;
 								$snap =~ s/_([a-z]+)$/dst_$1/g;
 								if ($args{'verbose'}) { print "taking dst snapshot $snap$extraMessage\n"; }
@@ -655,8 +733,8 @@ sub take_snapshots {
 				}
 			}
 		}
-		$forcecacheupdate = 1;
-		%snaps = getsnaps(%config,$cacheTTL,$forcecacheupdate);
+		addcachedsnapshots();
+		%snaps = getsnaps(\%config,$cacheTTL,$forcecacheupdate);
 	}
 }
 
@@ -799,7 +877,7 @@ sub getsnaps {
 		if (checklock('sanoid_cacheupdate')) {
 			writelock('sanoid_cacheupdate');
 			if ($args{'verbose'}) {
-				if ($args{'force-update'}) {
+				if ($forcecacheupdate) {
 					print "INFO: cache forcibly expired - updating from zfs list.\n";
 				} else {
 					print "INFO: cache expired - updating from zfs list.\n";
@@ -809,9 +887,10 @@ sub getsnaps {
 			@rawsnaps = <FH>;
 			close FH;
 
-			open FH, "> $cache" or die 'Could not write to $cache!\n';
+			open FH, "> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 			print FH @rawsnaps;
 			close FH;
+			rename("$cache.tmp", "$cache") or die "Could not rename to $cache!\n";
 			removelock('sanoid_cacheupdate');
 		} else {
 			if ($args{'verbose'}) { print "INFO: deferring cache update - valid cache update lock held by another sanoid process.\n"; }
@@ -874,6 +953,20 @@ sub init {
 		die "FATAL: you're using sanoid.defaults.conf v$defaults_version, this version of sanoid requires a minimum sanoid.defaults.conf v$MINIMUM_DEFAULTS_VERSION";
 	}
 
+	my @updatedatasets;
+
+	# load dataset cache if valid
+	if (!$args{'force-update'} && -f $cachedatasetspath) {
+		my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cachedatasetspath);
+
+		if ((time() - $mtime) <= $cacheTTL) {
+			if ($args{'debug'}) { print "DEBUG: dataset cache not expired (" . (time() - $mtime) . " seconds old with TTL of $cacheTTL): pulling dataset list from cache.\n"; }
+			open FH, "< $cachedatasetspath";
+			@cachedatasets = <FH>;
+			close FH;
+		}
+	}
+
 	foreach my $section (keys %ini) {
 
 		# first up - die with honor if unknown parameters are set in any modules or templates by the user.
@@ -881,6 +974,15 @@ sub init {
 			if (! defined ($defaults{'template_default'}{$key})) {
 				die "FATAL ERROR: I don't understand the setting $key you've set in \[$section\] in $conf_file.\n";
 			}
+
+			# in case of duplicate lines we will end up with an array of all values
+			my $value = $ini{$section}{$key};
+			if (ref($value) eq 'ARRAY') {
+				warn "duplicate key '$key' in section '$section', using the value from the first occurence and ignoring the others.\n";
+				$ini{$section}{$key} = $value->[0];
+			}
+			# trim
+			$ini{$section}{$key} =~ s/^\s+|\s+$//g;
 		}
 
 		if ($section =~ /^template_/) { next; } # don't process templates directly
@@ -889,7 +991,7 @@ sub init {
 		# for sections directly when they've already been defined recursively, without starting them over from scratch.
 		if (! defined ($config{$section}{'initialized'})) {
 			if ($args{'debug'}) { print "DEBUG: initializing \$config\{$section\} with default values from $default_conf_file.\n"; }
-			# set default values from %defaults, which can then be overriden by template
+			# set default values from %defaults, which can then be overridden by template
 			# and/or local settings within the module.
 			foreach my $key (keys %{$defaults{'template_default'}}) {
 				if (! ($key =~ /template|recursive|children_only/)) {
@@ -925,6 +1027,12 @@ sub init {
 					}
 					if ($args{'debug'}) { print "DEBUG: overriding $key on $section with value from user-defined template $template.\n"; }
 					$config{$section}{$key} = $ini{$template}{$key};
+
+					my $value = $config{$section}{$key};
+					if (ref($value) eq 'ARRAY') {
+						# handle duplicates silently (warning was already printed above)
+						$config{$section}{$key} = $value->[0];
+					}
 				}
 			}
 		}
@@ -954,6 +1062,10 @@ sub init {
 			$config{$section}{'path'} = $section;
 		}
 
+		if (! @cachedatasets) {
+			push (@updatedatasets, "$config{$section}{'path'}\n");
+		}
+
 		# how 'bout some recursion? =)
 		if ($config{$section}{'zfs_recursion'} && $config{$section}{'zfs_recursion'} == 1 && $config{$section}{'autosnap'} == 1) {
 			warn "ignored autosnap configuration for '$section' because it's part of a zfs recursion.\n";
@@ -971,7 +1083,9 @@ sub init {
 
 			@datasets = getchilddatasets($config{$section}{'path'});
 			DATASETS: foreach my $dataset(@datasets) {
-				chomp $dataset;
+				if (! @cachedatasets) {
+					push (@updatedatasets, "$dataset\n");
+				}
 
 				if ($zfsRecursive) {
 					# don't try to take the snapshot ourself, recursive zfs snapshot will take care of that
@@ -1002,9 +1116,27 @@ sub init {
 				$config{$dataset}{'initialized'} = 1;
 			}
 		}
+	}
 
-
-
+	# update dataset cache if it was unused
+	if (! @cachedatasets) {
+		if (checklock('sanoid_cachedatasetupdate')) {
+			writelock('sanoid_cachedatasetupdate');
+			if ($args{'verbose'}) {
+				if ($args{'force-update'}) {
+					print "INFO: dataset cache forcibly expired - updating from zfs list.\n";
+				} else {
+					print "INFO: dataset cache expired - updating from zfs list.\n";
+				}
+			}
+			open FH, "> $cachedatasetspath.tmp" or die "Could not write to $cachedatasetspath.tmp!\n";
+			print FH @updatedatasets;
+			close FH;
+			rename("$cachedatasetspath.tmp", "$cachedatasetspath") or die "Could not rename to $cachedatasetspath!\n";
+			removelock('sanoid_cachedatasetupdate');
+		} else {
+			if ($args{'verbose'}) { print "INFO: deferring dataset cache update - valid cache update lock held by another sanoid process.\n"; }
+		}
 	}
 
 	return %config;
@@ -1137,7 +1269,7 @@ sub check_zpool() {
 		}
 	}
 
-	# Tony: Debuging
+	# Tony: Debugging
 	# print "Size: $size \t Used: $used \t Avai: $avail \t Cap: $cap \t Health: $health\n";
 
 	close(STAT);
@@ -1239,7 +1371,7 @@ sub check_zpool() {
 			## no display for verbose level 1
 			next if ($verbose==1);
 			## don't display working devices for verbose level 2
-			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL" || $sta eq "INUSE")) {
+			if ($verbose==2 && ($state eq "OK" || $sta eq "ONLINE" || $sta eq "AVAIL")) {
 				# check for io/checksum errors
 
 				my @vdeverr = ();
@@ -1521,30 +1653,6 @@ sub writelock {
 	close FH;
 }
 
-sub iszfsbusy {
-	# check to see if ZFS filesystem passed in as argument currently has a zfs send or zfs receive process referencing it.
-	# return true if busy (currently being sent or received), return false if not.
-
-        my $fs = shift;
-        # if (args{'debug'}) { print "DEBUG: checking to see if $fs on is already in zfs receive using $pscmd -Ao args= ...\n"; }
-
-        open PL, "$pscmd -Ao args= |";
-        my @processes = <PL>;
-        close PL;
-
-        foreach my $process (@processes) {
-		# if ($args{'debug'}) { print "DEBUG: checking process $process...\n"; }
-                if ($process =~ /zfs *(send|receive|recv).*$fs/) {
-                        # there's already a zfs send/receive process for our target filesystem - return true
-                        # if ($args{'debug'}) { print "DEBUG: process $process matches target $fs!\n"; }
-                        return 1;
-                }
-        }
-
-        # no zfs receive processes for our target filesystem found - return false
-        return 0;
-}
-
 #######################################################################################################################3
 #######################################################################################################################3
 #######################################################################################################################3
@@ -1554,10 +1662,34 @@ sub getchilddatasets {
 	my $fs = shift;
 	my $mysudocmd = '';
 
+	# use dataset cache if available
+	if (@cachedatasets) {
+		my $foundparent = 0;
+		my @cachechildren = ();
+		foreach my $dataset (@cachedatasets) {
+			chomp $dataset;
+			my $ret = rindex $dataset, "${fs}/", 0;
+			if ($ret == 0) {
+				push (@cachechildren, $dataset);
+			} else {
+				if ($dataset eq $fs) {
+					$foundparent = 1;
+				}
+			}
+		}
+
+		# sanity check
+		if ($foundparent) {
+			return @cachechildren;
+		}
+
+		# fallback if cache misses items for whatever reason
+	}
+
 	my $getchildrencmd = "$mysudocmd $zfs list -o name -t filesystem,volume -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
-	my @children = <FH>;
+	chomp( my @children = <FH> );
 	close FH;
 
 	# parent dataset is the first element
@@ -1600,7 +1732,7 @@ sub removecachedsnapshots {
 	my @rawsnaps = <FH>;
 	close FH;
 
-	open FH, "> $cache" or die 'Could not write to $cache!\n';
+	open FH, "> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 	foreach my $snapline ( @rawsnaps ) {
 		my @columns = split("\t", $snapline);
 		my $snap = $columns[0];
@@ -1608,11 +1740,73 @@ sub removecachedsnapshots {
 	}
 	close FH;
 
+	# preserve mtime of cache for expire check
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
+	utime($atime, $mtime, "$cache.tmp");
+
+	rename("$cache.tmp", "$cache") or die "Could not rename to $cache!\n";
+
 	removelock('sanoid_cacheupdate');
-	%snaps = getsnaps(\%config,$cacheTTL,$forcecacheupdate);
+	%snaps = getsnaps(\%config,$cacheTTL,0);
 
 	# clear hash
 	undef %pruned;
+}
+
+#######################################################################################################################3
+#######################################################################################################################3
+#######################################################################################################################3
+
+sub addcachedsnapshots {
+	if (not %taken) {
+		return;
+	}
+
+	my $unlocked = checklock('sanoid_cacheupdate');
+
+	# wait until we can get a lock to do our cache changes
+	while (not $unlocked) {
+		if ($args{'verbose'}) { print "INFO: waiting for cache update lock held by another sanoid process.\n"; }
+		sleep(10);
+		$unlocked = checklock('sanoid_cacheupdate');
+	}
+
+	writelock('sanoid_cacheupdate');
+
+	if ($args{'verbose'}) {
+		print "INFO: adding taken snapshots to cache.\n";
+	}
+
+	copy($cache, "$cache.tmp") or die "Could not copy to $cache.tmp!\n";
+
+	open my $fh, ">> $cache.tmp" or die "Could not write to $cache.tmp!\n";
+	while((my $snap, my $details) = each(%taken)) {
+		my @parts = split("@", $snap, 2);
+
+		my $suffix = $parts[1] . "\tcreation\t" . $details->{time} . "\t-";
+		my $dataset = $parts[0];
+
+		print $fh "${dataset}\@${suffix}\n";
+
+		if ($details->{recursive}) {
+			my @datasets = getchilddatasets($dataset);
+
+			foreach my $dataset(@datasets) {
+				print "${dataset}\@${suffix}\n";
+				print $fh "${dataset}\@${suffix}\n";
+			}
+		}
+	}
+
+	close $fh;
+
+	# preserve mtime of cache for expire check
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
+	utime($atime, $mtime, "$cache.tmp");
+
+	rename("$cache.tmp", "$cache") or die "Could not rename to $cache!\n";
+
+	removelock('sanoid_cacheupdate');
 }
 
 #######################################################################################################################3
@@ -1716,7 +1910,7 @@ Options:
   --monitor-snapshots   Reports on snapshot "health", in a Nagios compatible format
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
-  --force-prune         Purges expired snapshots even if a send/recv is in progress
+  --cache-ttl=SECONDS   Set custom cache expire time in seconds (default: 20 minutes)
 
   --help                Prints this helptext
   --version             Prints the version number
