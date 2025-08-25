@@ -887,7 +887,13 @@ sub getsnaps {
 			open FH, "$zfs get -Hrpt snapshot creation ".join(" ",keys %$config)." |";
 			@rawsnaps = <FH>;
 			close FH;
-
+			$exit_code = $? >> 8;
+			if ($exit_code != 0) {
+				print "INFO: zfs list shapshots with dataset names does not work.. retrying without dataset names (this will spin-up all disks)\n";
+				open FH, "$zfs get -Hrpt snapshot creation |";
+				@rawsnaps = <FH>;
+				close FH;
+			}
 			open FH, "> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 			print FH @rawsnaps;
 			close FH;
