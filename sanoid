@@ -17,6 +17,7 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
+use POSIX 'strftime';
 
 my %args = (
 	"configdir" => "/etc/sanoid",
@@ -616,7 +617,11 @@ sub take_snapshots {
 			my @snapshots;
 
 			foreach my $type (@types) {
-				my $snapname = "autosnap_$datestamp{'sortable'}_$type";
+				my $sortable = strftime($config{$dataset}{'datestamp_format'}, localtime($datestamp{'unix_time'}));
+				my $snapname = $config{$dataset}{'snapname_format'};
+				$snapname =~ s/IDENTIFIER/$config{$dataset}{'identifier'}/g;
+				$snapname =~ s/DATE/$sortable/g;
+				$snapname =~ s/TYPE/$type/g;
 				push(@snapshots, $snapname);
 			}
 
@@ -906,12 +911,13 @@ sub getsnaps {
 	}
 
 	foreach my $snap (@rawsnaps) {
-		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*ly)\t*creation\t*(\d*)/);
+		my ($fs,$snapname,$snapdate) = ($snap =~ m/(.*)\@(.*?)\t*creation\t*(\d*)/);
 
 		# avoid pissing off use warnings
 		if (defined $snapname) {
-			my ($snaptype) = ($snapname =~ m/.*_(\w*ly)/);
-			if ($snapname =~ /^autosnap/) {
+			if ($snapname =~ /$config{$fs}{'identifier'}/) {
+				my @types = qw(yearly monthly weekly daily hourly frequently);
+				my ($snaptype) = grep { $snapname =~ /$_/ } @types;
 				$snaps{$fs}{$snapname}{'ctime'}=$snapdate;
 				$snaps{$fs}{$snapname}{'type'}=$snaptype;
 			}
@@ -1148,16 +1154,15 @@ sub init {
 
 sub get_date {
 	my %datestamp;
-	($datestamp{'sec'},$datestamp{'min'},$datestamp{'hour'},$datestamp{'mday'},$datestamp{'mon'},$datestamp{'year'},$datestamp{'wday'},$datestamp{'yday'},$datestamp{'isdst'}) = localtime(time);
+	$datestamp{'unix_time'} = time();
+	($datestamp{'sec'},$datestamp{'min'},$datestamp{'hour'},$datestamp{'mday'},$datestamp{'mon'},$datestamp{'year'},$datestamp{'wday'},$datestamp{'yday'},$datestamp{'isdst'}) = localtime($datestamp{'unix_time'});
+
 	$datestamp{'year'} += 1900;
-	$datestamp{'unix_time'} = (((((((($datestamp{'year'} - 1971) * 365) + $datestamp{'yday'}) * 24) + $datestamp{'hour'}) * 60) + $datestamp{'min'}) * 60) + $datestamp{'sec'};
 	$datestamp{'sec'} = sprintf ("%02u", $datestamp{'sec'});
 	$datestamp{'min'} = sprintf ("%02u", $datestamp{'min'});
 	$datestamp{'hour'} = sprintf ("%02u", $datestamp{'hour'});
 	$datestamp{'mday'} = sprintf ("%02u", $datestamp{'mday'});
 	$datestamp{'mon'} = sprintf ("%02u", ($datestamp{'mon'} + 1));
-	$datestamp{'noseconds'} = "$datestamp{'year'}-$datestamp{'mon'}-$datestamp{'mday'}_$datestamp{'hour'}:$datestamp{'min'}";
-	$datestamp{'sortable'} = "$datestamp{'noseconds'}:$datestamp{'sec'}";
 	return %datestamp;
 }
 
