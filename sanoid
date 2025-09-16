@@ -1020,6 +1020,12 @@ sub init {
 				$rawtemplate =~ s/\s+$//g;
 
 				my $template = 'template_'.$rawtemplate;
+
+                # Check if template exists
+                if (!exists $ini{$template}) {
+                    die "FATAL ERROR: Template '$rawtemplate' referenced in section [$section] does not exist in $conf_file.\n";
+                }
+
 				foreach my $key (keys %{$ini{$template}}) {
 					if ($key =~ /template|recursive/) {
 						warn "ignored key '$key' from '$rawtemplate' template.\n";
