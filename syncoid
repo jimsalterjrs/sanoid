@@ -1750,7 +1750,7 @@ sub buildsynccmd {
 
 		$synccmd .= escapeshellparam($remotecmd);
 	}
-	return $synccmd;
+	return "(set -o pipefail 2> /dev/null) && set -o pipefail; $synccmd";
 }
 
 sub pruneoldsyncsnaps {
