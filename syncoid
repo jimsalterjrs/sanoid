@@ -2197,7 +2197,7 @@ sub getdate {
 	$date{'mday'} = sprintf ("%02u", $mday);
 	$date{'mon'} = sprintf ("%02u", ($mon + 1));
 	$date{'tzoffset'} = sprintf ("GMT%s%02d:%02u", $sign, $hours, $minutes);
-	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}:$date{'hour'}:$date{'min'}:$date{'sec'}-$date{'tzoffset'}";
+	$date{'stamp'} = "$date{'year'}-$date{'mon'}-$date{'mday'}_$date{'hour'}:$date{'min'}:$date{'sec'}-$date{'tzoffset'}";
 	return %date;
 }
 
