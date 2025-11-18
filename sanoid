@@ -150,16 +150,11 @@ exit 0;
 
 sub get_active_datasets {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
-	#my %datestamp = get_date();
-	#my $errlevel = 0;
-	#my $msg;
-	#my @msgs;
 	my @paths;
 
 	foreach my $section (keys %config) {
 		if ($section =~ /^template/) { next; }
-		if (! $config{$section}{'autoprune'}) { next; }
-		if (! $config{$section}{'autosnap'}) { next; }
+		if ((! $config{$section}{'autoprune'}) and (! $config{$section}{'autosnap'})) { next; }
 		if ($config{$section}{'process_children_only'}) { next; }
 
 		my $path = $config{$section}{'path'};
@@ -897,6 +892,7 @@ sub getsnaps {
 	my ($config, $cacheTTL, $forcecacheupdate) = @_;
 
 	my @rawsnaps;
+	my $exit_code;
 
 	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
 
@@ -909,18 +905,19 @@ sub getsnaps {
 				} else {
 					print "INFO: cache expired - updating from zfs list.\n";
 				}
+				if ($args{'debug'}) {
+					print "INFO: running: $zfs get -Hrpt snapshot creation ".get_active_datasets(@params)."\n";
+				}
 			}
 			# just get snapshots from configured datasets to not spin up the disks
 			open FH, "$zfs get -Hrpt snapshot creation ".get_active_datasets(@params)." |";
-			@rawsnaps = <FH>;
-			close FH;
-			$exit_code = $? >> 8;
+			my $exit_code = $? >> 8;
 			if ($exit_code != 0) {
 				print "INFO: zfs list shapshots with dataset names does not work.. retrying without dataset names (this will spin-up all disks)\n";
 				open FH, "$zfs get -Hrpt snapshot creation |";
-				@rawsnaps = <FH>;
-				close FH;
 			}
+			@rawsnaps = <FH>;
+			close FH;
 			open FH, "> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 			print FH @rawsnaps;
 			close FH;
