@@ -924,7 +924,22 @@ sub runsynccmd {
 	if (defined $args{'restore-properties'}) {
 		foreach my $key (keys %properties) {
 			my $value = $properties{$key};
-			my ($skey, $ikey) = split(/:/, $key);
+			my @parts = split(/:/, $key);
+			my $skey = "";
+			my $ikey = "";
+			my $is_recursive = 0;
+			if (@parts > 2) {
+				if($parts[0] eq 'syncoid' && $parts[1] eq 'syncoid') {
+					shift @parts;
+					$skey = $parts[0];
+					$ikey = join(':', @parts);
+					$is_recursive = 1;
+				}
+			} else {
+				$skey = $parts[0];
+				$ikey = $parts[1];
+			}
+			#my ($skey, $ikey) = split(/:/, $key);
 			if (!length($ikey)) {
 				my $skeypresent = 0;
 				foreach my $key1 (keys %properties) {
@@ -943,15 +958,21 @@ sub runsynccmd {
 					}
 				}
 			} else {
-				if(!istargetpropertypresent($ikey)) {
-					if($value eq "*default*") {
-						writelog('DEBUG', "will unset $ikey ...");
-						$recvoptions .= " -x $ikey";
-					} else {
+				if (!$is_recursive) {
+					if(!istargetpropertypresent($ikey)) {
+						if($value eq "*default*") {
+							writelog('DEBUG', "will unset $ikey ...");
+							$recvoptions .= " -x $ikey";
+						} else {
+							writelog('DEBUG', "will set $ikey to $value ...");
+							my $pair = escapeshellparam("$ikey=$value");
+							$recvoptions .= " -o $pair";
+						}
+					}
+				} else {
 						writelog('DEBUG', "will set $ikey to $value ...");
 						my $pair = escapeshellparam("$ikey=$value");
 						$recvoptions .= " -o $pair";
-					}
 				}
 			}
 		}
