@@ -1402,7 +1402,7 @@ sub iszfsbusy {
 	close PL;
 
 	foreach my $process (@processes) {
-		if ($process =~ /zfs *(receive|recv)[^\/]*\Q$fs\E\Z/) {
+		if ($process =~ /zfs *(receive|recv)[^\/]*\s\Q$fs\E\Z/) {
 			# there's already a zfs receive process for our target filesystem - return true
 			writelog('DEBUG', "process $process matches target $fs!");
 			return 1;
