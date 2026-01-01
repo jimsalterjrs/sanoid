@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # this is just a cheap way to trigger mutex-based checks for process activity.
 #
