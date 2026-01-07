@@ -586,7 +586,8 @@ sub syncdataset {
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
 
-		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps_unfiltered);
+		my $matchingsnapcreation = $snaps_unfiltered{'source'}{$newsyncsnap}{'creation'};
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps_unfiltered, $matchingsnapcreation);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
@@ -1740,8 +1741,9 @@ sub pruneoldsyncsnaps {
 	}
 
 sub getmatchingsnapshot {
-	my ($sourcefs, $targetfs, $snaps) = @_;
+	my ($sourcefs, $targetfs, $snaps, $maxcreation) = @_;
 	foreach my $snap ( sort { $snaps->{'source'}{$b}{'creation'}<=>$snaps->{'source'}{$a}{'creation'} } keys %{ $snaps->{'source'} }) {
+		next if (defined $maxcreation && defined $snaps->{'target'}{$snap} && $snaps->{'target'}{$snap}{'creation'} > $maxcreation);
 		if (defined $snaps->{'target'}{$snap}) {
 			if ($snaps->{'source'}{$snap}{'guid'} == $snaps->{'target'}{$snap}{'guid'}) {
 				return $snap;
