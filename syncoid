@@ -24,7 +24,7 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "no-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
                    "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
@@ -609,18 +609,20 @@ sub syncdataset {
 		my %bookmark = ();
 		my $bookmarksnap = 0;
 
-		# find most recent matching bookmark
-		my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
+		if (! defined $args{'no-bookmark'}) {
+			# find most recent matching bookmark
+			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
-		# check for matching guid of source bookmark and target snapshot (newest first)
-		foreach my $snap ( sort { sortsnapshots($snaps{'target'}, $b, $a) } keys %{ $snaps{'target'} }) {
-			my $guid = $snaps{'target'}{$snap}{'guid'};
+			# check for matching guid of source bookmark and target snapshot (newest first)
+			foreach my $snap ( sort { sortsnapshots($snaps{'target'}, $b, $a) } keys %{ $snaps{'target'} }) {
+				my $guid = $snaps{'target'}{$snap}{'guid'};
 
-			if (defined $bookmarks{$guid}) {
-				# found a match
-				%bookmark = %{ $bookmarks{$guid} };
-				$bookmarksnap = $snap;
-				last;
+				if (defined $bookmarks{$guid}) {
+					# found a match
+					%bookmark = %{ $bookmarks{$guid} };
+					$bookmarksnap = $snap;
+					last;
+				}
 			}
 		}
 
@@ -2439,6 +2441,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --no-bookmark         Do not use bookmarks when trying to find the latest common snapshot. This forces a rollback when the latest snapshot on the source was deleted but a common and older snapshot was found.
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next successful replication. The hold name includes the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
