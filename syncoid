@@ -24,7 +24,7 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold", "recursive-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
                    "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
@@ -791,18 +791,19 @@ sub syncdataset {
 
 	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
 	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
-	if (defined $args{'use-hold'}) {
+	if (defined $args{'use-hold'} || defined $args{'recursive-hold'}) {
 		my $holdcmd;
 		my $holdreleasecmd;
+		my $recursivehold = defined $args{'recursive-hold'} ? " -r" : "";
 		my $hostid = hostname();
 		my $matchingsnapescaped = escapeshellparam($matchingsnap);
 		my $holdname = "syncoid\_$identifier$hostid";
 		if ($sourcehost ne '') {
-			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped");
-			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped");
+			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold$recursivehold $holdname $sourcefsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release$recursivehold $holdname $sourcefsescaped\@$matchingsnapescaped");
 		} else {
-			$holdcmd = "$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped";
-			$holdreleasecmd = "$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped";
+			$holdcmd = "$sourcesudocmd $zfscmd hold$recursivehold $holdname $sourcefsescaped\@$newsyncsnapescaped";
+			$holdreleasecmd = "$sourcesudocmd $zfscmd release$recursivehold $holdname $sourcefsescaped\@$matchingsnapescaped";
 		}
 		writelog('DEBUG', "Set new hold on source: $holdcmd");
 		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
@@ -812,10 +813,11 @@ sub syncdataset {
 			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
 		}
 		if ($targethost ne '') {
-			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
-			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
+			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold$recursivehold $holdname $targetfsescaped\@$newsyncsnapescaped");
+			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release$recursivehold $holdname $targetfsescaped\@$matchingsnapescaped");
 		} else {
-			$holdcmd = "$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped";				$holdreleasecmd = "$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped";
+			$holdcmd = "$targetsudocmd $zfscmd hold$recursivehold $holdname $targetfsescaped\@$newsyncsnapescaped";
+			$holdreleasecmd = "$targetsudocmd $zfscmd release$recursivehold $holdname $targetfsescaped\@$matchingsnapescaped";
 		}
 		writelog('DEBUG', "Set new hold on target: $holdcmd");
 		system($holdcmd) == 0 or warn "WARNING: $holdcmd failed: $?";
