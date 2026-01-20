@@ -1,12 +1,17 @@
 #!/usr/bin/perl
 
-# nagios plugin format: exit 0,1,2,3 for OK, WARN, CRITICAL, or ERROR.
-
-# check_all_space_avail - test space available on all ZFS filesystems on host
-# different values for pools named "backup" and other pools:
+# This is a Nagios-compatible script which checks all mounted filesystems--not just ZFS filesystems--to see
+# if any are running dangerously low on space. It's generally bright enough to avoid weird mounts where
+# free space checks don't apply, eg dev, tmpfs, CD or DVDs, and so forth.
 #
-# default: warn 93%, crit 98%
+# usage: 
+#    check_all_disk_space [warnlevel] [critlevel]
+#
+# example:
+#    root@banshee:~/check_all_disk_space 80 90
+#    OK
 
+# default levels: warn if a filesystem is 93% full, crit if it's 98% full
 my $warnlevel = .93;
 my $critlevel = .98;
 
@@ -48,6 +53,8 @@ foreach my $fs (@filesystems) {
 $msg =~ s/, $//;
 $msg .= "\n";
 
+# nagios plugin format: exit 0,1,2,3 for OK, WARN, CRITICAL, or ERROR.
+
 if ($critfound) {
 	print "CRITICAL: $msg";
 	exit 2;
@@ -61,7 +68,6 @@ if ($critfound) {
 	print "OK\n";
 	exit 0;
 }
-
 
 print "ERROR: $msg ?";
 exit 3;
