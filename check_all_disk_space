@@ -12,10 +12,12 @@
 #    OK
 
 # default levels: warn if a filesystem is 93% full, crit if it's 98% full
+# default: warn 93%, crit 98%
+
 my $warnlevel = .93;
 my $critlevel = .98;
 
-# accept warnlevel and critlevel as arguments if passed
+# accept warnlevel and critlevel as arguments if passed. Must be passed as decimals, eg 0.4 for 40%
 if (defined $ARGV[0] && defined $ARGV[1] && $ARGV[0] >=0 && $ARGV[0] <=1 && $ARGV[1] >=0 && $ARGV[1] <=1) {
 	$warnlevel = $ARGV[0];
 	$critlevel = $ARGV[1];
@@ -26,7 +28,7 @@ my $msg,$warnfound,$critfound,$errfound;
 # get standard df output, but skip the tmpfs and devtmpfs crap - this should leave us with
 # nothing but disks.  we WILL also get nfs or other network filesystems here, since we
 # didn't use the -l flag.  Feature, not bug.  also skip UDF so we don't check free space on CDs!
-my @filesystems = `/bin/df -x tmpfs -x devtmpfs -x udf`;
+my @filesystems = `/bin/df -x tmpfs -x devtmpfs -x udf -x squashfs`;
 
 # get rid of header line
 shift @filesystems;
@@ -47,13 +49,11 @@ foreach my $fs (@filesystems) {
 	} elsif ($calcpercent < 0 || $calcpercent > 1) {
 		$errfound = 1;
 		$msg .= "$mounted: $prettypercent (WTF?), ";
-	}
+	} 
 }
 
 $msg =~ s/, $//;
 $msg .= "\n";
-
-# nagios plugin format: exit 0,1,2,3 for OK, WARN, CRITICAL, or ERROR.
 
 if ($critfound) {
 	print "CRITICAL: $msg";
@@ -68,6 +68,7 @@ if ($critfound) {
 	print "OK\n";
 	exit 0;
 }
+
 
 print "ERROR: $msg ?";
 exit 3;
