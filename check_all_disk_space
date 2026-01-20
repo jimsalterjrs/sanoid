@@ -1,0 +1,67 @@
+#!/usr/bin/perl
+
+# nagios plugin format: exit 0,1,2,3 for OK, WARN, CRITICAL, or ERROR.
+
+# check_all_space_avail - test space available on all ZFS filesystems on host
+# different values for pools named "backup" and other pools:
+#
+# default: warn 93%, crit 98%
+
+my $warnlevel = .93;
+my $critlevel = .98;
+
+# accept warnlevel and critlevel as arguments if passed
+if (defined $ARGV[0] && defined $ARGV[1] && $ARGV[0] >=0 && $ARGV[0] <=1 && $ARGV[1] >=0 && $ARGV[1] <=1) {
+	$warnlevel = $ARGV[0];
+	$critlevel = $ARGV[1];
+}
+
+my $msg,$warnfound,$critfound,$errfound;
+
+# get standard df output, but skip the tmpfs and devtmpfs crap - this should leave us with
+# nothing but disks.  we WILL also get nfs or other network filesystems here, since we
+# didn't use the -l flag.  Feature, not bug.  also skip UDF so we don't check free space on CDs!
+my @filesystems = `/bin/df -x tmpfs -x devtmpfs -x udf`;
+
+# get rid of header line
+shift @filesystems;
+
+foreach my $fs (@filesystems) {
+	chomp $fs;
+	# compress space to make sure split works right
+	$fs =~ s/ +/ /g;
+	my ($dev,$space,$used,$available,$percent,$mounted) = split(' ',$fs);
+	my $calcpercent = $used/$space;
+	my $prettypercent = sprintf('%.1F%',($calcpercent * 100));
+	if ($calcpercent > $critlevel) {
+		$critfound = 1;
+		$msg .= "$mounted: $prettypercent, ";
+	} elsif ($calcpercent > $warnlevel) {
+		$warnfound = 1;
+		$msg .= "$mounted: $prettypercent, ";
+	} elsif ($calcpercent < 0 || $calcpercent > 1) {
+		$errfound = 1;
+		$msg .= "$mounted: $prettypercent (WTF?), ";
+	}
+}
+
+$msg =~ s/, $//;
+$msg .= "\n";
+
+if ($critfound) {
+	print "CRITICAL: $msg";
+	exit 2;
+} elsif ($warnfound) {
+	print "WARNING: $msg";
+	exit 1;
+} elsif ($errfound) {
+	print "ERROR: $msg";
+	exit 3;
+} else {
+	print "OK\n";
+	exit 0;
+}
+
+
+print "ERROR: $msg ?";
+exit 3;
