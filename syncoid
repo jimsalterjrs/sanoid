@@ -195,6 +195,7 @@ if (length $args{'insecure-direct-connection'}) {
 my %avail = checkcommands();
 
 my %snaps;
+my %snaps_unfiltered;
 my $exitcode = 0;
 
 my $replicationCount = 0;
@@ -416,11 +417,16 @@ sub syncdataset {
 		# build hashes of the snaps on the source and target filesystems.
 
 		%snaps = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot);
+		%snaps_unfiltered = getsnaps('source',$sourcehost,$sourcefs,$sourceisroot,0);
 
 		if ($targetexists) {
 		    my %targetsnaps = getsnaps('target',$targethost,$targetfs,$targetisroot);
 		    my %sourcesnaps = %snaps;
 		    %snaps = (%sourcesnaps, %targetsnaps);
+
+		    my %targetsnaps_unfiltered = getsnaps('target',$targethost,$targetfs,$targetisroot,0);
+		    my %sourcesnaps_unfiltered = %snaps_unfiltered;
+		    %snaps_unfiltered = (%sourcesnaps_unfiltered, %targetsnaps_unfiltered);
 		}
 
 		if (defined $args{'dumpsnaps'}) {
@@ -438,7 +444,7 @@ sub syncdataset {
 			# Don't send the sync snap if it's filtered out by --exclude-snaps or
 			# --include-snaps
 			if (!snapisincluded($newsyncsnap)) {
-				$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+				$newsyncsnap = getnewestsnapshot(\%snaps);
 				if ($newsyncsnap eq 0) {
 					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 					if ($exitcode < 1) { $exitcode = 1; }
@@ -447,14 +453,16 @@ sub syncdataset {
 			}
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
-			$newsyncsnap = getnewestsnapshot($sourcehost,$sourcefs,$sourceisroot);
+			$newsyncsnap = getnewestsnapshot(\%snaps);
 			if ($newsyncsnap eq 0) {
 				writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
 			}
 		}
+
 	}
+
 	my $newsyncsnapescaped = escapeshellparam($newsyncsnap);
 
 	# there is currently (2014-09-01) a bug in ZFS on Linux
@@ -578,14 +586,15 @@ sub syncdataset {
 		my $bookmark = 0;
 		my $bookmarkcreation = 0;
 
-		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+		my $matchingsnapcreation = $snaps_unfiltered{'source'}{$newsyncsnap}{'creation'};
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps_unfiltered, $matchingsnapcreation);
 		if (! $matchingsnap) {
 			# no matching snapshots, check for bookmarks as fallback
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
 			# check for matching guid of source bookmark and target snapshot (oldest first)
-			foreach my $snap ( sort { $snaps{'target'}{$b}{'creation'}<=>$snaps{'target'}{$a}{'creation'} } keys %{ $snaps{'target'} }) {
-				my $guid = $snaps{'target'}{$snap}{'guid'};
+			foreach my $snap ( sort { $snaps_unfiltered{'target'}{$b}{'creation'}<=>$snaps_unfiltered{'target'}{$a}{'creation'} } keys %{ $snaps_unfiltered{'target'} }) {
+				my $guid = $snaps_unfiltered{'target'}{$snap}{'guid'};
 
 				if (defined $bookmarks{$guid}) {
 					# found a match
@@ -999,21 +1008,28 @@ sub syncincremental {
 		if (defined($args{'exclude-snaps'}) || defined($args{'include-snaps'})) {
 			writelog('INFO', '--no-stream is omitted but snaps are filtered. Simulating -I with filtered snaps');
 
-			# Get the snap names between $fromsnap and $tosnap
+			# Get the snap names between $fromsnap and $tosnap using the unfiltered snapshot list
 			my @intsnaps = ();
 			my $inrange = 0;
-			foreach my $testsnap (sort { $snaps{'source'}{$a}{'creation'}<=>$snaps{'source'}{$b}{'creation'} } keys %{ $snaps{'source'} }) {
+			foreach my $testsnap (sort { $snaps_unfiltered{'source'}{$a}{'creation'}<=>$snaps_unfiltered{'source'}{$b}{'creation'} } keys %{ $snaps_unfiltered{'source'} }) {
 				if ($testsnap eq $fromsnap) { $inrange = 1; }
+				next if (!$inrange);
 
-				if ($inrange) { push(@intsnaps, $testsnap); }
+				if ($testsnap eq $fromsnap || snapisincluded($testsnap)) {
+					push(@intsnaps, $testsnap);
+				}
 
-				if ($testsnap eq $tosnap) { last; }
+				last if ($testsnap eq $tosnap);
+			}
+
+			if (!@intsnaps || $intsnaps[0] ne $fromsnap) {
+				unshift(@intsnaps, $fromsnap);
 			}
 
 			# If we created a new sync snap, it won't be in @intsnaps yet
 			if ($intsnaps[-1] ne $tosnap) {
 				# Make sure that the sync snap isn't filtered out by --include-snaps or --exclude-snaps
-				if (snapisincluded($tosnap)) {
+				if ($tosnap eq $fromsnap || snapisincluded($tosnap)) {
 					push(@intsnaps, $tosnap);
 				}
 			}
@@ -1566,6 +1582,7 @@ sub getnewestsnapshot {
 	return 0;
 }
 
+
 sub buildsynccmd {
 	my ($sendcmd,$recvcmd,$pvsize,$sourceisroot,$targetisroot) = @_;
 	# here's where it gets fun: figuring out when to compress and decompress.
@@ -1710,24 +1727,25 @@ sub pruneoldsyncsnaps {
 	}
 	# if we still have some prune commands stacked up after finishing
 	# the loop, commit 'em now
-	if ($counter) {
-		$prunecmd =~ s/\; $//;
-		writelog('DEBUG', "pruning up to $maxsnapspercmd obsolete sync snapshots...");
-		writelog('DEBUG', "$rhost $prunecmd");
-		if ($rhost ne '') {
-			$prunecmd = escapeshellparam($prunecmd);
+		if ($counter) {
+			$prunecmd =~ s/\; $//;
+			writelog('DEBUG', "pruning up to $maxsnapspercmd obsolete sync snapshots...");
+			writelog('DEBUG', "$rhost $prunecmd");
+			if ($rhost ne '') {
+				$prunecmd = escapeshellparam($prunecmd);
+			}
+			system("$rhost $prunecmd") == 0
+				or writelog('WARN', "$rhost $prunecmd failed: $?");
 		}
-		system("$rhost $prunecmd") == 0
-			or writelog('WARN', "$rhost $prunecmd failed: $?");
+		return;
 	}
-	return;
-}
 
 sub getmatchingsnapshot {
-	my ($sourcefs, $targetfs, $snaps) = @_;
-	foreach my $snap ( sort { $snaps{'source'}{$b}{'creation'}<=>$snaps{'source'}{$a}{'creation'} } keys %{ $snaps{'source'} }) {
-		if (defined $snaps{'target'}{$snap}) {
-			if ($snaps{'source'}{$snap}{'guid'} == $snaps{'target'}{$snap}{'guid'}) {
+	my ($sourcefs, $targetfs, $snaps, $maxcreation) = @_;
+	foreach my $snap ( sort { $snaps->{'source'}{$b}{'creation'}<=>$snaps->{'source'}{$a}{'creation'} } keys %{ $snaps->{'source'} }) {
+		next if (defined $maxcreation && defined $snaps->{'target'}{$snap} && $snaps->{'target'}{$snap}{'creation'} > $maxcreation);
+		if (defined $snaps->{'target'}{$snap}) {
+			if ($snaps->{'source'}{$snap}{'guid'} == $snaps->{'target'}{$snap}{'guid'}) {
 				return $snap;
 			}
 		}
@@ -1735,6 +1753,8 @@ sub getmatchingsnapshot {
 
 	return 0;
 }
+
+
 
 sub newsyncsnap {
 	my ($rhost,$fs,$isroot) = @_;
@@ -1861,9 +1881,10 @@ sub dumphash() {
 }
 
 sub getsnaps() {
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my ($type,$rhost,$fs,$isroot,$applyfilters,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
+	if (!defined $applyfilters) { $applyfilters = 1; }
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	my $rhostOriginal = $rhost;
@@ -1885,7 +1906,7 @@ sub getsnaps() {
 	my @rawsnaps = <FH>;
 	close FH or do {
 		# fallback (solaris for example doesn't support the -t option)
-		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,%snaps);
+		return getsnapsfallback($type,$rhostOriginal,$fs,$isroot,$applyfilters,%snaps);
 	};
 
 	# this is a little obnoxious. get guid,creation returns guid,creation on two separate lines
@@ -1897,7 +1918,7 @@ sub getsnaps() {
 		$line =~ /\Q$fs\E\@(\S*)/;
 		my $snapname = $1;
 
-		if (!snapisincluded($snapname)) { next; }
+		if ($applyfilters && !snapisincluded($snapname)) { next; }
 
 		# only import snap guids from the specified filesystem
 		if ($line =~ /\Q$fs\E\@.*\tguid/) {
@@ -1941,9 +1962,10 @@ sub getsnaps() {
 
 sub getsnapsfallback() {
 	# fallback (solaris for example doesn't support the -t option)
-	my ($type,$rhost,$fs,$isroot,%snaps) = @_;
+	my ($type,$rhost,$fs,$isroot,$applyfilters,%snaps) = @_;
 	my $mysudocmd;
 	my $fsescaped = escapeshellparam($fs);
+	if (!defined $applyfilters) { $applyfilters = 1; }
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 
 	if ($rhost ne '') {
@@ -1984,7 +2006,7 @@ sub getsnapsfallback() {
 			$guid =~ s/^.*\tguid\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tguid.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
+			if ($applyfilters && !snapisincluded($snap)) { next; }
 			$snaps{$type}{$snap}{'guid'}=$guid;
 		} elsif ($state eq 2) {
 			if ($line !~ /\Q$fs\E\@.*\tcreation/) {
@@ -1996,7 +2018,7 @@ sub getsnapsfallback() {
 			$creation =~ s/^.*\tcreation\t*(\d*).*/$1/;
 			my $snap = $line;
 			$snap =~ s/^.*\@(.*)\tcreation.*$/$1/;
-			if (!snapisincluded($snap)) { next; }
+			if ($applyfilters && !snapisincluded($snap)) { next; }
 
 			# the accuracy of the creation timestamp is only for a second, but
 			# snapshots in the same second are highly likely. The list command
