@@ -726,11 +726,8 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!$bookmark || $nextsnapshot) {
-				if ($matchingsnap eq $newsyncsnap) {
-					# edge case: bookmark replication used the latest snapshot
-					return 0;
-				}
+			# edge case: skip repilcation if bookmark replication used the latest snapshot
+			if ((!$bookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
 
 				($exit, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $matchingsnap, $newsyncsnap, defined($args{'no-stream'}));
 
