@@ -1828,7 +1828,6 @@ sub addcachedsnapshots {
 			my @datasets = getchilddatasets($dataset);
 
 			foreach my $dataset(@datasets) {
-				print "${dataset}\@${suffix}\n";
 				print $fh "${dataset}\@${suffix}\n";
 			}
 		}
