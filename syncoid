@@ -178,7 +178,7 @@ if (length $args{'insecure-direct-connection'}) {
 		$directlisten = $args{'insecure-direct-connection'};
 	}
 
-	if (scalar @parts == 3) {
+	if (scalar @parts >= 3) {
 		$directtimeout = $parts[2];
 	}
 
@@ -434,7 +434,7 @@ sub syncdataset {
 		if (!defined $args{'no-sync-snap'} && !defined $skipsnapshot) {
 			# create a new syncoid snapshot on the source filesystem.
 			$newsyncsnap = newsyncsnap($sourcehost,$sourcefs,$sourceisroot);
-			if (!$newsyncsnap) {
+			if ($newsyncsnap eq '') {
 				# we already whined about the error
 				return 0;
 			}
@@ -442,7 +442,7 @@ sub syncdataset {
 			# --include-snaps
 			if (!snapisincluded($newsyncsnap)) {
 				$newsyncsnap = getnewestsnapshot(\%snaps);
-				if ($newsyncsnap eq 0) {
+				if ($newsyncsnap eq '') {
 					writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 					if ($exitcode < 1) { $exitcode = 1; }
 					return 0;
@@ -451,7 +451,7 @@ sub syncdataset {
 		} else {
 			# we don't want sync snapshots created, so use the newest snapshot we can find.
 			$newsyncsnap = getnewestsnapshot(\%snaps);
-			if ($newsyncsnap eq 0) {
+			if ($newsyncsnap eq '') {
 				writelog('WARN', "CRITICAL: no snapshots exist on source $sourcefs, and you asked for --no-sync-snap.");
 				if ($exitcode < 1) { $exitcode = 1; }
 				return 0;
@@ -479,13 +479,13 @@ sub syncdataset {
 			writelog('DEBUG', "target $targetfs does not exist, and --no-stream selected.  Finding newest available snapshot on source $sourcefs ...");
 		}
 		my $oldestsnap = getoldestsnapshot(\%snaps);
-		if (! $oldestsnap) {
+		if ($oldestsnap eq '') {
 			if (defined ($args{'no-sync-snap'}) ) {
 				# we already whined about the missing snapshots
 				return 0;
 			}
 
-			# getoldestsnapshot() returned false, so use new sync snapshot
+			# getoldestsnapshot() returned null, so use new sync snapshot
 			writelog('DEBUG', "getoldestsnapshot() returned false, so using $newsyncsnap.");
 			$oldestsnap = $newsyncsnap;
 		}
@@ -730,11 +730,8 @@ sub syncdataset {
 
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
-			if (!%bookmark || $nextsnapshot) {
-				if ($matchingsnap eq $newsyncsnap) {
-					# edge case: bookmark replication used the latest snapshot
-					return 0;
-				}
+			# edge case: skip replication if bookmark replication used the latest snapshot
+			if ((!%bookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
 
 				($exit, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $matchingsnap, $newsyncsnap, defined($args{'no-stream'}));
 
@@ -1599,7 +1596,7 @@ sub getoldestsnapshot {
 		# well, actually we set --no-sync-snap, so no we *didn't* already make one. Whoops.
 		writelog('CRITICAL', "--no-sync-snap is set, and getoldestsnapshot() could not find any snapshots on source!");
 	}
-	return 0;
+	return '';
 }
 
 sub getnewestsnapshot {
@@ -1621,7 +1618,7 @@ sub getnewestsnapshot {
 		writelog('WARN', "--no-sync-snap is set, and getnewestsnapshot() could not find any snapshots on source for current dataset. Continuing.");
 		if ($exitcode < 2) { $exitcode = 2; }
 	}
-	return 0;
+	return '';
 }
 
 sub buildsynccmd {

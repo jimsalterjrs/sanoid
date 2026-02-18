@@ -57,7 +57,7 @@ function disableTimeSync {
 
     which systemctl > /dev/null
     if [ $? -eq 0 ]; then
-        systemctl is-active virtualbox-guest-utils.service && systemctl stop virtualbox-guest-utils.service || true
+        systemctl is-active virtualbox-guest-utils.service && systemctl stop virtualbox-guest-utils.service
     fi
 }
 

@@ -8,7 +8,8 @@
 	- [Debian/Ubuntu](#debianubuntu)
 	- [RHEL/CentOS/AlmaLinux](#RHEL/CentOS/AlmaLinux)
 	- [FreeBSD](#freebsd)
-	- [Alpine Linux / busybox](#alpine-Linux-busybox-based-distributions)
+	- [Alpine Linux / busybox](#alpine-Linux-or-busybox-based-distributions)
+	- [OmniOS](#OmniOS)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
 	- [Sanoid](#sanoid)
@@ -175,13 +176,88 @@ pkg install p5-Config-Inifiles p5-Capture-Tiny pv mbuffer lzop sanoid
 
 *   See note about tcsh unpleasantness and other things in FREEBSD.readme
 
-## Alpine Linux / busybox based distributions
+## OmniOS
 
-The busybox implementation of ps is lacking needed arguments so a proper ps program needs to be installed.
-For Alpine Linux this can be done with:
+Used  with OmniOS r34, r36 and r37 (with napp-it installed). Hence, we presume you have a standard perl installation etc.
 
-`apk --no-cache add procps`
+1. Install prerequisites: Perl module Config::IniFiles, ssh, pv, gzip, lzop, and mbuffer
 
+```bash
+# install/update standard programs
+pfexec pkg install openssh gzip mbuffer pipe-viewer
+
+# include OpenCSW repository 
+pfexec pkg set-publisher -G '*' -g https://sfe.opencsw.org/localhostomnios localhostomnios
+	
+# install LZOP (from OpenCSW)
+pfexec pkg install lzop
+	
+# install Perl modules
+pfexec perl -MCPAN -e shell
+	install CPAN			## update CPAN
+	reload cpan			## reload
+
+	install inc::latest		## not sure if required
+	install IO::Scalar		## not sure if required
+	install Config::IniFiles
+	install Capture::Tiny
+	install Data::Dumper		## not sure if required, may be installed already
+	install File::Path		## not sure if required, may be installed already
+	install Getopt::Long		## not sure if required
+	install Pod::Usage		## not sure if required
+	install Time::Local		## not sure if required
+	exit
+```
+
+2. Download and clone the Sanoid repo:
+
+```bash
+# install git
+pfexec pkg install git
+
+# Tip: download the repo as root to avoid changing permissions later
+pfexec git clone https://github.com/jimsalterjrs/sanoid.git
+cd sanoid
+
+# checkout latest stable release or stay on master for bleeding edge stuff (but expect bugs!)
+pfexec git checkout $(git tag | grep "^v" | tail -n 1) 
+
+# patch syncoid, so that it correctly recognises the "zfs resume" capability under OmniOS (see https://github.com/jimsalterjrs/sanoid/issues/554)
+		<< $avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		>> $avail{'sourceresume'} = system("$sourcessh $resumechkcmd $srcpool 2>/dev/null | grep -E '^(active|enabled)' >/dev/null 2>&1");
+		<< $avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep '\\(active\\|enabled\\)' >/dev/null 2>&1");
+		>> $avail{'targetresume'} = system("$targetssh $resumechkcmd $dstpool 2>/dev/null | grep -E '^(active|enabled)' >/dev/null 2>&1");
+
+# most likely not required, but make the executables eXecutable
+pfexec chmod +x sanoid syncoid findoid sleepymutex
+
+# Install the executables into /opt/sanoid
+pfexec mkdir /opt/sanoid
+pfexec cp sanoid syncoid findoid sleepymutex /opt/sanoid
+
+# add symbolic links to executables to a directory in $path
+pfexec ln -s /opt/sanoid/sanoid /usr/bin/sanoid & pfexec ln -s /opt/sanoid/syncoid /usr/bin/syncoid & pfexec ln -s /opt/sanoid/findoid /usr/bin/findoid & pfexec ln -s /opt/sanoid/sleepymutex /usr/bin/sleepymutex 
+```	
+
+3. Create the config directory /etc/sanoid,  put default sanoid files there, and create and edit sanoid.conf:
+```bash
+# Create the config directory
+pfexec mkdir /etc/sanoid
+
+# Copy default config and sample config
+pfexec cp sanoid.defaults.conf sanoid.conf /etc/sanoid/sanoid.example.conf
+
+# Create a blank config file
+pfexec touch /etc/sanoid/sanoid.conf
+## and edit it (using e.g. nano as editor):
+pfexec nano /etc/sanoid/sanoid.conf
+```
+
+Further steps (not OmniOS specific): 
+- set up SSH connections between two remote hosts
+- create a cron job that runs sanoid --cron --quiet periodically
+
+=======
 ## MacOS
 
 Install prerequisite software:

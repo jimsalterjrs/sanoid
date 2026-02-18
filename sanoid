@@ -1084,10 +1084,8 @@ sub init {
 			@datasets = getchilddatasets($config{$section}{'path'});
 			DATASETS: foreach my $dataset(@datasets) {
 				if (! @cachedatasets) {
-					push (@updatedatasets, $dataset);
+					push (@updatedatasets, "$dataset\n");
 				}
-
-				chomp $dataset;
 
 				if ($zfsRecursive) {
 					# don't try to take the snapshot ourself, recursive zfs snapshot will take care of that
@@ -1377,9 +1375,9 @@ sub check_zpool() {
 				# check for io/checksum errors
 
 				my @vdeverr = ();
-				if ($read != 0) { push @vdeverr, "read" };
-				if ($write != 0) { push @vdeverr, "write" };
-				if ($cksum != 0) { push @vdeverr, "cksum" };
+				if ($read ne 0) { push @vdeverr, "read" };
+				if ($write ne 0) { push @vdeverr, "write" };
+				if ($cksum ne 0) { push @vdeverr, "cksum" };
 
 				if (scalar @vdeverr) {
 					$dmge=$dmge . "(" . $dev . ":" . join(", ", @vdeverr) . " errors) ";
@@ -1691,7 +1689,7 @@ sub getchilddatasets {
 	my $getchildrencmd = "$mysudocmd $zfs list -o name -t filesystem,volume -Hr $fs |";
 	 if ($args{'debug'}) { print "DEBUG: getting list of child datasets on $fs using $getchildrencmd...\n"; }
 	open FH, $getchildrencmd;
-	my @children = <FH>;
+	chomp( my @children = <FH> );
 	close FH;
 
 	# parent dataset is the first element
@@ -1781,25 +1779,26 @@ sub addcachedsnapshots {
 
 	copy($cache, "$cache.tmp") or die "Could not copy to $cache.tmp!\n";
 
-	open FH, ">> $cache.tmp" or die "Could not write to $cache.tmp!\n";
+	open my $fh, ">> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 	while((my $snap, my $details) = each(%taken)) {
 		my @parts = split("@", $snap, 2);
 
 		my $suffix = $parts[1] . "\tcreation\t" . $details->{time} . "\t-";
 		my $dataset = $parts[0];
 
-		print FH "${dataset}\@${suffix}\n";
+		print $fh "${dataset}\@${suffix}\n";
 
 		if ($details->{recursive}) {
 			my @datasets = getchilddatasets($dataset);
 
 			foreach my $dataset(@datasets) {
-				print FH "${dataset}\@${suffix}\n";
+				print "${dataset}\@${suffix}\n";
+				print $fh "${dataset}\@${suffix}\n";
 			}
 		}
 	}
 
-	close FH;
+	close $fh;
 
 	# preserve mtime of cache for expire check
 	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
