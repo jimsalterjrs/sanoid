@@ -2,6 +2,8 @@
 
 # run's all the available tests
 
+# set INVASIVE_TESTS=1 to also run invasive test which manipulate the system time
+
 for test in */; do
     if [ ! -x "${test}/run.sh" ]; then
         continue

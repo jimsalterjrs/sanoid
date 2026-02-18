@@ -1,3 +1,9 @@
+sanoid (2.3.1-SNAPSHOT) unstable; urgency=medium
+
+  SNAPSHOT
+
+ -- Jim Salter <github@jrs-s.net>  Tue, 12 Aug 2025 14:43:00 +0200
+
 sanoid (2.3.0) unstable; urgency=medium
 
   [overall]   documentation updates, small fixes (@thecatontheflat, @mjeanson, @jiawen, @EchterAgo, @jan-krieg, @dlangille, @rightaditya, @MynaITLabs, @ossimoi, @alexgarel, @TopherIsSwell, @jimsalterjrs, @phreaker0)

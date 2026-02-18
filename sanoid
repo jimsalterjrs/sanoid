@@ -148,6 +148,28 @@ exit 0;
 ####################################################################################
 ####################################################################################
 
+sub get_active_datasets {
+	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
+	my @paths;
+
+	foreach my $section (keys %config) {
+		if ($section =~ /^template/) { next; }
+		if ((! $config{$section}{'autoprune'}) and (! $config{$section}{'autosnap'})) { next; }
+		if ($config{$section}{'process_children_only'}) { next; }
+
+		my $path = $config{$section}{'path'};
+		push @paths, $path;
+	}
+
+	my @sorted_paths = sort { lc($a) cmp lc($b) } @paths;
+	my $paths = join (" ", @sorted_paths);
+	return $paths
+}
+
+####################################################################################
+####################################################################################
+####################################################################################
+
 sub monitor_health {
 	my ($config, $snaps, $snapsbytype, $snapsbypath) = @_;
 	my %pools;
@@ -870,6 +892,7 @@ sub getsnaps {
 	my ($config, $cacheTTL, $forcecacheupdate) = @_;
 
 	my @rawsnaps;
+	my $exitcode;
 
 	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($cache);
 
@@ -882,10 +905,23 @@ sub getsnaps {
 				} else {
 					print "INFO: cache expired - updating from zfs list.\n";
 				}
+				if ($args{'debug'}) {
+					print "INFO: running: $zfs get -Hrpt snapshot creation " . get_active_datasets(@params) . "\n";
+				}
 			}
-			open FH, "$zfs get -Hrpt snapshot creation |";
+			# just get snapshots from configured datasets
+			open FH, "$zfs get -Hrpt snapshot creation " . get_active_datasets(@params) . " |";
 			@rawsnaps = <FH>;
 			close FH;
+
+			my $exitcode = $? >> 8;
+
+			if ($exitcode != 0) {
+				print "INFO: zfs list shapshots with dataset names does not work, retrying without dataset names\n";
+				open FH, "$zfs get -Hrpt snapshot creation |";
+				@rawsnaps = <FH>;
+				close FH;
+			}
 
 			open FH, "> $cache.tmp" or die "Could not write to $cache.tmp!\n";
 			print FH @rawsnaps;
@@ -1792,7 +1828,6 @@ sub addcachedsnapshots {
 			my @datasets = getchilddatasets($dataset);
 
 			foreach my $dataset(@datasets) {
-				print "${dataset}\@${suffix}\n";
 				print $fh "${dataset}\@${suffix}\n";
 			}
 		}
