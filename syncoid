@@ -345,12 +345,6 @@ sub syncdataset {
 	my $sourcefsescaped = escapeshellparam($sourcefs);
 	my $targetfsescaped = escapeshellparam($targetfs);
 
-	# if no rollbacks are allowed, disable forced receive
-	my $forcedrecv = "-F";
-	if (defined $args{'no-rollback'}) {
-		$forcedrecv = "";
-	}
-
 	writelog('DEBUG', "syncing source $sourcefs to target $targetfs.");
 
 	my ($sync, $error) = getzfsvalue($sourcehost,$sourcefs,$sourceisroot,'syncoid:sync');
