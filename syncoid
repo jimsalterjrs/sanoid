@@ -575,7 +575,7 @@ sub syncdataset {
 
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
-		my $bookmark = 0;
+		my $bookmark = '';
 		my $bookmarkcreation = 0;
 
 		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
@@ -596,7 +596,7 @@ sub syncdataset {
 				}
 			}
 
-			if (! $bookmark) {
+			if ($bookmark eq '') {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
 					writelog('INFO', "Removing $targetfs because no matching snapshots were found");
@@ -669,7 +669,7 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if ($bookmark) {
+			if ($bookmark ne '') {
 				my $bookmarkescaped = escapeshellparam($bookmark);
 
 				if (!defined $args{'no-stream'}) {
@@ -727,7 +727,7 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			# edge case: skip repilcation if bookmark replication used the latest snapshot
-			if ((!$bookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
+			if (($bookmark eq '' || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
 
 				($exit, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $matchingsnap, $newsyncsnap, defined($args{'no-stream'}));
 
