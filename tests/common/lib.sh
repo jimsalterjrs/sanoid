@@ -52,12 +52,12 @@ function disableTimeSync {
     # disable ntp sync
     which timedatectl > /dev/null
     if [ $? -eq 0 ]; then
-        timedatectl set-ntp 0
+        timedatectl set-ntp 0 || true
     fi
 
     which systemctl > /dev/null
     if [ $? -eq 0 ]; then
-        systemctl is-active virtualbox-guest-utils.service && systemctl stop virtualbox-guest-utils.service
+        systemctl is-active virtualbox-guest-utils.service && systemctl stop virtualbox-guest-utils.service || true
     fi
 }
 
