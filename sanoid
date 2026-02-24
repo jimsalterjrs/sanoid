@@ -1021,9 +1021,9 @@ sub init {
 
 				my $template = 'template_'.$rawtemplate;
 
-                # Check if template exists
+                # Check if template exists - warn otherwise
                 if (!exists $ini{$template}) {
-                    die "FATAL ERROR: Template '$rawtemplate' referenced in section [$section] does not exist in $conf_file.\n";
+                    warn "WARN: Template '$rawtemplate' referenced in section [$section] does not exist in $conf_file.\n";
                 }
 
 				foreach my $key (keys %{$ini{$template}}) {
