@@ -17,6 +17,7 @@ use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;       # pod2usage
 use Time::Local;      # to parse dates in reverse
 use Capture::Tiny ':all';
+use Sys::Hostname;
 
 my %args = (
 	"configdir" => "/etc/sanoid",
@@ -25,6 +26,7 @@ my %args = (
 );
 GetOptions(\%args, "verbose", "debug", "cron", "readonly", "quiet",
                    "configdir=s", "cache-dir=s", "run-dir=s",
+                   "identifier=s", "prometheus-textfile=s",
                    "monitor-health", "force-update",
                    "monitor-snapshots", "take-snapshots", "prune-snapshots", "force-prune",
                    "monitor-capacity", "cache-ttl=i"
@@ -49,6 +51,29 @@ my $default_conf_file = "$args{'configdir'}/sanoid.defaults.conf";
 
 my $cache_dir = $args{'cache-dir'};
 my $run_dir = $args{'run-dir'};
+my $prometheus_textfile = $args{'prometheus-textfile'};
+my $prometheus_identifier = defined($args{'identifier'}) && $args{'identifier'} ne '' ? $args{'identifier'} : 'default';
+my $prometheus_host = hostname();
+my $prometheus_initiator_host = $prometheus_host;
+my $prometheus_tmpfile = '';
+my $prometheus_enabled = 0;
+my $prometheus_finalized = 0;
+my $prometheus_run_started_at = time();
+my %prometheus_pools;
+
+# Detect remote initiator when sanoid is invoked via SSH
+if (defined $ENV{SSH_CLIENT} && $ENV{SSH_CLIENT} ne '') {
+	$prometheus_initiator_host = (split ' ', $ENV{SSH_CLIENT})[0];
+}
+prom_init();
+
+# Safety net: publish metrics even on die/kill/unexpected exit
+END {
+	if ($prometheus_enabled && !$prometheus_finalized) {
+		$prometheus_finalized = 1;
+		_prom_flush(1);  # unexpected exit counts as failure
+	}
+}
 
 make_path($cache_dir);
 make_path($run_dir);
@@ -141,7 +166,7 @@ if ($args{'cron'}) {
 	if ($args{'prune-snapshots'}) { prune_snapshots (@params); }
 }
 
-exit 0;
+prom_finalize(0);
 
 
 ####################################################################################
@@ -191,9 +216,9 @@ sub monitor_health {
 	my @warninglevels = ('','*** WARNING *** ','*** CRITICAL *** ');
 	my $message = $warninglevels[$errlevel] . join (', ',@messages);
 	print "$message\n";
-	exit $errlevel;
+	prom_finalize($errlevel);
 
-}
+} # end monitor_health
 
 ####################################################################################
 ####################################################################################
@@ -274,7 +299,7 @@ sub monitor_snapshots {
 	if ($msg eq '') { $msg = "OK: all monitored datasets \($paths\) have fresh snapshots"; }
 
 	print "$msg\n";
-	exit $errlevel;
+	prom_finalize($errlevel);
 }
 
 
@@ -329,8 +354,8 @@ sub monitor_capacity {
 	my @warninglevels = ('','*** WARNING *** ','*** CRITICAL *** ');
 	my $message = $warninglevels[$errlevel] . join (', ',@messages);
 	print "$message\n";
-	exit $errlevel;
-}
+	prom_finalize($errlevel);
+} # end monitor_capacity
 
 ####################################################################################
 ####################################################################################
@@ -1916,6 +1941,176 @@ sub convertTimePeriod {
 	return $value * $period;
 }
 
+# Prometheus textfile support without any additional external dependencies
+sub prom_init {
+	return unless $prometheus_textfile;
+	$prometheus_tmpfile = "${prometheus_textfile}.$$.tmp";
+	my $fh;
+	if (!open($fh, '>', $prometheus_tmpfile)) {
+		warn "WARN: Cannot create prometheus tmp file $prometheus_tmpfile: $!\n";
+		$prometheus_tmpfile = "/tmp/syncoid_prometheus_${prometheus_identifier}.$$.tmp";
+		warn "INFO: falling back to $prometheus_tmpfile\n";
+		if (!open($fh, '>', $prometheus_tmpfile)) {
+			warn "WARN: Cannot create fallback prometheus tmp file $prometheus_tmpfile: $!\n";
+			warn "WARN: Prometheus textfile metrics will be disabled for this run.\n";
+			$prometheus_tmpfile = '';  # prevent further write attempts
+			return;
+		}
+	}
+	print $fh <<'PROMEOF';
+# HELP sanoid_run_timestamp_seconds Unix timestamp of the start of this sanoid run
+# TYPE sanoid_run_timestamp_seconds gauge
+# HELP sanoid_run_duration_seconds Wall-clock duration of this sanoid run in seconds
+# TYPE sanoid_run_duration_seconds gauge
+# HELP sanoid_run_success 1 if the sanoid run completed without errors, 0 otherwise
+# TYPE sanoid_run_success gauge
+# HELP sanoid_snapshot_count Current number of managed snapshots per dataset and type
+# TYPE sanoid_snapshot_count gauge
+# HELP sanoid_snapshots_taken_total Number of snapshots taken during this run per dataset
+# TYPE sanoid_snapshots_taken_total gauge
+# HELP sanoid_snapshots_pruned_total Number of snapshots pruned during this run per dataset
+# TYPE sanoid_snapshots_pruned_total gauge
+PROMEOF
+	close $fh;
+	$prometheus_enabled = 1;
+}
+
+sub _prom_escape {
+	my ($v) = @_;
+	return '' unless defined $v;
+	$v =~ s/\\/\\\\/g;
+	$v =~ s/"/\\"/g;
+	$v =~ s/\n/\\n/g;
+	return $v;
+}
+
+sub prom_labels {
+	my (%extra) = @_;
+	my %base = (
+		host           => $prometheus_host,
+		identifier     => $prometheus_identifier,
+		initiator_host => $prometheus_initiator_host,
+	);
+	my %m = (%base, %extra);
+	return join(',', map { "$_=\"" . _prom_escape($m{$_}) . "\"" } sort keys %m);
+}
+
+sub prom_append {
+	my ($metric, $labels_str, $value) = @_;
+	return unless $prometheus_enabled && $prometheus_tmpfile;
+	my $fh;
+	if (!open($fh, '>>', $prometheus_tmpfile)) {
+		warn "WARN: Cannot append to prometheus tmp file: $!\n";
+		return;
+	}
+	print $fh "${metric}{${labels_str}} ${value}\n";
+	close $fh;
+}
+
+sub _prom_discover_pools {
+	my %pools;
+	for my $section (keys %config) {
+		next if $section =~ /^template/;
+		my $path = (defined $config{$section}{'path'} && $config{$section}{'path'} ne '')
+			? $config{$section}{'path'} : $section;
+		my ($pool) = split('/', $path, 2);
+		$pools{$pool} = 1 if defined $pool && $pool ne '';
+	}
+	return keys %pools;
+}
+
+my $prom_dataset_metrics_written = 0;
+sub prom_write_dataset_metrics {
+	return unless $prometheus_enabled;
+	return if $prom_dataset_metrics_written;
+	$prom_dataset_metrics_written = 1;
+
+	# Current snapshot counts per dataset per type
+	for my $path (sort keys %snapsbytype) {
+		my ($pool) = split('/', $path, 2);
+		$pool //= $path;
+		$prometheus_pools{$pool} = 1;
+		for my $type (sort keys %{$snapsbytype{$path}}) {
+			my $count = $snapsbytype{$path}{$type}{'numsnaps'} // 0;
+			prom_append('sanoid_snapshot_count',
+				prom_labels(pool => $pool, dataset => $path, type => $type),
+				$count);
+		}
+	}
+
+	# Taken snapshots per dataset
+	my %taken_count;
+	for my $snap (keys %taken) {
+		my ($ds) = split('@', $snap, 2);
+		$taken_count{$ds}++;
+	}
+	for my $ds (sort keys %taken_count) {
+		my ($pool) = split('/', $ds, 2);
+		$pool //= $ds;
+		$prometheus_pools{$pool} = 1;
+		prom_append('sanoid_snapshots_taken_total',
+			prom_labels(pool => $pool, dataset => $ds),
+			$taken_count{$ds});
+	}
+
+	# Pruned snapshots per dataset
+	my %pruned_count;
+	for my $snap (keys %pruned) {
+		my ($ds) = split('@', $snap, 2);
+		$pruned_count{$ds}++;
+	}
+	for my $ds (sort keys %pruned_count) {
+		my ($pool) = split('/', $ds, 2);
+		$pool //= $ds;
+		$prometheus_pools{$pool} = 1;
+		prom_append('sanoid_snapshots_pruned_total',
+			prom_labels(pool => $pool, dataset => $ds),
+			$pruned_count{$ds});
+	}
+
+	# Intermediate publish so partial results are visible mid-run
+	if ($prometheus_textfile && $prometheus_tmpfile) {
+		my $pub = "${prometheus_textfile}.pub.$$";
+		File::Copy::copy($prometheus_tmpfile, $pub)
+			and rename($pub, $prometheus_textfile);
+	}
+}
+
+sub _prom_flush {
+	my ($exit_code) = @_;
+	$exit_code //= 1;
+	return unless $prometheus_enabled && $prometheus_tmpfile;
+
+	prom_write_dataset_metrics();  # idempotent
+
+	my $duration = time() - $prometheus_run_started_at;
+	my @pools    = keys %prometheus_pools;
+	@pools       = _prom_discover_pools() unless @pools;
+	@pools       = ('unknown')            unless @pools;
+
+	for my $pool (sort @pools) {
+		my $lbl = prom_labels(pool => $pool);
+		prom_append('sanoid_run_timestamp_seconds', $lbl, $prometheus_run_started_at);
+		prom_append('sanoid_run_duration_seconds',  $lbl, $duration);
+		prom_append('sanoid_run_success',           $lbl, ($exit_code == 0 ? 1 : 0));
+	}
+
+	# Atomic publish: rename tmp -> final (copy as fallback across filesystems)
+	rename($prometheus_tmpfile, $prometheus_textfile)
+		or File::Copy::copy($prometheus_tmpfile, $prometheus_textfile)
+		or warn "WARN: Cannot finalize prometheus file $prometheus_textfile: $!\n";
+	unlink $prometheus_tmpfile if -e $prometheus_tmpfile;
+}
+
+sub prom_finalize {
+	my ($exit_code) = @_;
+	$exit_code //= 0;
+	return if $prometheus_finalized;  # guard against double-call from END block
+	$prometheus_finalized = 1;
+	_prom_flush($exit_code);
+	exit($exit_code);
+}
+
 __END__
 
 =head1 NAME
@@ -1946,6 +2141,8 @@ Options:
   --take-snapshots      Creates snapshots as specified in sanoid.conf
   --prune-snapshots     Purges expired snapshots as specified in sanoid.conf
   --cache-ttl=SECONDS   Set custom cache expire time in seconds (default: 20 minutes)
+  --identifier=NAME     Label identifier for prometheus metrics (default: 'default')
+  --prometheus-textfile=PATH  Write Prometheus metrics to PATH (node_exporter textfile format)
 
   --help                Prints this helptext
   --version             Prints the version number
