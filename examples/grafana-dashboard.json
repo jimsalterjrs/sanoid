@@ -3,7 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sanoid-syncoid-v1",
-    "generation": 8,
+    "generation": 10,
     "creationTimestamp": "2026-04-10T14:57:06Z",
     "labels": {},
     "annotations": {}
@@ -209,32 +209,30 @@
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "bargauge",
+            "group": "barchart",
             "version": "13.0.1",
             "spec": {
               "options": {
-                "displayMode": "gradient",
+                "barRadius": 0.15,
+                "barWidth": 0.77,
+                "fullHighlight": false,
+                "groupWidth": 1,
                 "legend": {
                   "calcs": [],
                   "displayMode": "list",
                   "placement": "bottom",
                   "showLegend": false
                 },
-                "maxVizHeight": 300,
-                "minVizHeight": 16,
-                "minVizWidth": 8,
-                "namePlacement": "auto",
-                "orientation": "horizontal",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
                 },
-                "showUnfilled": true,
-                "sizing": "auto",
-                "valueMode": "color"
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
               },
               "fieldConfig": {
                 "defaults": {
@@ -245,98 +243,40 @@
                       {
                         "value": 0,
                         "color": "green"
-                      }
-                    ]
-                  },
-                  "color": {
-                    "mode": "palette-classic"
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
-      "panel-12": {
-        "kind": "Panel",
-        "spec": {
-          "id": 12,
-          "title": "Snapshots Pruned This Run",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "prometheus",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "${datasource}"
                       },
-                      "spec": {
-                        "expr": "sanoid_snapshots_pruned_total{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",dataset=~\"$sanoid_dataset\",identifier=~\"$identifier\"}",
-                        "instant": true,
-                        "legendFormat": "{{dataset}}"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "bargauge",
-            "version": "13.0.1",
-            "spec": {
-              "options": {
-                "displayMode": "gradient",
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "list",
-                  "placement": "bottom",
-                  "showLegend": false
-                },
-                "maxVizHeight": 300,
-                "minVizHeight": 16,
-                "minVizWidth": 8,
-                "namePlacement": "auto",
-                "orientation": "horizontal",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "showUnfilled": true,
-                "sizing": "auto",
-                "valueMode": "color"
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "short",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
                       {
-                        "value": 0,
-                        "color": "orange"
+                        "value": 2,
+                        "color": "#EAB839"
+                      },
+                      {
+                        "value": 5,
+                        "color": "red"
                       }
                     ]
                   },
                   "color": {
-                    "mode": "palette-classic"
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
                   }
                 },
                 "overrides": []
@@ -1515,29 +1455,32 @@
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "timeseries",
+            "group": "state-timeline",
             "version": "13.0.1",
             "spec": {
               "options": {
+                "alignValue": "left",
                 "annotations": {
                   "clustering": -1,
                   "multiLane": false
                 },
                 "legend": {
-                  "calcs": [],
                   "displayMode": "list",
                   "placement": "bottom",
-                  "showLegend": true
+                  "showLegend": false
                 },
+                "mergeValues": false,
+                "rowHeight": 0.9,
+                "showValue": "auto",
                 "tooltip": {
                   "hideZeros": false,
-                  "mode": "multi",
+                  "mode": "single",
                   "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "bool_yes_no",
+                  "unit": "bool_on_off",
                   "mappings": [
                     {
                       "type": "value",
@@ -1572,34 +1515,127 @@
                     "mode": "thresholds"
                   },
                   "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
                     "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "bars",
-                    "fillOpacity": 0,
-                    "gradientMode": "none",
+                    "fillOpacity": 70,
                     "hideFrom": {
                       "legend": false,
                       "tooltip": false,
                       "viz": false
                     },
                     "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 2,
-                    "pointSize": 10,
+                    "lineWidth": 0,
+                    "spanNulls": false
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-29": {
+        "kind": "Panel",
+        "spec": {
+          "id": 29,
+          "title": "Snapshots Pruned This Run",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sanoid_snapshots_pruned_total{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",dataset=~\"$sanoid_dataset\",identifier=~\"$identifier\"}",
+                        "instant": true,
+                        "legendFormat": "{{dataset}}"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "barchart",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "barRadius": 0.15,
+                "barWidth": 0.77,
+                "fullHighlight": false,
+                "groupWidth": 1,
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": false
+                },
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 2,
+                        "color": "#EAB839"
+                      },
+                      {
+                        "value": 5,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
                     "scaleDistribution": {
                       "type": "linear"
-                    },
-                    "showPoints": "auto",
-                    "showValues": false,
-                    "spanNulls": true,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "percent"
                     },
                     "thresholdsStyle": {
                       "mode": "off"
@@ -1909,23 +1945,26 @@
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "timeseries",
+            "group": "state-timeline",
             "version": "13.0.1",
             "spec": {
               "options": {
+                "alignValue": "left",
                 "annotations": {
                   "clustering": -1,
                   "multiLane": false
                 },
                 "legend": {
-                  "calcs": [],
                   "displayMode": "list",
                   "placement": "bottom",
-                  "showLegend": true
+                  "showLegend": false
                 },
+                "mergeValues": false,
+                "rowHeight": 0.9,
+                "showValue": "auto",
                 "tooltip": {
                   "hideZeros": false,
-                  "mode": "multi",
+                  "mode": "single",
                   "sort": "none"
                 }
               },
@@ -1966,38 +2005,16 @@
                     "mode": "thresholds"
                   },
                   "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
                     "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "bars",
-                    "fillOpacity": 0,
-                    "gradientMode": "none",
+                    "fillOpacity": 70,
                     "hideFrom": {
                       "legend": false,
                       "tooltip": false,
                       "viz": false
                     },
                     "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 2,
-                    "pointSize": 10,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "auto",
-                    "showValues": false,
-                    "spanNulls": true,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "percent"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
+                    "lineWidth": 0,
+                    "spanNulls": false
                   }
                 },
                 "overrides": []
@@ -2278,7 +2295,7 @@
                         "height": 4,
                         "element": {
                           "kind": "ElementReference",
-                          "name": "panel-12"
+                          "name": "panel-29"
                         }
                       }
                     }
