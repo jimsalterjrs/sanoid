@@ -1442,7 +1442,12 @@ sub check_zfs_get_features {
 		supported_properties => ['guid', 'creation']
 	};
 
-	my $check_t_option_cmd = "$rhost $mysudocmd $zfscmd get -H -t snapshot '' ''";
+	my $empty_ds = escapeshellparam('');
+	if ($rhost ne '') {
+		$empty_ds = escapeshellparam($empty_ds);
+	}
+
+	my $check_t_option_cmd = "$rhost $mysudocmd $zfscmd get -H -t snapshot $empty_ds $empty_ds";
 	open my $fh_t, "$check_t_option_cmd 2>&1 |";
 	my $output_t = <$fh_t>;
 	close $fh_t;
@@ -1455,7 +1460,7 @@ sub check_zfs_get_features {
 
 	my @properties_to_check = ('createtxg');
 	foreach my $prop (@properties_to_check) {
-		my $check_prop_cmd = "$rhost $mysudocmd $zfscmd get -H $prop ''";
+		my $check_prop_cmd = "$rhost $mysudocmd $zfscmd get -H $prop $empty_ds";
 		open my $fh_p, "$check_prop_cmd 2>&1 |";
 		my $output_p = <$fh_p>;
 		close $fh_p;
