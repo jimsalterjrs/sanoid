@@ -157,6 +157,7 @@ my $directconnect = "";
 my $directlisten = "";
 my $directtimeout = 60;
 my $directmbuffer = 0;
+my $directmbufferipv4 = "";
 
 if (length $args{'insecure-direct-connection'}) {
 	if ($sourcehost ne '' && $targethost ne '') {
@@ -185,6 +186,9 @@ if (length $args{'insecure-direct-connection'}) {
 	if (scalar @parts == 4) {
 		if ($parts[3] eq "mbuffer") {
 			$directmbuffer = 1;
+			if ($directlisten =~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/) {
+				$directmbufferipv4 = "-4";
+			}
 		}
 	}
 }
@@ -1693,7 +1697,7 @@ sub buildsynccmd {
 
 		my $remotecmd = "";
 		if ($directmbuffer) {
-			$remotecmd .= " $mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
+			$remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $directmbufferipv4 -W $directtimeout -I " . $directlisten . " $mbufferoptions |";
 		} elsif (length $directlisten) {
 			$remotecmd .= " busybox nc -l " . $directlisten . " -w $directtimeout |";
 		}
@@ -1717,7 +1721,7 @@ sub buildsynccmd {
 		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
 		$synccmd .= " | ";
 		if ($directmbuffer) {
-			$synccmd .= "$mbuffercmd $args{'target-bwlimit'} -W $directtimeout -I " . $directlisten . " $mbufferoptions | ";
+			$synccmd .= "$mbuffercmd $args{'target-bwlimit'} $directmbufferipv4 -W $directtimeout -I " . $directlisten . " $mbufferoptions | ";
 		} elsif (length $directlisten) {
 			$synccmd .= " busybox nc -l " . $directlisten . " -w $directtimeout | ";
 		}
