@@ -24,7 +24,7 @@ my %args = ('sshconfig' => '', 'sshkey' => '', 'sshport' => '', 'sshcipher' => '
 GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsnaps", "recursive|r", "sendoptions=s", "recvoptions=s",
                    "source-bwlimit=s", "target-bwlimit=s", "sshconfig=s", "sshkey=s", "sshport=i", "sshcipher|c=s", "sshoption|o=s@",
                    "debug", "quiet", "no-stream", "no-sync-snap", "no-resume", "exclude=s@", "skip-parent", "identifier=s",
-                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
+                   "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "no-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
                    "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
@@ -440,6 +440,7 @@ sub syncdataset {
 
 	my $newsyncsnap;
 	my $matchingsnap;
+	my $usebookmark = 0;
 
 	# skip snapshot checking/creation in case of resumed receive
 	if (!defined($receivetoken)) {
@@ -606,10 +607,10 @@ sub syncdataset {
 		my $targetsize = getzfsvalue($targethost,$targetfs,$targetisroot,'-p used');
 
 		my %bookmark = ();
+		my $bookmarksnap = 0;
 
-		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
-		if (! $matchingsnap) {
-			# no matching snapshots, check for bookmarks as fallback
+		if (! defined $args{'no-bookmark'}) {
+			# find most recent matching bookmark
 			my %bookmarks = getbookmarks($sourcehost,$sourcefs,$sourceisroot);
 
 			# check for matching guid of source bookmark and target snapshot (newest first)
@@ -619,11 +620,15 @@ sub syncdataset {
 				if (defined $bookmarks{$guid}) {
 					# found a match
 					%bookmark = %{ $bookmarks{$guid} };
-					$matchingsnap = $snap;
+					$bookmarksnap = $snap;
 					last;
 				}
 			}
+		}
 
+		$matchingsnap = getmatchingsnapshot($sourcefs, $targetfs, \%snaps);
+		if (! $matchingsnap) {
+			# no matching snapshots, check for bookmarks as fallback
 			if (! %bookmark) {
 				# force delete is not possible for the root dataset
 				if ($args{'force-delete'} && index($targetfs, '/') != -1) {
@@ -678,6 +683,20 @@ sub syncdataset {
 
 				# return false now in case more child datasets need replication.
 				return 0;
+			} else {
+				# use bookmark as fallback
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
+			}
+		} elsif (%bookmark) {
+			my $comparisonkey = 'creation';
+			if (defined $snaps{'source'}{$matchingsnap}{'createtxg'} && defined $bookmark{'createtxg'}) {
+				$comparisonkey = 'createtxg';
+			}
+			if ($bookmark{$comparisonkey} > $snaps{'source'}{$matchingsnap}{$comparisonkey}) {
+				writelog('DEBUG', "using bookmark $bookmark{'name'} because it was created after latest matching snapshot $matchingsnap");
+				$matchingsnap = $bookmarksnap;
+				$usebookmark = 1;
 			}
 		}
 
@@ -697,7 +716,7 @@ sub syncdataset {
 
 			my $nextsnapshot = 0;
 
-			if (%bookmark) {
+			if ($usebookmark) {
 
 				if (!defined $args{'no-stream'}) {
 					# if intermediate snapshots are needed we need to find the next oldest snapshot,
@@ -758,7 +777,7 @@ sub syncdataset {
 			# do a normal replication if bookmarks aren't used or if previous
 			# bookmark replication was only done to the next oldest snapshot
 			# edge case: skip replication if bookmark replication used the latest snapshot
-			if ((!%bookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
+			if ((!$usebookmark || $nextsnapshot) && !($matchingsnap eq $newsyncsnap)) {
 
 				($exit, $stdout) = syncincremental($sourcehost, $sourcefs, $targethost, $targetfs, $matchingsnap, $newsyncsnap, defined($args{'no-stream'}));
 
@@ -2422,6 +2441,7 @@ Options:
   --no-sync-snap        Does not create new snapshot, only transfers existing
   --keep-sync-snap      Don't destroy created sync snapshots
   --create-bookmark     Creates a zfs bookmark for the newest snapshot on the source after replication succeeds (only works with --no-sync-snap)
+  --no-bookmark         Do not use bookmarks when trying to find the latest common snapshot. This forces a rollback when the latest snapshot on the source was deleted but a common and older snapshot was found.
   --use-hold            Adds a hold to the newest snapshot on the source and target after replication succeeds and removes the hold after the next successful replication. The hold name includes the identifier if set. This allows for separate holds in case of multiple targets
   --preserve-recordsize Preserves the recordsize on initial sends to the target
   --preserve-properties Preserves locally set dataset properties similar to the zfs send -p flag but this one will also work for encrypted datasets in non raw sends
