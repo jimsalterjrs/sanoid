@@ -2414,8 +2414,8 @@ Options:
   --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
-  --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
-  --target-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer
+  --source-bwlimit=<limit k|M|G|T>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer (needs mbuffer)
+  --target-bwlimit=<limit k|M|G|T>  Bandwidth limit in bytes/kbytes/etc per second on the target transfer (needs mbuffer)
   --mbuffer-size=VALUE  Specify the mbuffer size (default: 16M), please refer to mbuffer(1) manual page.
   --pv-options=OPTIONS  Configure how pv displays the progress bar, default '-p -t -e -r -b'
   --no-stream           Replicates using newest snapshot instead of intermediates
