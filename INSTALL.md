@@ -8,7 +8,6 @@
 	- [Debian/Ubuntu](#debianubuntu)
 	- [RHEL/CentOS/AlmaLinux](#RHEL/CentOS/AlmaLinux)
 	- [FreeBSD](#freebsd)
-	- [Alpine Linux / busybox](#alpine-Linux-or-busybox-based-distributions)
 	- [OmniOS](#OmniOS)
 	- [Other OSes](#other-oses)
 - [Configuration](#configuration)
