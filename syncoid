@@ -1444,7 +1444,7 @@ sub check_zfs_get_features {
 
 	my $check_t_option_cmd = "$rhost $mysudocmd $zfscmd get -H -t snapshot '' ''";
 	open my $fh_t, "$check_t_option_cmd 2>&1 |";
-	my $output_t = <$fh_t>;
+	my $output_t = <$fh_t> // '';
 	close $fh_t;
 
 	if ($output_t !~ /^\Qinvalid option\E/) {
@@ -1457,7 +1457,7 @@ sub check_zfs_get_features {
 	foreach my $prop (@properties_to_check) {
 		my $check_prop_cmd = "$rhost $mysudocmd $zfscmd get -H $prop ''";
 		open my $fh_p, "$check_prop_cmd 2>&1 |";
-		my $output_p = <$fh_p>;
+		my $output_p = <$fh_p> // '';
 		close $fh_p;
 
 		if ($output_p !~ /^\Qbad property list: invalid property\E/) {
