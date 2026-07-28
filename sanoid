@@ -1948,7 +1948,7 @@ sub prom_init {
 	my $fh;
 	if (!open($fh, '>', $prometheus_tmpfile)) {
 		warn "WARN: Cannot create prometheus tmp file $prometheus_tmpfile: $!\n";
-		$prometheus_tmpfile = "/tmp/syncoid_prometheus_${prometheus_identifier}.$$.tmp";
+		$prometheus_tmpfile = "/tmp/sanoid_prometheus_${prometheus_identifier}.$$.tmp";
 		warn "INFO: falling back to $prometheus_tmpfile\n";
 		if (!open($fh, '>', $prometheus_tmpfile)) {
 			warn "WARN: Cannot create fallback prometheus tmp file $prometheus_tmpfile: $!\n";
