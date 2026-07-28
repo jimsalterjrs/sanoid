@@ -9,6 +9,7 @@ $::VERSION = '2.3.0';
 use strict;
 use warnings;
 use Data::Dumper;
+use File::Copy;
 use Getopt::Long qw(:config auto_version auto_help);
 use Pod::Usage;
 use Time::Local;
@@ -27,7 +28,8 @@ GetOptions(\%args, "no-command-checks", "monitor-version", "compress=s", "dumpsn
                    "no-clone-handling", "no-privilege-elevation", "force-delete", "no-rollback", "create-bookmark", "use-hold",
                    "pv-options=s" => \$pvoptions, "keep-sync-snap", "preserve-recordsize", "mbuffer-size=s" => \$mbuffer_size,
                    "delete-target-snapshots", "insecure-direct-connection=s", "preserve-properties",
-                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@")
+                   "include-snaps=s@", "exclude-snaps=s@", "exclude-datasets=s@",
+                   "prometheus-textfile=s")
                    or pod2usage(2);
 
 my %compressargs = %{compressargset($args{'compress'} || 'default')}; # Can't be done with GetOptions arg, as default still needs to be set
@@ -97,6 +99,15 @@ my $rawtargetfs = $args{'target'};
 my $debug = $args{'debug'};
 my $quiet = $args{'quiet'};
 my $resume = !$args{'no-resume'};
+
+# Prometheus textfile support globals
+my $prometheus_textfile     = $args{'prometheus-textfile'} // '';
+my $prometheus_identifier   = (length($args{'identifier'}) ? $args{'identifier'} : 'default');
+my $prometheus_tmpfile      = '';
+my $prometheus_enabled      = 0;
+my $prometheus_finalized    = 0;
+my $prometheus_run_started_at = time();
+my $prom_bytes_estimated    = 0;  # accumulated per syncdataset call by runsynccmd
 
 # for compatibility reasons, older versions used hardcoded command paths
 $ENV{'PATH'} = $ENV{'PATH'} . ":/bin:/usr/bin:/sbin";
@@ -194,6 +205,16 @@ if (length $args{'insecure-direct-connection'}) {
 # warn user of anything missing, then continue with sync.
 my %avail = checkcommands();
 
+prom_init();
+
+# Safety net: publish metrics even on die/kill/unexpected exit
+END {
+	if ($prometheus_enabled && !$prometheus_finalized) {
+		$prometheus_finalized = 1;
+		_prom_flush(1);  # unexpected exit counts as failure
+	}
+}
+
 # host => { supports_type_filter => 1/0, supported_properties => ['guid', 'creation', ...] }
 my %host_zfs_get_features;
 
@@ -207,7 +228,7 @@ my $replicationCount = 0;
 ## replication                                            ##
 
 if (!defined $args{'recursive'}) {
-	syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef);
+	syncdataset_wrapper($sourcehost, $sourcefs, $targethost, $targetfs, undef);
 } else {
 	writelog('DEBUG', "recursive sync of $sourcefs.");
 	my @datasets = getchilddatasets($sourcehost, $sourcefs, $sourceisroot);
@@ -295,7 +316,7 @@ if (!defined $args{'recursive'}) {
 			chomp $datasetPath;
 			my $childsourcefs = $sourcefs . $datasetPath;
 			my $childtargetfs = $targetfs . $datasetPath;
-			syncdataset($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
+			syncdataset_wrapper($sourcehost, $childsourcefs, $targethost, $childtargetfs, $origin);
 			$synced{$dataset} = 1;
 		}
 	}
@@ -311,7 +332,7 @@ if ($targethost ne '') {
 	close FH;
 }
 
-exit $exitcode;
+prom_finalize($exitcode);
 
 ##############################################################################
 ##############################################################################
@@ -369,6 +390,54 @@ sub getchilddatasets {
 	close FH;
 
 	return @children;
+}
+
+# Wrapper for syncdataset that handles monitoring metrics
+sub syncdataset_wrapper {
+	my @_args = @_;
+	return syncdataset(@_args) unless $prometheus_enabled;
+
+	my ($p_srchost, $p_srcfs, $p_dsthost, $p_dstfs) = @_args;
+	$prom_bytes_estimated = 0;   # reset byte accumulator for this dataset
+	my $prom_start    = time();
+	my $prom_exit_bef = $exitcode;
+	my $prom_repl_bef = $replicationCount;
+
+	syncdataset(@_args);
+
+	my $prom_dur    = time() - $prom_start;
+	my $synced      = ($replicationCount > $prom_repl_bef) ? 1 : 0;
+	my $had_error   = ($exitcode        > $prom_exit_bef) ? 1 : 0;
+
+	# Only emit metrics when something was actually attempted (skip pure no-ops)
+	if ($synced || $had_error) {
+		my $success   = ($synced && !$had_error) ? 1 : 0;
+		my $src_h     = prom_extract_host($p_srchost // '');
+		my $dst_h     = prom_extract_host($p_dsthost // '');
+		my $src_p = (defined $sourcefs && $sourcefs ne '') ? $sourcefs : 'unknown';
+		my $dst_p = (defined $targetfs && $targetfs ne '') ? $targetfs : 'unknown';
+		my $snaps_now = defined $snaps{target} ? scalar(keys %{$snaps{target}}) : 0;
+		my $throughput = ($prom_dur > 0 && $prom_bytes_estimated > 0)
+			? int($prom_bytes_estimated / $prom_dur) : 0;
+
+		my $lbl = prom_labels(
+			source_host         => $src_h,
+			destination_host    => $dst_h,
+			source_pool         => $src_p,
+			destination_pool    => $dst_p,
+			source_dataset      => ($p_srcfs // ''),
+			destination_dataset => ($p_dstfs // ''),
+		);
+		prom_append('syncoid_dataset_sync_timestamp_seconds',      $lbl, $prom_start);
+		prom_append('syncoid_dataset_sync_duration_seconds',       $lbl, $prom_dur);
+		prom_append('syncoid_dataset_sync_success',                $lbl, $success);
+		prom_append('syncoid_dataset_target_snapshot_count',       $lbl, $snaps_now);
+		prom_append('syncoid_dataset_bytes_sent_estimated_total',  $lbl, $prom_bytes_estimated);
+		prom_append('syncoid_dataset_throughput_bytes_per_second', $lbl, $throughput);
+
+		# Intermediate publish so each completed dataset is visible immediately
+		prom_publish_intermediate();
+	}
 }
 
 sub syncdataset {
@@ -579,11 +648,11 @@ sub syncdataset {
 					$stdout =~ /\Qused in the initial send no longer exists\E/ ||
 					$stdout =~ /incremental source [0-9xa-f]+ no longer exists/
 				) {
-					writelog('WARN', "resetting partially receive state because the snapshot source no longer exists");
-					resetreceivestate($targethost,$targetfs,$targetisroot);
-					# do an normal sync cycle
-					return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
-				} else {
+						writelog('WARN', "resetting partially receive state because the snapshot source no longer exists");
+						resetreceivestate($targethost,$targetfs,$targetisroot);
+						# do an normal sync cycle
+						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, $origin);
+					} else {
 					if ($exitcode < 2) { $exitcode = 2; }
 					return 0;
 				}
@@ -797,10 +866,10 @@ sub syncdataset {
 							warn "CRITICAL ERROR: $rcommand $prunecmd failed: $?";
 							if ($exitcode < 2) { $exitcode = 2; }
 							return 0;
-						} else {
-							# redo sync and skip snapshot creation (already taken)
-							return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
-						}
+					} else {
+						# redo sync and skip snapshot creation (already taken)
+						return syncdataset($sourcehost, $sourcefs, $targethost, $targetfs, undef, 1);
+					}
 					} else {
 						if ($exitcode < 2) { $exitcode = 2; }
 						return 0;
@@ -996,6 +1065,8 @@ sub runsynccmd {
 		writelog('CRITICAL', "$synccmd failed: $?");
 		return (2, $stdout);
 	} else {
+		# since we can have a full and incremental syncs, we need to add thr sizes to get the grand total
+		$prom_bytes_estimated += $pvsize;
 		return 0;
 	}
 } # end runsendcmd()
@@ -2392,6 +2463,126 @@ sub buildnicename {
 	return $name;
 }
 
+# Prometheus textfile support without any additional external dependencies
+sub prom_init {
+	return unless $prometheus_textfile;
+	$prometheus_tmpfile = "${prometheus_textfile}.$$.tmp";
+	my $fh;
+	if (!open($fh, '>', $prometheus_tmpfile)) {
+		warn "WARN: Cannot create prometheus tmp file $prometheus_tmpfile: $!\n";
+		$prometheus_tmpfile = "/tmp/syncoid_prometheus_${prometheus_identifier}.$$.tmp";
+		warn "INFO: falling back to $prometheus_tmpfile\n";
+		if (!open($fh, '>', $prometheus_tmpfile)) {
+			warn "WARN: Cannot create fallback prometheus tmp file $prometheus_tmpfile: $!\n";
+			warn "WARN: Prometheus textfile metrics will be disabled for this run.\n";
+			$prometheus_tmpfile = '';  # prevent further write attempts
+			return;
+		}
+	}
+	print $fh <<'PROMEOF';
+# HELP syncoid_run_timestamp_seconds Unix timestamp of the start of this syncoid run
+# TYPE syncoid_run_timestamp_seconds gauge
+# HELP syncoid_run_duration_seconds Wall-clock duration of this syncoid run in seconds
+# TYPE syncoid_run_duration_seconds gauge
+# HELP syncoid_run_success 1 if the syncoid run completed without errors, 0 otherwise
+# TYPE syncoid_run_success gauge
+# HELP syncoid_dataset_sync_timestamp_seconds Unix timestamp when this dataset sync started
+# TYPE syncoid_dataset_sync_timestamp_seconds gauge
+# HELP syncoid_dataset_sync_duration_seconds Wall-clock duration of this dataset sync in seconds
+# TYPE syncoid_dataset_sync_duration_seconds gauge
+# HELP syncoid_dataset_sync_success 1 if this dataset sync succeeded, 0 otherwise
+# TYPE syncoid_dataset_sync_success gauge
+# HELP syncoid_dataset_target_snapshot_count Total number of snapshots on the target dataset after sync
+# TYPE syncoid_dataset_target_snapshot_count gauge
+# HELP syncoid_dataset_bytes_sent_estimated_total Estimated bytes transferred (zfs send -nvP pre-send estimate)
+# TYPE syncoid_dataset_bytes_sent_estimated_total gauge
+# HELP syncoid_dataset_throughput_bytes_per_second Estimated throughput (estimated_bytes / duration_seconds)
+# TYPE syncoid_dataset_throughput_bytes_per_second gauge
+PROMEOF
+	close $fh;
+	$prometheus_enabled = 1;
+}
+
+sub _prom_escape {
+	my ($v) = @_;
+	return '' unless defined $v;
+	$v =~ s/\\/\\\\/g;
+	$v =~ s/"/\\"/g;
+	$v =~ s/\n/\\n/g;
+	return $v;
+}
+
+sub prom_extract_host {
+	my ($rhost) = @_;
+	return 'localhost' unless defined $rhost && $rhost ne '';
+	(my $h = $rhost) =~ s/-S \S+ //g;  # strip SSH ControlMaster socket args
+	$h =~ s/.*\@//;                     # strip user@
+	return $h || 'localhost';
+}
+
+sub prom_labels {
+	my (%extra) = @_;
+	my %base = ( identifier => $prometheus_identifier );
+	my %m = (%base, %extra);
+	return join(',', map { "$_=\"" . _prom_escape($m{$_}) . "\"" } sort keys %m);
+}
+
+sub prom_append {
+	my ($metric, $labels_str, $value) = @_;
+	return unless $prometheus_enabled && $prometheus_tmpfile;
+	my $fh;
+	if (!open($fh, '>>', $prometheus_tmpfile)) {
+		warn "WARN: Cannot append to prometheus tmp file: $!\n";
+		return;
+	}
+	print $fh "${metric}{${labels_str}} ${value}\n";
+	close $fh;
+}
+
+sub prom_publish_intermediate {
+	return unless $prometheus_enabled && $prometheus_tmpfile && $prometheus_textfile;
+	my $pub = "${prometheus_textfile}.pub.$$";
+	File::Copy::copy($prometheus_tmpfile, $pub)
+		and rename($pub, $prometheus_textfile);
+}
+
+sub _prom_flush {
+	my ($exit_code) = @_;
+	$exit_code //= 1;
+	return unless $prometheus_enabled && $prometheus_tmpfile;
+
+	my $duration = time() - $prometheus_run_started_at;
+	my $src_h    = prom_extract_host($sourcehost  // '');
+	my $dst_h    = prom_extract_host($targethost  // '');
+	my $src_p = (defined $sourcefs && $sourcefs ne '') ? $sourcefs : 'unknown';
+	my $dst_p = (defined $targetfs && $targetfs ne '') ? $targetfs : 'unknown';
+
+	my $lbl = prom_labels(
+		source_host      => $src_h,
+		destination_host => $dst_h,
+		source_pool      => $src_p,
+		destination_pool => $dst_p,
+	);
+	prom_append('syncoid_run_timestamp_seconds', $lbl, $prometheus_run_started_at);
+	prom_append('syncoid_run_duration_seconds',  $lbl, $duration);
+	prom_append('syncoid_run_success',           $lbl, ($exit_code == 0 ? 1 : 0));
+
+	# Atomic publish: rename tmp -> final (copy as fallback across filesystems)
+	rename($prometheus_tmpfile, $prometheus_textfile)
+		or File::Copy::copy($prometheus_tmpfile, $prometheus_textfile)
+		or warn "WARN: Cannot finalize prometheus file $prometheus_textfile: $!\n";
+	unlink $prometheus_tmpfile if -e $prometheus_tmpfile;
+}
+
+sub prom_finalize {
+	my ($exit_code) = @_;
+	$exit_code //= 0;
+	return if $prometheus_finalized;  # guard against double-call from END block
+	$prometheus_finalized = 1;
+	_prom_flush($exit_code);
+	exit($exit_code);
+}
+
 __END__
 
 =head1 NAME
@@ -2452,3 +2643,5 @@ Options:
   --no-privilege-elevation  Bypass the root check, for use with ZFS permission delegation
 
   --force-delete        Remove target datasets recursively, if there are no matching snapshots/bookmarks (also overwrites conflicting named snapshots)
+  --prometheus-textfile=PATH  Write Prometheus metrics to PATH (node_exporter textfile format); the file is
+                        recreated at start and intermediate results are written after each dataset sync

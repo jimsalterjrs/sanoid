@@ -1,0 +1,1184 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__elements": {},
+  "__requires": [
+    { "type": "grafana",    "id": "grafana",    "name": "Grafana",     "version": "9.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus",  "version": "1.0.0" },
+    { "type": "panel", "id": "stat",       "name": "Stat",       "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "table",      "name": "Table",      "version": "" },
+    { "type": "panel", "id": "bargauge",   "name": "Bar gauge",  "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Monitoring for sanoid (ZFS snapshot management) and syncoid (ZFS replication). Requires Prometheus node_exporter textfile collector with --prometheus-textfile enabled on each host.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "tags": [ "zfs", "sanoid", "syncoid", "backup", "disaster-recovery" ],
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Sanoid \/ Syncoid — ZFS Monitoring",
+  "uid": "sanoid-syncoid-v1",
+  "version": 1,
+
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "label": "Datasource",
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values({__name__=~\"sanoid_run_success|syncoid_run_success\"}, identifier)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "identifier",
+        "label": "Identifier",
+        "query": { "query": "label_values({__name__=~\"sanoid_run_success|syncoid_run_success\"}, identifier)", "refId": "Q" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(sanoid_run_success{identifier=~\"$identifier\"}, host)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "sanoid_host",
+        "label": "Sanoid Host",
+        "query": { "query": "label_values(sanoid_run_success{identifier=~\"$identifier\"}, host)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(sanoid_run_success{host=~\"$sanoid_host\",identifier=~\"$identifier\"}, pool)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "sanoid_pool",
+        "label": "Sanoid Pool",
+        "query": { "query": "label_values(sanoid_run_success{host=~\"$sanoid_host\",identifier=~\"$identifier\"}, pool)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(sanoid_snapshot_count{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}, dataset)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "sanoid_dataset",
+        "label": "Sanoid Dataset",
+        "query": { "query": "label_values(sanoid_snapshot_count{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}, dataset)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(syncoid_run_success{identifier=~\"$identifier\"}, source_host)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "source_host",
+        "label": "Source Host",
+        "query": { "query": "label_values(syncoid_run_success{identifier=~\"$identifier\"}, source_host)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(syncoid_run_success{source_host=~\"$source_host\",identifier=~\"$identifier\"}, destination_host)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "destination_host",
+        "label": "Destination Host",
+        "query": { "query": "label_values(syncoid_run_success{source_host=~\"$source_host\",identifier=~\"$identifier\"}, destination_host)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",identifier=~\"$identifier\"}, source_pool)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "source_pool",
+        "label": "Source Root (pool/dataset)",
+        "query": { "query": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",identifier=~\"$identifier\"}, source_pool)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",identifier=~\"$identifier\"}, destination_pool)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "destination_pool",
+        "label": "Destination Root (pool/dataset)",
+        "query": { "query": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",identifier=~\"$identifier\"}, destination_pool)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}, source_dataset)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "source_dataset",
+        "label": "Source Dataset",
+        "query": { "query": "label_values(syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}, source_dataset)", "refId": "Q" },
+        "refresh": 2,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      }
+    ]
+  },
+
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Sanoid — Snapshot Management",
+      "type": "row"
+    },
+
+    {
+      "id": 2,
+      "title": "Last Run Status",
+      "description": "1 = all runs succeeded, 0 = at least one failure",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_run_success{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAIL", "color": "red"   },
+                "1": { "text": "OK",   "color": "green" }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 3,
+      "title": "Time Since Last Run",
+      "description": "Elapsed time since the last sanoid run started",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "time() - sanoid_run_timestamp_seconds{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null  },
+              { "color": "yellow", "value": 3600  },
+              { "color": "red",    "value": 86400 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 4,
+      "title": "Last Run Duration",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_run_duration_seconds{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 120  },
+              { "color": "red",    "value": 600  }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 5,
+      "title": "Total Snapshots Managed",
+      "description": "Sum of all managed snapshots across all types for the selected pools",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (host, pool) (sanoid_snapshot_count{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"})",
+          "instant": true,
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 6,
+      "title": "Sanoid — Run History",
+      "type": "row"
+    },
+
+    {
+      "id": 7,
+      "title": "Run Success History",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_run_success{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 10,
+            "spanNulls": true,
+            "fillOpacity": 0
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAIL" },
+                "1": { "text": "OK"   }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 8,
+      "title": "Run Duration History",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_run_duration_seconds{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{host}} / {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 10
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 9,
+      "title": "Sanoid — Snapshot Inventory",
+      "type": "row"
+    },
+
+    {
+      "id": 10,
+      "title": "Current Snapshot Counts by Dataset and Type",
+      "type": "table",
+      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_snapshot_count{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",dataset=~\"$sanoid_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "initiator_host": true
+            },
+            "renameByName": {
+              "Value": "Count",
+              "host": "Host",
+              "pool": "Pool",
+              "dataset": "Dataset",
+              "type": "Type",
+              "identifier": "Identifier"
+            },
+            "indexByName": {
+              "host": 0,
+              "pool": 1,
+              "dataset": 2,
+              "type": 3,
+              "identifier": 4,
+              "Value": 5
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [ { "displayName": "Dataset", "desc": false }, { "displayName": "Type", "desc": false } ]
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Count" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "color", "value": { "mode": "continuous-GrYlRd" } }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 11,
+      "title": "Snapshots Taken This Run",
+      "type": "bargauge",
+      "gridPos": { "h": 4, "w": 10, "x": 14, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_snapshots_taken_total{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",dataset=~\"$sanoid_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 12,
+      "title": "Snapshots Pruned This Run",
+      "type": "bargauge",
+      "gridPos": { "h": 4, "w": 10, "x": 14, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sanoid_snapshots_pruned_total{host=~\"$sanoid_host\",pool=~\"$sanoid_pool\",dataset=~\"$sanoid_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "orange", "value": null } ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 13,
+      "title": "Syncoid — ZFS Replication",
+      "type": "row"
+    },
+
+    {
+      "id": 14,
+      "title": "Last Run Status",
+      "description": "1 = success, 0 = failure",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_run_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{source_host}}→{{destination_host}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAIL", "color": "red"   },
+                "1": { "text": "OK",   "color": "green" }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 15,
+      "title": "Time Since Last Run",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "time() - syncoid_run_timestamp_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{source_host}}→{{destination_host}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null  },
+              { "color": "yellow", "value": 7200  },
+              { "color": "red",    "value": 86400 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 16,
+      "title": "Last Run Duration",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_run_duration_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "{{source_host}}→{{destination_host}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 600  },
+              { "color": "red",    "value": 3600 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 17,
+      "title": "Datasets Synced OK (this run)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "count by (source_host, destination_host) (syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"} == 1)",
+          "instant": true,
+          "legendFormat": "{{source_host}}→{{destination_host}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "id": 18,
+      "title": "Syncoid — Run History",
+      "type": "row"
+    },
+
+    {
+      "id": 19,
+      "title": "Run Success History",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_run_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_host}}→{{destination_host}} ({{source_pool}}→{{destination_pool}})",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 10,
+            "spanNulls": true
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAIL" },
+                "1": { "text": "OK"   }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 20,
+      "title": "Run Duration History",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_run_duration_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_host}}→{{destination_host}} ({{source_pool}}→{{destination_pool}})",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 10
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 21,
+      "title": "Syncoid — Dataset Details",
+      "type": "row"
+    },
+
+    {
+      "id": 22,
+      "title": "Dataset Sync Summary",
+      "description": "Latest state for each replicated dataset. Success=green/OK, failure=red/FAIL. Bytes estimated via 'zfs send -nvP' (0 for bookmark-based sends).",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_sync_success{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "time() - syncoid_dataset_sync_timestamp_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_sync_duration_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_target_snapshot_count{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_bytes_sent_estimated_total{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "E"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_throughput_bytes_per_second{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "F"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "destination_dataset": false
+            },
+            "renameByName": {
+              "Value #A": "Status",
+              "Value #B": "Last Sync Ago",
+              "Value #C": "Duration",
+              "Value #D": "Target Snaps",
+              "Value #E": "Bytes Sent",
+              "Value #F": "Throughput",
+              "source_host": "Source Host",
+              "destination_host": "Dest Host",
+              "source_pool": "Src Pool",
+              "destination_pool": "Dst Pool",
+              "source_dataset": "Source Dataset",
+              "destination_dataset": "Dest Dataset",
+              "identifier": "Identifier"
+            },
+            "indexByName": {
+              "source_host": 0,
+              "destination_host": 1,
+              "source_pool": 2,
+              "destination_pool": 3,
+              "source_dataset": 4,
+              "destination_dataset": 5,
+              "identifier": 6,
+              "Value #A": 7,
+              "Value #B": 8,
+              "Value #C": 9,
+              "Value #D": 10,
+              "Value #E": 11,
+              "Value #F": 12
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [ { "displayName": "Status", "desc": false } ]
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "custom.width", "value": 80 },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red",   "value": null },
+                    { "color": "green", "value": 1    }
+                  ]
+                }
+              },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": { "text": "FAIL" },
+                      "1": { "text": "OK"   }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Last Sync Ago" },
+            "properties": [
+              { "id": "unit", "value": "dtdurations" },
+              { "id": "custom.displayMode", "value": "color-background" },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green",  "value": null  },
+                    { "color": "yellow", "value": 7200  },
+                    { "color": "red",    "value": 86400 }
+                  ]
+                }
+              },
+              { "id": "color", "value": { "mode": "thresholds" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Duration" },
+            "properties": [ { "id": "unit", "value": "s" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Bytes Sent" },
+            "properties": [ { "id": "unit", "value": "decbytes" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Throughput" },
+            "properties": [ { "id": "unit", "value": "Bps" } ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 23,
+      "title": "Bytes Sent Estimated (per dataset)",
+      "description": "Pre-send estimate from 'zfs send -nvP'. 0 for bookmark-based sends.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_bytes_sent_estimated_total{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 10
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 24,
+      "title": "Throughput (per dataset)",
+      "description": "Estimated bytes per second = bytes_sent / sync_duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_throughput_bytes_per_second{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 10
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 25,
+      "title": "Target Snapshot Count (per dataset)",
+      "description": "Total number of snapshots on the target dataset after each sync run",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_target_snapshot_count{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_dataset}} → {{destination_dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 5
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 26,
+      "title": "Dataset Sync Duration (per dataset)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "syncoid_dataset_sync_duration_seconds{source_host=~\"$source_host\",destination_host=~\"$destination_host\",source_pool=~\"$source_pool\",destination_pool=~\"$destination_pool\",source_dataset=~\"$source_dataset\",identifier=~\"$identifier\"}",
+          "legendFormat": "{{source_dataset}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "drawStyle": "points",
+            "pointSize": 8,
+            "spanNulls": true,
+            "fillOpacity": 10
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    }
+
+  ]
+}
