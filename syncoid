@@ -691,6 +691,15 @@ sub syncdataset {
 		if ($matchingsnap eq $newsyncsnap) {
 			# barf some text but don't touch the filesystem
 			writelog('INFO', "no snapshots on source newer than $newsyncsnap on target. Nothing to do, not syncing.");
+			# Holds outlive replication: sweep here too, otherwise a dataset that
+			# stopped producing snapshots keeps any stale hold for good - this
+			# branch returns before the --use-hold block below is ever reached.
+			if (defined $args{'use-hold'}) {
+				my $hostid = hostname();
+				my $holdname = "syncoid\_$identifier$hostid";
+				releasestaleholds($sourcehost,$sourcefs,$sourceisroot,$holdname,$newsyncsnap);
+				releasestaleholds($targethost,$targetfs,$targetisroot,$holdname,$newsyncsnap);
+			}
 			return 0;
 		} else {
 			my $matchingsnapescaped = escapeshellparam($matchingsnap);
@@ -839,6 +848,7 @@ sub syncdataset {
 			writelog('DEBUG', "Release old hold on source: $holdreleasecmd");
 			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
 		}
+		releasestaleholds($sourcehost,$sourcefs,$sourceisroot,$holdname,$newsyncsnap,$matchingsnap);
 		if ($targethost ne '') {
 			$holdcmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd hold $holdname $targetfsescaped\@$newsyncsnapescaped");
 			$holdreleasecmd = "$sshcmd $targethost " . escapeshellparam("$targetsudocmd $zfscmd release $holdname $targetfsescaped\@$matchingsnapescaped");
@@ -852,6 +862,7 @@ sub syncdataset {
 			writelog('DEBUG', "Release old hold on target: $holdreleasecmd");
 			system($holdreleasecmd) == 0 or warn "WARNING: $holdreleasecmd failed: $?";
 		}
+		releasestaleholds($targethost,$targetfs,$targetisroot,$holdname,$newsyncsnap,$matchingsnap);
 	}
 	if (defined $args{'no-sync-snap'}) {
 		if (defined $args{'create-bookmark'}) {
@@ -2105,6 +2116,110 @@ sub getbookmarks() {
 	}
 
 	return %bookmarks;
+}
+
+sub releasestaleholds {
+	# Release every hold carrying our own hold name on $fs, except the ones
+	# protecting the snapshots in @keep: the snapshot just sent, and the common
+	# base it was sent from. Holds never expire, so a replication with no common
+	# base to release from - a full re-seed after the target was destroyed - or a
+	# run interrupted between the hold and the release leaves its previous anchor
+	# behind forever, pinning a snapshot no later run will ever free.
+	#
+	# Only holds under our exact hold name are considered: other identifiers
+	# belong to other replication relations. Enumerating what is actually there,
+	# instead of releasing blindly, also keeps the very first replication of a
+	# dataset quiet - there is nothing to release, so no "no such tag" error.
+	my ($rhost,$fs,$isroot,$holdname,@keep) = @_;
+
+	my %keep;
+	foreach my $snap (@keep) {
+		if (defined $snap && length $snap) { $keep{$snap} = 1; }
+	}
+
+	my $mysudocmd = $isroot ? '' : $sudocmd;
+	my $fsescaped = escapeshellparam($fs);
+
+	# userrefs is the number of holds on a snapshot: it narrows the list handed
+	# to `zfs holds` down to the few snapshots that are actually held.
+	my $getuserrefscmd = "$mysudocmd $zfscmd get -Hpd 1 -o name,value userrefs $fsescaped";
+	if ($rhost ne '') {
+		$getuserrefscmd = "$sshcmd $rhost " . escapeshellparam($getuserrefscmd);
+	}
+	writelog('DEBUG', "Listing held snapshots on $fs: $getuserrefscmd");
+	if ($debug) {
+		$getuserrefscmd = "$getuserrefscmd |";
+	} else {
+		$getuserrefscmd = "$getuserrefscmd 2>/dev/null |";
+	}
+	open FH, $getuserrefscmd;
+	my @rawuserrefs = <FH>;
+	close FH;
+
+	my @heldsnaps;
+	foreach my $line (@rawuserrefs) {
+		chomp $line;
+		my ($dataset, $userrefs) = split /\t/, $line;
+		next unless defined $userrefs && $userrefs =~ /^[1-9][0-9]*$/;
+		# belt and braces: never look past the dataset we were handed
+		next unless $dataset =~ /^\Q$fs\E\@/;
+		my (undef, $snap) = split /\@/, $dataset, 2;
+		next unless defined $snap && length $snap;
+		push @heldsnaps, $snap;
+	}
+	return if !@heldsnaps;
+
+	my $getholdscmd = "$mysudocmd $zfscmd holds -H";
+	foreach my $snap (@heldsnaps) {
+		$getholdscmd .= ' ' . escapeshellparam("$fs\@$snap");
+	}
+	if ($rhost ne '') {
+		$getholdscmd = "$sshcmd $rhost " . escapeshellparam($getholdscmd);
+	}
+	writelog('DEBUG', "Listing holds on $fs: $getholdscmd");
+	if ($debug) {
+		$getholdscmd = "$getholdscmd |";
+	} else {
+		$getholdscmd = "$getholdscmd 2>/dev/null |";
+	}
+	open FH, $getholdscmd;
+	my @rawholds = <FH>;
+	close FH;
+
+	my @stalesnaps;
+	my $anchored = 0;
+	foreach my $line (@rawholds) {
+		chomp $line;
+		my ($dataset, $tag) = split /\t/, $line;
+		next unless defined $tag && $tag eq $holdname;
+		next unless $dataset =~ /^\Q$fs\E\@/;
+		my (undef, $snap) = split /\@/, $dataset, 2;
+		next unless defined $snap && length $snap;
+		if (exists $keep{$snap}) {
+			$anchored = 1;
+		} else {
+			push @stalesnaps, $snap;
+		}
+	}
+	return if !@stalesnaps;
+
+	# Never release the last anchor: if the hold on the snapshot just sent is
+	# missing, placing it failed, and releasing the older one would leave the
+	# common base unprotected from pruning.
+	if (!$anchored) {
+		warn "WARNING: leaving " . scalar(@stalesnaps) . " stale $holdname hold(s) on $fs: no hold on the current snapshot to replace them";
+		return;
+	}
+
+	foreach my $snap (@stalesnaps) {
+		my $snapescaped = escapeshellparam($snap);
+		my $releasecmd = "$mysudocmd $zfscmd release $holdname $fsescaped\@$snapescaped";
+		if ($rhost ne '') {
+			$releasecmd = "$sshcmd $rhost " . escapeshellparam($releasecmd);
+		}
+		writelog('DEBUG', "Release stale hold: $releasecmd");
+		system($releasecmd) == 0 or warn "WARNING: $releasecmd failed: $?";
+	}
 }
 
 sub getsendsize {
