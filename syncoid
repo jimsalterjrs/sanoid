@@ -17,6 +17,8 @@ use Capture::Tiny ':all';
 
 my $mbuffer_size = "16M";
 my $pvoptions = "-p -t -e -r -b";
+# transfers smaller than this skip compression and mbuffer entirely - see buildsynccmd()
+my $minpipesize = 1024*1024;
 
 # Blank defaults to use ssh client's default
 # TODO: Merge into a single "sshflags" option?
@@ -1664,6 +1666,15 @@ sub buildsynccmd {
 	# AND recompress across the pipe viewer. FUN.
 	my $synccmd;
 
+	# for tiny transfers the pipeline costs more than it saves: each mbuffer reserves
+	# $mbuffer_size up front, on both ends, to move a few KB. a pvsize of 0 means the
+	# size is unknown, so keep the pipeline in that case.
+	my $usepipe = ($pvsize == 0 || $pvsize >= $minpipesize);
+	my $compress = $avail{'compress'} && $usepipe;
+	my $srcbuffer = $avail{'sourcembuffer'} && $usepipe;
+	my $dstbuffer = $avail{'targetmbuffer'} && $usepipe;
+	my $localbuffer = $avail{'localmbuffer'} && $usepipe;
+
 	if ($sourcehost eq '' && $targethost eq '') {
 		# both sides local. don't compress. do mbuffer, once, on the source side.
 		# $synccmd = "$sendcmd | $mbuffercmd | $pvcmd | $recvcmd";
@@ -1676,7 +1687,7 @@ sub buildsynccmd {
 			$bwlimit = $args{'target-bwlimit'};
 		}
 
-		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
+		if ($srcbuffer) { $synccmd .= " $mbuffercmd $bwlimit $mbufferoptions |"; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
 		$synccmd .= " $recvcmd";
 	} elsif ($sourcehost eq '') {
@@ -1684,8 +1695,8 @@ sub buildsynccmd {
 		#$synccmd = "$sendcmd | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 		$synccmd = "$sendcmd |";
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= " $pvcmd $pvoptions -s $pvsize |"; }
-		if ($avail{'compress'}) { $synccmd .= " $compressargs{'cmd'} |"; }
-		if ($avail{'sourcembuffer'}) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
+		if ($compress) { $synccmd .= " $compressargs{'cmd'} |"; }
+		if ($srcbuffer) { $synccmd .= " $mbuffercmd $args{'source-bwlimit'} $mbufferoptions |"; }
 		if (length $directconnect) {
 			$synccmd .= " $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1 |";
 		}
@@ -1698,8 +1709,8 @@ sub buildsynccmd {
 			$remotecmd .= " busybox nc -l " . $directlisten . " -w $directtimeout |";
 		}
 
-		if ($avail{'targetmbuffer'} && !$directmbuffer) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
-		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
+		if ($dstbuffer && !$directmbuffer) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($compress) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
 		$remotecmd .= " $recvcmd";
 
 		$synccmd .= escapeshellparam($remotecmd);
@@ -1708,8 +1719,8 @@ sub buildsynccmd {
 		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $compressargs{'decomcmd'} | $mbuffercmd | $pvcmd | $recvcmd";
 
 		my $remotecmd = $sendcmd;
-		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
-		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		if ($compress) { $remotecmd .= " | $compressargs{'cmd'}"; }
+		if ($srcbuffer) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 		if (length $directconnect) {
 			$remotecmd .= " | $socatcmd - TCP:" . $directconnect . ",retry=$directtimeout,interval=1";
 		}
@@ -1722,8 +1733,8 @@ sub buildsynccmd {
 			$synccmd .= " busybox nc -l " . $directlisten . " -w $directtimeout | ";
 		}
 
-		if ($avail{'targetmbuffer'} && !$directmbuffer) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
-		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
+		if ($dstbuffer && !$directmbuffer) { $synccmd .= "$mbuffercmd $args{'target-bwlimit'} $mbufferoptions | "; }
+		if ($compress) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
 		$synccmd .= "$recvcmd";
 	} else {
@@ -1731,21 +1742,21 @@ sub buildsynccmd {
 		#$synccmd = "$sshcmd $sourcehost '$sendcmd | $compressargs{'cmd'} | $mbuffercmd' | $compressargs{'decomcmd'} | $pvcmd | $compressargs{'cmd'} | $mbuffercmd | $sshcmd $targethost '$compressargs{'decomcmd'} | $mbuffercmd | $recvcmd'";
 
 		my $remotecmd = $sendcmd;
-		if ($avail{'compress'}) { $remotecmd .= " | $compressargs{'cmd'}"; }
-		if ($avail{'sourcembuffer'}) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
+		if ($compress) { $remotecmd .= " | $compressargs{'cmd'}"; }
+		if ($srcbuffer) { $remotecmd .= " | $mbuffercmd $args{'source-bwlimit'} $mbufferoptions"; }
 
 		$synccmd = "$sshcmd $sourcehost " . escapeshellparam($remotecmd);
 		$synccmd .= " | ";
 
-		if ($avail{'compress'}) { $synccmd .= "$compressargs{'decomcmd'} | "; }
+		if ($compress) { $synccmd .= "$compressargs{'decomcmd'} | "; }
 		if ($avail{'localpv'} && !$quiet) { $synccmd .= "$pvcmd $pvoptions -s $pvsize | "; }
-		if ($avail{'compress'}) { $synccmd .= "$compressargs{'cmd'} | "; }
-		if ($avail{'localmbuffer'}) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
+		if ($compress) { $synccmd .= "$compressargs{'cmd'} | "; }
+		if ($localbuffer) { $synccmd .= "$mbuffercmd $mbufferoptions | "; }
 		$synccmd .= "$sshcmd $targethost ";
 
 		$remotecmd = "";
-		if ($avail{'targetmbuffer'}) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
-		if ($avail{'compress'}) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
+		if ($dstbuffer) { $remotecmd .= " $mbuffercmd $args{'target-bwlimit'} $mbufferoptions |"; }
+		if ($compress) { $remotecmd .= " $compressargs{'decomcmd'} |"; }
 		$remotecmd .= " $recvcmd";
 
 		$synccmd .= escapeshellparam($remotecmd);
