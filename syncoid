@@ -1472,10 +1472,17 @@ sub check_zfs_get_features {
 
 sub iszfsbusy {
 	my ($rhost,$fs,$isroot) = @_;
-	if ($rhost ne '') { $rhost = "$sshcmd $rhost"; }
-	writelog('DEBUG', "checking to see if $fs on $rhost is already in zfs receive using $rhost $pscmd -Ao args= ...");
 
-	open PL, "$rhost $pscmd -Ao args= |";
+	# filter on the remote side - we only care about zfs receive processes, and shipping an
+	# entire process table over ssh (three times per dataset) costs far more than the check
+	my $pipeline = "$pscmd -Ao args= | grep -e 'zfs *receive' -e 'zfs *recv'";
+	if ($rhost ne '') {
+		$rhost = "$sshcmd $rhost";
+		$pipeline = escapeshellparam($pipeline);
+	}
+	writelog('DEBUG', "checking to see if $fs on $rhost is already in zfs receive using $rhost $pipeline ...");
+
+	open PL, "$rhost $pipeline |";
 	my @processes = <PL>;
 	close PL;
 
