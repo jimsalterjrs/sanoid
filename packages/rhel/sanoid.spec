@@ -14,7 +14,11 @@ License:	   GPLv3
 URL:		   https://github.com/jimsalterjrs/sanoid
 Source0:	   https://github.com/jimsalterjrs/%{name}/archive/%{git_tag}/%{name}-%{version}.tar.gz
 
-Requires:	   perl, mbuffer, lzop, pv, perl-Config-IniFiles, perl-Capture-Tiny
+# Not the perl package: on Fedora and RHEL 8+ it is a metapackage that pulls in all of Perl, a
+# compiler included. Require the interpreter and the modules the scripts load instead.
+Requires:	   /usr/bin/perl, mbuffer, lzop, pv
+Requires:	   perl(Capture::Tiny), perl(Config::IniFiles), perl(Cwd), perl(Data::Dumper), perl(File::Copy)
+Requires:	   perl(File::Path), perl(Getopt::Long), perl(Pod::Usage), perl(Sys::Hostname), perl(Time::Local)
 %if 0%{?_with_systemd}
 Requires:      systemd >= 212
 
