@@ -19,6 +19,24 @@
 
 ## Debian/Ubuntu
 
+### Install from a release package
+
+Download the `sanoid_<version>_all.deb` attached to the release, then install it with apt so dependencies are resolved automatically:
+
+```bash
+sudo apt install ./sanoid_*_all.deb
+```
+
+The package depends on `libcapture-tiny-perl`, `libconfig-inifiles-perl` and one of `zfsutils-linux`, `zfs` or `openzfs-zfsutils`. `pv`, `lzop`, `mbuffer`, `gzip` and an ssh client are recommended and installed by apt by default; if you disabled recommends, install them yourself:
+
+```bash
+sudo apt install pv lzop mbuffer
+```
+
+Then enable the sanoid timer (see below).
+
+### Build the package from source
+
 Install prerequisite software:
 
 ```bash
@@ -47,6 +65,19 @@ sudo systemctl enable --now sanoid.timer
 ```
 
 ## RHEL/CentOS/AlmaLinux
+
+### Install from a release package
+
+Enable EPEL and the CodeReady Builder repo (see the prerequisites below), then download the `sanoid-<version>.noarch.rpm` attached to the release and install it with dnf so dependencies are resolved automatically:
+
+```bash
+sudo dnf install ./sanoid-*.noarch.rpm
+sudo systemctl enable --now sanoid.timer
+```
+
+The package requires `perl`, `perl-Config-IniFiles`, `perl-Capture-Tiny`, `mbuffer`, `lzop` and `pv`. It does not require ZFS itself; install OpenZFS separately.
+
+### Install from source
 
 Install prerequisite software:
 
