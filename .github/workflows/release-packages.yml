@@ -1,0 +1,83 @@
+name: Build release packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach packages to
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    container: debian:stable
+    steps:
+      - name: Install build tools
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential debhelper devscripts fakeroot git ca-certificates gh libdistro-info-perl
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build .deb
+        run: |
+          VERSION="${TAG#v}"
+          ln -s packages/debian debian
+          export DEBFULLNAME="${GITHUB_REPOSITORY_OWNER}" DEBEMAIL="noreply@users.noreply.github.com"
+          dch -b --newversion "$VERSION" --distribution unstable "Release $TAG"
+          dpkg-buildpackage -us -uc -b
+          mkdir -p dist
+          mv ../sanoid_*_all.deb dist/
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gh release upload "$TAG" dist/*.deb --clobber --repo "$GITHUB_REPOSITORY"
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: rockylinux:9
+    steps:
+      - name: Install build tools
+        run: |
+          dnf install -y rpm-build rpmdevtools systemd git tar gzip
+          dnf install -y 'dnf-command(config-manager)' || true
+          dnf install -y https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.rpm
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build .rpm
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION="${TAG#v}"
+          VERSION="${VERSION//-/\~}"
+          rpmdev-setuptree
+          git archive --format=tar.gz --prefix="sanoid-${VERSION}/" \
+            -o "$HOME/rpmbuild/SOURCES/sanoid-${VERSION}.tar.gz" HEAD
+          sed -e "s/^%global version .*/%global version ${VERSION}/" \
+              -e "s|^Source0:.*|Source0:         %{name}-%{version}.tar.gz|" \
+              packages/rhel/sanoid.spec > "$HOME/rpmbuild/SPECS/sanoid.spec"
+          rpmbuild -bb "$HOME/rpmbuild/SPECS/sanoid.spec"
+          mkdir -p dist
+          cp "$HOME"/rpmbuild/RPMS/noarch/sanoid-*.rpm dist/
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/*.rpm --clobber --repo "$GITHUB_REPOSITORY"
